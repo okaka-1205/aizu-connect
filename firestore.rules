@@ -1,0 +1,409 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userRef(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function hasUser() {
+      return signedIn() && exists(userRef(request.auth.uid));
+    }
+
+    function userData() {
+      return get(userRef(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return hasUser() && userData().role == 'admin'
+        && userData().status == 'active';
+    }
+
+    function isActiveStudent() {
+      return hasUser() && userData().role == 'student'
+        && userData().status == 'active';
+    }
+
+    function isActiveOrganization() {
+      return hasUser() && userData().role == 'organization'
+        && userData().status == 'active';
+    }
+
+    function validString(value, min, max) {
+      return value is string && value.size() >= min && value.size() <= max;
+    }
+
+    function validOptionalString(value, max) {
+      return value == null || validString(value, 0, max);
+    }
+
+    function validGrade(value) {
+      return value is number && value >= 1 && value <= 6;
+    }
+
+    function validUser(data, uid) {
+      return data.keys().hasOnly([
+        'uid', 'role', 'status', 'email', 'displayName', 'university',
+        'department', 'grade', 'interests', 'organizationId',
+        'organizationName', 'createdAt', 'updatedAt'
+      ])
+      && data.uid == uid
+      && data.role in ['student', 'organization']
+      && validOptionalString(data.email, 320)
+      && validString(data.displayName, 1, 80)
+      && validString(data.university, 1, 80)
+      && validString(data.department, 0, 80)
+      && validGrade(data.grade)
+      && data.interests is list
+      && data.interests.size() <= 5
+      && (
+        (
+          data.role == 'student'
+          && (
+            data.status == 'pending_approval'
+            || (
+              data.status == 'active'
+              && request.auth.token.email == data.email
+              && request.auth.token.email.split('@')[1] == 'u-aizu.ac.jp'
+            )
+          )
+        )
+        || (
+          data.role == 'organization'
+          && data.status == 'pending_approval'
+          && data.keys().hasAll(['organizationId', 'organizationName'])
+          && data.organizationId == uid
+          && validString(data.organizationName, 1, 100)
+        )
+      );
+    }
+
+    function validStudentProfile(data, uid) {
+      return data.keys().hasOnly([
+        'uid', 'role', 'status', 'email', 'displayName', 'university',
+        'department', 'grade', 'interests', 'verificationMethod',
+        'profileCompletionRate', 'activityCount', 'createdAt', 'updatedAt'
+      ])
+      && data.uid == uid
+      && data.role == 'student'
+      && data.status in ['pending_approval', 'active']
+      && validOptionalString(data.email, 320)
+      && validString(data.displayName, 1, 80)
+      && validString(data.university, 1, 80)
+      && validString(data.department, 0, 80)
+      && validGrade(data.grade)
+      && data.interests is list
+      && data.interests.size() <= 5
+      && validString(data.verificationMethod, 1, 40)
+      && data.profileCompletionRate is number
+      && data.profileCompletionRate >= 0
+      && data.profileCompletionRate <= 100
+      && data.activityCount is number
+      && data.activityCount >= 0;
+    }
+
+    function validEvent(data, uid) {
+      return data.keys().hasOnly([
+        'title', 'summary', 'category', 'location', 'startAtLabel',
+        'startAt', 'organizationName', 'status', 'capacity', 'applicantCount',
+        'imageUrl', 'tags', 'organizationId', 'organizationVerified',
+        'createdBy', 'createdAt', 'updatedAt'
+      ])
+      && data.createdBy == uid
+      && validString(data.title, 1, 80)
+      && validString(data.summary, 1, 220)
+      && validString(data.category, 1, 40)
+      && validString(data.location, 1, 80)
+      && validString(data.startAtLabel, 1, 40)
+      && data.startAt is timestamp
+      && validString(data.organizationName, 1, 100)
+      && validString(data.organizationId, 1, 128)
+      && data.organizationId == uid
+      && data.organizationVerified == true
+      && data.status in ['published', 'pending_review', 'revision_required']
+      && data.capacity is number && data.capacity >= 1 && data.capacity <= 1000
+      && data.applicantCount is number && data.applicantCount >= 0
+      && validString(data.imageUrl, 1, 500)
+      && data.tags is list && data.tags.size() <= 8;
+    }
+
+    function validApplication(data) {
+      return data.keys().hasOnly([
+        'id', 'eventId', 'eventTitle', 'studentId', 'studentName',
+        'organizationId', 'organizationName', 'status', 'createdAt'
+      ])
+      && data.id == request.resource.id
+      && data.studentId == request.auth.uid
+      && validString(data.eventId, 3, 120)
+      && validString(data.eventTitle, 1, 80)
+      && validString(data.studentName, 1, 80)
+      && validString(data.organizationId, 1, 128)
+      && validString(data.organizationName, 1, 100)
+      && data.status == 'pending';
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && validUser(request.resource.data, userId);
+      allow update: if isAdmin()
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'updatedAt'
+        ])
+        || (
+          signedIn() && request.auth.uid == userId
+          && resource.data.role == 'student'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'displayName', 'department', 'grade', 'interests', 'updatedAt'
+          ])
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status == resource.data.status
+          && validUser(request.resource.data, userId)
+        );
+      allow delete: if false;
+    }
+
+    match /studentProfiles/{userId} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && validStudentProfile(request.resource.data, userId);
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'department', 'grade', 'interests', 'updatedAt'
+        ])
+        && validStudentProfile(request.resource.data, userId);
+      allow delete: if false;
+    }
+
+    match /organizations/{organizationId} {
+      allow read: if isAdmin()
+        || (signedIn() && request.auth.uid == organizationId);
+      allow create: if signedIn()
+        && request.auth.uid == organizationId
+        && request.resource.data.keys().hasOnly([
+          'id', 'displayName', 'description', 'contactEmail', 'status',
+          'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.id == organizationId
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending_approval'
+        && validString(request.resource.data.displayName, 1, 100)
+        && validOptionalString(request.resource.data.description, 1000)
+        && validOptionalString(request.resource.data.contactEmail, 320);
+      allow update: if isAdmin()
+        || (isActiveOrganization()
+          && request.auth.uid == organizationId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'displayName', 'description', 'contactEmail', 'updatedAt'
+          ]));
+      allow delete: if false;
+    }
+
+    match /events/{eventId} {
+      allow read: if isAdmin()
+        || (isActiveStudent() && resource.data.status == 'published')
+        || (isActiveOrganization() && resource.data.createdBy == request.auth.uid);
+      allow create: if (
+          isActiveOrganization()
+          && request.resource.data.status == 'pending_review'
+          && validEvent(request.resource.data, request.auth.uid)
+        );
+      allow update: if isAdmin()
+        && resource.data.status == 'pending_review'
+        && request.resource.data.status in ['published', 'revision_required']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'updatedAt'
+        ])
+        || (
+          isActiveOrganization()
+          && resource.data.createdBy == request.auth.uid
+          && (
+            (
+              resource.data.status == 'revision_required'
+              && request.resource.data.status == resource.data.status
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'title', 'summary', 'location', 'startAtLabel', 'startAt',
+                'capacity', 'updatedAt'
+              ])
+            )
+            || (
+              resource.data.status == 'revision_required'
+              && request.resource.data.status == 'pending_review'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'title', 'summary', 'category', 'location', 'startAtLabel',
+                'startAt', 'organizationName', 'status', 'capacity',
+                'applicantCount', 'imageUrl', 'tags', 'organizationId',
+                'organizationVerified', 'updatedAt'
+              ])
+              && validEvent(request.resource.data, request.auth.uid)
+            )
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /eventApplications/{applicationId} {
+      allow read: if isAdmin()
+        || (isActiveStudent() && resource.data.studentId == request.auth.uid)
+        || (isActiveOrganization() && resource.data.organizationId == request.auth.uid);
+      allow create: if false;
+      allow update: if isActiveOrganization()
+        && resource.data.organizationId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && (
+          request.resource.data.status in ['confirmed', 'rejected']
+          || (
+            resource.data.status == 'confirmed'
+            && request.resource.data.status in ['attended', 'absent']
+          )
+        )
+        || (isActiveStudent()
+          && resource.data.studentId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          && request.resource.data.status == 'cancelled');
+      allow delete: if false;
+    }
+
+    match /chatRooms/{roomId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.participantIds;
+      allow create: if false;
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.participantIds
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessageText', 'lastMessageAt'
+        ])
+        && validString(request.resource.data.lastMessageText, 1, 2000)
+        && request.resource.data.lastMessageAt is timestamp;
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if signedIn()
+          && request.auth.uid in get(
+            /databases/$(database)/documents/chatRooms/$(roomId)
+          ).data.participantIds;
+        allow create: if signedIn()
+          && request.auth.uid in get(
+            /databases/$(database)/documents/chatRooms/$(roomId)
+          ).data.participantIds
+          && get(
+            /databases/$(database)/documents/chatRooms/$(roomId)
+          ).data.status == 'active'
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.keys().hasOnly([
+            'roomId', 'senderId', 'senderName', 'type', 'text', 'createdAt'
+          ])
+          && request.resource.data.roomId == roomId
+          && request.resource.data.type == 'text'
+          && validString(request.resource.data.text, 1, 2000)
+          && validString(request.resource.data.senderName, 1, 80)
+          && request.resource.data.createdAt is timestamp;
+        allow update, delete: if false;
+      }
+    }
+
+    match /activities/{activityId} {
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid)
+        || (isActiveOrganization() && resource.data.organizationId == request.auth.uid);
+      allow create: if isActiveOrganization()
+        && request.resource.data.organizationId == request.auth.uid
+        && exists(/databases/$(database)/documents/eventApplications/$(activityId))
+        && get(/databases/$(database)/documents/eventApplications/$(activityId)).data.organizationId == request.auth.uid
+        && get(/databases/$(database)/documents/eventApplications/$(activityId)).data.status == 'attended'
+        && request.resource.data.userId == get(/databases/$(database)/documents/eventApplications/$(activityId)).data.studentId
+        && request.resource.data.eventId == get(/databases/$(database)/documents/eventApplications/$(activityId)).data.eventId
+        && validString(request.resource.data.userId, 1, 128)
+        && validString(request.resource.data.eventId, 1, 128);
+      allow update, delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.recipientId == request.auth.uid);
+      allow update: if signedIn()
+        && resource.data.recipientId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'isRead', 'readAt'
+        ]);
+      allow create, delete: if false;
+    }
+
+    match /notificationPreferences/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'userId', 'newEvents', 'applicationUpdates', 'chatMessages',
+          'eventReminders', 'updatedAt'
+        ])
+        && request.resource.data.userId == userId
+        && request.resource.data.newEvents is bool
+        && request.resource.data.applicationUpdates is bool
+        && request.resource.data.chatMessages is bool
+        && request.resource.data.eventReminders is bool;
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'newEvents', 'applicationUpdates', 'chatMessages',
+          'eventReminders', 'updatedAt'
+        ])
+        && request.resource.data.newEvents is bool
+        && request.resource.data.applicationUpdates is bool
+        && request.resource.data.chatMessages is bool
+        && request.resource.data.eventReminders is bool;
+      allow delete: if false;
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          'reporterId', 'targetType', 'targetId', 'targetTitle', 'reason',
+          'description', 'status', 'createdAt'
+        ])
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.status == 'submitted'
+        && request.resource.data.targetType in ['event', 'message']
+        && request.resource.data.reason in [
+          '不適切な内容', '迷惑行為・スパム', '個人情報が含まれている',
+          '詐欺・危険な勧誘', 'その他'
+        ]
+        && validString(request.resource.data.targetId, 1, 200)
+        && validString(request.resource.data.targetTitle, 1, 200)
+        && validOptionalString(request.resource.data.description, 1000)
+        && request.resource.data.createdAt is timestamp;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'resolution', 'resolvedAt'
+        ])
+        && request.resource.data.status in ['resolved', 'dismissed'];
+      allow delete: if false;
+    }
+
+    match /savedEvents/{savedEventId} {
+      allow read: if isActiveStudent()
+        && resource.data.userId == request.auth.uid;
+      allow create: if isActiveStudent()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.eventId is string
+        && request.resource.data.eventId.size() >= 1;
+      allow delete: if isActiveStudent()
+        && resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
