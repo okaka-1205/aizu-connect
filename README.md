@@ -1,6 +1,8 @@
 # Aizu Connect
 
-会津の学生と地域のイベント、企業・団体をつなぐWebアプリです。
+学生が人と出会い、新しい経験や挑戦のきっかけを見つける、会津の活動プラットフォームです。
+
+利益を目的とするのではなく、まだやりたいことが見つかっていない人や、何かに挑戦したい人が、気軽に活動へ参加できる場所を目指します。
 
 ## 開発環境
 
@@ -53,7 +55,7 @@ VITE_USE_FIREBASE_EMULATORS=false
 ## ロール
 
 - `student`: イベント検索、申請、チャット、Activity Portfolio
-- `organization`: イベント作成、審査申請、応募者確認、出欠登録
+- `organization`: 活動の作成、審査申請、参加者確認、出欠登録
 - `admin`: アカウント審査、イベント承認
 
 最初の管理者は、Firebase Admin SDKなど信頼できるサーバー側の手順で`users/{uid}`に`role: "admin"`、`status: "active"`を設定してください。クライアントから管理者へ変更できないRulesになっています。
@@ -68,6 +70,29 @@ GCLOUD_PROJECT=aizu-connect-prod npm --prefix functions run admin:create -- admi
 ```
 
 本番環境では、作業後に認証情報を端末から削除し、管理者アカウントへ強いパスワードと多要素認証を設定してください。
+
+### Emulatorでの管理者ログイン
+
+開発中のFirebase Emulatorには、次のコマンドで運営アカウントを作成できます。
+
+```bash
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
+GCLOUD_PROJECT=aizu-connect-dev \
+npm --prefix functions run admin:seed-emulator
+```
+
+開発画面のログインフォームでは、メールアドレスに`admin`、パスワードに`admin`と入力できます。これは開発環境だけのショートカットで、Firebase Authenticationの最低文字数制限を満たす実体アカウントへ内部変換します。本番ビルドでは有効になりません。
+
+登録した学生をEmulator上でメール確認済みにして、参加申請のFunctions処理を確認する場合は次を使います。
+
+```bash
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+GCLOUD_PROJECT=aizu-connect-dev \
+npm --prefix functions run emulator:verify-user -- student@example.com
+```
+
+基本の運営確認フローは、主催者登録 → 管理者でアカウント承認 → 主催者でイベント申請 → 管理者でイベント公開 → 学生で参加申請 → 主催者で参加承認 → 学生の活動実績確認です。
 
 ## 確認コマンド
 
@@ -105,6 +130,6 @@ firebase deploy --only hosting,firestore,functions
 - Firestore Rulesを本番データで検証する
 - Authenticationのメール認証とパスワード再設定を確認する
 - Storageを使う場合はStorage Rulesを追加する
-- 企業・学生の個人情報、チャット保存期間、通報対応を利用規約へ明記する
+- 主催者・学生の個人情報、チャット保存期間、通報対応を利用規約へ明記する
 - Emulatorではなく本番Firebaseで学生・主催者・管理者の3導線をE2E確認する
 - アプリ内の利用規約・プライバシーポリシーを運営者情報付きの正式版へ差し替える

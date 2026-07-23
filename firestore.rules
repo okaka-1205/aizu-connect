@@ -49,7 +49,8 @@ service cloud.firestore {
       return data.keys().hasOnly([
         'uid', 'role', 'status', 'email', 'displayName', 'university',
         'department', 'grade', 'interests', 'organizationId',
-        'organizationName', 'createdAt', 'updatedAt'
+        'organizationName', 'currentActivities', 'wantToTry', 'createdAt',
+        'updatedAt'
       ])
       && data.uid == uid
       && data.role in ['student', 'organization']
@@ -60,6 +61,10 @@ service cloud.firestore {
       && validGrade(data.grade)
       && data.interests is list
       && data.interests.size() <= 5
+      && (!data.keys().hasAny(['currentActivities'])
+        || validOptionalString(data.currentActivities, 240))
+      && (!data.keys().hasAny(['wantToTry'])
+        || validOptionalString(data.wantToTry, 240))
       && (
         (
           data.role == 'student'
@@ -68,7 +73,6 @@ service cloud.firestore {
             || (
               data.status == 'active'
               && request.auth.token.email == data.email
-              && request.auth.token.email.split('@')[1] == 'u-aizu.ac.jp'
             )
           )
         )
@@ -86,7 +90,8 @@ service cloud.firestore {
       return data.keys().hasOnly([
         'uid', 'role', 'status', 'email', 'displayName', 'university',
         'department', 'grade', 'interests', 'verificationMethod',
-        'profileCompletionRate', 'activityCount', 'createdAt', 'updatedAt'
+        'profileCompletionRate', 'activityCount', 'currentActivities',
+        'wantToTry', 'createdAt', 'updatedAt'
       ])
       && data.uid == uid
       && data.role == 'student'
@@ -98,6 +103,10 @@ service cloud.firestore {
       && validGrade(data.grade)
       && data.interests is list
       && data.interests.size() <= 5
+      && (!data.keys().hasAny(['currentActivities'])
+        || validOptionalString(data.currentActivities, 240))
+      && (!data.keys().hasAny(['wantToTry'])
+        || validOptionalString(data.wantToTry, 240))
       && validString(data.verificationMethod, 1, 40)
       && data.profileCompletionRate is number
       && data.profileCompletionRate >= 0
@@ -161,7 +170,8 @@ service cloud.firestore {
           signedIn() && request.auth.uid == userId
           && resource.data.role == 'student'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'displayName', 'department', 'grade', 'interests', 'updatedAt'
+            'displayName', 'department', 'grade', 'interests',
+            'currentActivities', 'wantToTry', 'updatedAt'
           ])
           && request.resource.data.uid == resource.data.uid
           && request.resource.data.role == resource.data.role
@@ -179,7 +189,8 @@ service cloud.firestore {
       allow update: if signedIn()
         && request.auth.uid == userId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'displayName', 'department', 'grade', 'interests', 'updatedAt'
+          'displayName', 'department', 'grade', 'interests',
+          'currentActivities', 'wantToTry', 'updatedAt'
         ])
         && validStudentProfile(request.resource.data, userId);
       allow delete: if false;
@@ -261,7 +272,10 @@ service cloud.firestore {
         && resource.data.organizationId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
         && (
-          request.resource.data.status in ['confirmed', 'rejected']
+          (
+            resource.data.status == 'pending'
+            && request.resource.data.status in ['confirmed', 'rejected']
+          )
           || (
             resource.data.status == 'confirmed'
             && request.resource.data.status in ['attended', 'absent']
@@ -270,6 +284,7 @@ service cloud.firestore {
         || (isActiveStudent()
           && resource.data.studentId == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          && resource.data.status in ['pending', 'confirmed']
           && request.resource.data.status == 'cancelled');
       allow delete: if false;
     }

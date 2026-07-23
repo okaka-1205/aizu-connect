@@ -35,6 +35,8 @@ import {
   ChevronRight,
   CircleUserRound,
   Compass,
+  Eye,
+  EyeOff,
   Flag,
   Heart,
   Home,
@@ -75,7 +77,12 @@ type AccountStatus =
 type Tab = "home" | "search" | "activity" | "messages" | "profile";
 type UserRole = "student" | "organization" | "admin";
 type Filter =
-  "すべて" | "地域イベント" | "ボランティア" | "企業交流" | "キャリア";
+  | "すべて"
+  | "交流・コミュニティ"
+  | "地域活動"
+  | "ボランティア"
+  | "学び・制作"
+  | "趣味・スポーツ";
 type SearchDateFilter = "すべて" | "今週" | "今月";
 
 type AppUser = {
@@ -88,6 +95,8 @@ type AppUser = {
   department: string;
   grade: number;
   interests: string[];
+  currentActivities?: string;
+  wantToTry?: string;
   organizationId?: string;
   organizationName?: string;
   createdAt?: Timestamp;
@@ -225,7 +234,7 @@ const legalDocuments: Record<
     sections: [
       {
         heading: "1. サービスの目的",
-        body: "Aizu Connectは、学生が会津地域のイベントや活動を探し、主催者と連絡を取るためのサービスです。参加条件や開催内容は、申請前に必ず確認してください。",
+        body: "Aizu Connectは、学生が会津地域のイベントや活動を探し、人と出会い、新しい経験を得るためのサービスです。参加条件や開催内容は、申請前に必ず確認してください。",
       },
       {
         heading: "2. 禁止事項",
@@ -251,7 +260,7 @@ const legalDocuments: Record<
     sections: [
       {
         heading: "1. 取得する情報",
-        body: "メールアドレス、表示名、大学・学科・学年、興味分野、イベント申請、チャット、活動実績など、サービス提供に必要な情報を取得します。",
+        body: "メールアドレス、表示名、大学・学科・学年、興味分野、今やっていること、やってみたいこと、イベント申請、チャット、活動実績など、サービス提供に必要な情報を取得します。",
       },
       {
         heading: "2. 利用目的",
@@ -275,17 +284,29 @@ const legalDocuments: Record<
 
 const categories: Filter[] = [
   "すべて",
-  "地域イベント",
+  "交流・コミュニティ",
+  "地域活動",
   "ボランティア",
-  "企業交流",
-  "キャリア",
+  "学び・制作",
+  "趣味・スポーツ",
 ];
+
+const categoryAliases: Record<Exclude<Filter, "すべて">, string[]> = {
+  "交流・コミュニティ": ["交流・コミュニティ", "地域イベント", "企業交流"],
+  地域活動: ["地域活動", "地域イベント"],
+  ボランティア: ["ボランティア"],
+  "学び・制作": ["学び・制作", "キャリア"],
+  "趣味・スポーツ": ["趣味・スポーツ"],
+};
+
+const matchesCategoryFilter = (category: string, filter: Filter) =>
+  filter === "すべて" || categoryAliases[filter].includes(category);
 
 const sampleEvents: Omit<AizuEvent, "id">[] = [
   {
     title: "会津若松まちなか交流ミートアップ",
     summary: "地域の社会人や学生とふらっと話せる、初参加歓迎の交流イベント。",
-    category: "地域イベント",
+    category: "交流・コミュニティ",
     location: "會津稽古堂",
     startAtLabel: "8月10日 18:30",
     organizationName: "Aizu Connect 運営",
@@ -301,7 +322,7 @@ const sampleEvents: Omit<AizuEvent, "id">[] = [
   {
     title: "只見町 夏祭り運営ボランティア",
     summary: "地域イベントの受付・案内を手伝いながら、会津の人とつながる。",
-    category: "ボランティア",
+    category: "地域活動",
     location: "只見町 駅前広場",
     startAtLabel: "8月24日 9:00",
     organizationName: "只見町地域プロジェクト",
@@ -315,9 +336,10 @@ const sampleEvents: Omit<AizuEvent, "id">[] = [
     organizationVerified: true,
   },
   {
-    title: "地元企業と話す ITキャリアカフェ",
-    summary: "求人っぽさを抑えて、会津のIT企業がどんな仕事をしているか知る会。",
-    category: "企業交流",
+    title: "会津でつくる人と話すナイト",
+    summary:
+      "会津でサービスや活動をつくる人と話しながら、次にやってみたいことを見つける交流会。",
+    category: "学び・制作",
     location: "会津大学 UBIC",
     startAtLabel: "9月3日 17:00",
     organizationName: "会津IT企業コミュニティ",
@@ -326,7 +348,7 @@ const sampleEvents: Omit<AizuEvent, "id">[] = [
     applicantCount: 0,
     imageUrl:
       "https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=1200&q=80",
-    tags: ["キャリア", "IT", "企業交流"],
+    tags: ["学び", "IT", "初参加歓迎"],
     startAt: Timestamp.fromDate(new Date("2026-09-03T17:00:00+09:00")),
     organizationVerified: true,
   },
@@ -334,6 +356,16 @@ const sampleEvents: Omit<AizuEvent, "id">[] = [
 
 const isAizuUniversityEmail = (email: string) =>
   email.trim().toLowerCase().endsWith("@u-aizu.ac.jp");
+
+const DEV_ADMIN_EMAIL = "admin@aizu-connect.local";
+const DEV_ADMIN_PASSWORD = "admin123";
+
+const normalizeLoginEmail = (email: string) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  return import.meta.env.DEV && normalizedEmail === "admin"
+    ? DEV_ADMIN_EMAIL
+    : normalizedEmail;
+};
 
 const formatEventStart = (value: string) => {
   const date = new Date(value);
@@ -440,10 +472,13 @@ function App() {
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [department, setDepartment] = useState("");
   const [grade, setGrade] = useState(1);
   const [interestText, setInterestText] = useState("");
+  const [currentActivities, setCurrentActivities] = useState("");
+  const [wantToTry, setWantToTry] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [events, setEvents] = useState<AizuEvent[]>([]);
   const [applications, setApplications] = useState<EventApplication[]>([]);
@@ -481,7 +516,7 @@ function App() {
     const weekLimit = new Date(now);
     weekLimit.setDate(now.getDate() + 7);
     return events.filter((event) => {
-      const matchesFilter = filter === "すべて" || event.category === filter;
+      const matchesFilter = matchesCategoryFilter(event.category, filter);
       const matchesSearch =
         !normalized ||
         [
@@ -729,7 +764,16 @@ function App() {
   const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage("");
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail =
+      authMode === "login"
+        ? normalizeLoginEmail(email)
+        : email.trim().toLowerCase();
+    const normalizedPassword =
+      import.meta.env.DEV &&
+      normalizedEmail === DEV_ADMIN_EMAIL &&
+      password === "admin"
+        ? DEV_ADMIN_PASSWORD
+        : password;
     if (!normalizedEmail || !password) {
       setMessage("メールアドレスとパスワードを入力してください。");
       return;
@@ -740,7 +784,7 @@ function App() {
         return;
       }
       if (accountType === "organization" && !organizationName.trim()) {
-        setMessage("企業・団体名を入力してください。");
+        setMessage("団体名を入力してください。");
         return;
       }
       if (accountType === "student" && !displayName.trim()) {
@@ -751,7 +795,11 @@ function App() {
     setIsActionLoading(true);
     try {
       if (authMode === "login") {
-        await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        await signInWithEmailAndPassword(
+          auth,
+          normalizedEmail,
+          normalizedPassword,
+        );
         setMessage("ログインしました。活動を探しにいきましょう。");
         return;
       }
@@ -765,6 +813,10 @@ function App() {
         .map((interest) => interest.trim())
         .filter(Boolean)
         .slice(0, 5);
+      const normalizedCurrentActivities = currentActivities
+        .trim()
+        .slice(0, 240);
+      const normalizedWantToTry = wantToTry.trim().slice(0, 240);
       const status: AccountStatus = isAizuUniversityEmail(normalizedEmail)
         ? "active"
         : "pending_approval";
@@ -778,13 +830,15 @@ function App() {
           ? organizationName || displayName
           : displayName,
         university: isOrganization
-          ? "企業・団体"
+          ? "主催者・団体"
           : isAizuUniversityEmail(normalizedEmail)
             ? "会津大学"
             : "承認待ち大学",
         department,
         grade,
         interests,
+        currentActivities: normalizedCurrentActivities,
+        wantToTry: normalizedWantToTry,
         ...(isOrganization
           ? {
               organizationId: credential.user.uid,
@@ -821,7 +875,7 @@ function App() {
         });
       }
       let registrationMessage = isOrganization
-        ? "登録しました。管理者の承認後にイベントを掲載できます。"
+        ? "登録しました。管理者の承認後に活動を掲載できます。"
         : status === "active"
           ? "登録完了。会津で参加できる活動を見つけよう。"
           : "登録しました。管理者の承認後に利用できます。";
@@ -973,6 +1027,8 @@ function App() {
           setEmail,
           password,
           setPassword,
+          showPassword,
+          setShowPassword,
           displayName,
           setDisplayName,
           department,
@@ -981,6 +1037,10 @@ function App() {
           setGrade,
           interestText,
           setInterestText,
+          currentActivities,
+          setCurrentActivities,
+          wantToTry,
+          setWantToTry,
           organizationName,
           setOrganizationName,
           isActionLoading,
@@ -1122,6 +1182,10 @@ function App() {
                   setActiveRoomId(notification.targetId);
                   setActiveTab("messages");
                   setIsNotificationOpen(false);
+                } else if (notification.targetType === "application") {
+                  await loadProductData(appUser.uid);
+                  setActiveTab("activity");
+                  setIsNotificationOpen(false);
                 }
               } catch (error) {
                 setMessage(getFirebaseErrorMessage(error));
@@ -1252,6 +1316,7 @@ function App() {
             }
             currentUserId={appUser.uid}
             currentUserRole="student"
+            onOpenActivity={() => setActiveTab("activity")}
           />
         )}
         {activeTab === "profile" && (
@@ -1391,7 +1456,7 @@ function HomeTab(props: {
         }}
       >
         <Search size={18} />
-        <span>イベント・地域・企業名で探す</span>
+        <span>イベント・活動・地域を探す</span>
         <kbd>⌘ K</kbd>
       </div>
       <div className="category-row">
@@ -1536,7 +1601,7 @@ function SearchTab(props: {
           autoFocus
           value={props.searchText}
           onChange={(event) => props.setSearchText(event.target.value)}
-          placeholder="イベント、地域、企業名で検索"
+          placeholder="イベント、活動、地域を検索"
         />
       </div>
       <div className="filter-row">
@@ -1739,10 +1804,20 @@ function ActivityTab(props: {
           props.applications.map((application) => (
             <div className="application-item" key={application.id}>
               <div className="date-block">
-                <strong>
-                  {application.createdAt?.toDate().getDate() ?? "--"}
-                </strong>
-                <span>申請</span>
+                {(() => {
+                  const event = props.events.find(
+                    (item) => item.id === application.eventId,
+                  );
+                  const eventDate = event?.startAt?.toDate();
+                  return (
+                    <>
+                      <strong>{eventDate?.getDate() ?? "--"}</strong>
+                      <span>
+                        {eventDate ? `${eventDate.getMonth() + 1}月` : "予定"}
+                      </span>
+                    </>
+                  );
+                })()}
               </div>
               <div className="application-copy">
                 <strong>{application.eventTitle}</strong>
@@ -1816,6 +1891,7 @@ function MessagesTab({
   onReportMessage,
   currentUserId,
   currentUserRole,
+  onOpenActivity,
 }: {
   rooms: ChatRoom[];
   activeRoomId: string | null;
@@ -1827,6 +1903,7 @@ function MessagesTab({
   onReportMessage?: (message: ChatMessage) => void;
   currentUserId: string;
   currentUserRole: "student" | "organization";
+  onOpenActivity?: () => void;
 }) {
   const activeRoom = rooms.find((room) => room.id === activeRoomId);
   const getCounterpartName = (room: ChatRoom) =>
@@ -1885,6 +1962,16 @@ function MessagesTab({
                 </div>
                 <small>{getCounterpartName(activeRoom)}</small>
               </div>
+              {onOpenActivity && (
+                <button
+                  className="chat-activity-link"
+                  type="button"
+                  onClick={onOpenActivity}
+                >
+                  参加予定・活動実績を確認する
+                  <ChevronRight size={15} />
+                </button>
+              )}
               <div className="chat-messages">
                 {messages.length === 0 ? (
                   <p className="chat-placeholder">
@@ -1974,6 +2061,8 @@ function ProfileTab({
     department: string;
     grade: number;
     interests: string[];
+    currentActivities: string;
+    wantToTry: string;
   }) => Promise<void>;
   onSaveNotificationPreferences: (
     updates: Partial<Omit<NotificationPreferences, "userId">>,
@@ -1989,6 +2078,10 @@ function ProfileTab({
   const [interestText, setInterestText] = useState(
     appUser.interests.join(", "),
   );
+  const [currentActivities, setCurrentActivities] = useState(
+    appUser.currentActivities ?? "",
+  );
+  const [wantToTry, setWantToTry] = useState(appUser.wantToTry ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
   const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(
@@ -2012,6 +2105,8 @@ function ProfileTab({
     setDepartment(appUser.department);
     setGrade(appUser.grade);
     setInterestText(appUser.interests.join(", "));
+    setCurrentActivities(appUser.currentActivities ?? "");
+    setWantToTry(appUser.wantToTry ?? "");
     setProfileMessage("");
     setIsEditing(true);
   };
@@ -2035,6 +2130,8 @@ function ProfileTab({
         department: department.trim().slice(0, 80),
         grade: Math.max(1, Math.min(6, grade)),
         interests,
+        currentActivities: currentActivities.trim().slice(0, 240),
+        wantToTry: wantToTry.trim().slice(0, 240),
       });
       setIsEditing(false);
       setProfileMessage("プロフィールを更新しました。");
@@ -2061,6 +2158,16 @@ function ProfileTab({
             {appUser.interests.map((interest) => (
               <span key={interest}>{interest}</span>
             ))}
+          </div>
+          <div className="profile-intentions">
+            <div>
+              <span>今やっていること</span>
+              <strong>{appUser.currentActivities || "これから見つける"}</strong>
+            </div>
+            <div>
+              <span>やってみたいこと</span>
+              <strong>{appUser.wantToTry || "気になる活動を探してみる"}</strong>
+            </div>
           </div>
         </div>
         <button
@@ -2123,6 +2230,22 @@ function ProfileTab({
               value={interestText}
               maxLength={200}
               onChange={(event) => setInterestText(event.target.value)}
+            />
+          </Field>
+          <Field label="今やっていること（任意）">
+            <textarea
+              value={currentActivities}
+              maxLength={240}
+              placeholder="例：学生団体の運営、英語の勉強"
+              onChange={(event) => setCurrentActivities(event.target.value)}
+            />
+          </Field>
+          <Field label="やってみたいこと（任意）">
+            <textarea
+              value={wantToTry}
+              maxLength={240}
+              placeholder="例：地域イベントの運営、ものづくり"
+              onChange={(event) => setWantToTry(event.target.value)}
             />
           </Field>
           <button className="primary-action" type="submit" disabled={isSaving}>
@@ -2679,6 +2802,8 @@ function AuthScreen(props: {
   setEmail: (value: string) => void;
   password: string;
   setPassword: (value: string) => void;
+  showPassword: boolean;
+  setShowPassword: (value: boolean) => void;
   displayName: string;
   setDisplayName: (value: string) => void;
   department: string;
@@ -2687,6 +2812,10 @@ function AuthScreen(props: {
   setGrade: (value: number) => void;
   interestText: string;
   setInterestText: (value: string) => void;
+  currentActivities: string;
+  setCurrentActivities: (value: string) => void;
+  wantToTry: string;
+  setWantToTry: (value: string) => void;
   organizationName: string;
   setOrganizationName: (value: string) => void;
   isActionLoading: boolean;
@@ -2736,7 +2865,7 @@ function AuthScreen(props: {
             <em>何か始める。</em>
           </h1>
           <p>
-            イベント、地域活動、企業との出会い。
+            人との出会い、新しい経験、地域とのつながり。
             <br />
             ふらっと参加した経験が、あなたの実績になる。
           </p>
@@ -2788,32 +2917,60 @@ function AuthScreen(props: {
                 type="button"
                 onClick={() => props.setAccountType("organization")}
               >
-                企業・団体として登録
+                主催者・団体として登録
               </button>
             </div>
           )}
           <form onSubmit={props.handleAuthSubmit}>
             <Field label="メールアドレス">
               <input
-                type="email"
+                type={
+                  props.authMode === "login" && import.meta.env.DEV
+                    ? "text"
+                    : "email"
+                }
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder={
+                  props.authMode === "login" && import.meta.env.DEV
+                    ? "you@example.com または admin"
+                    : "you@example.com"
+                }
                 value={props.email}
                 onChange={(event) => props.setEmail(event.target.value)}
               />
             </Field>
             <Field label="パスワード">
-              <input
-                type="password"
-                autoComplete={
-                  props.authMode === "login"
-                    ? "current-password"
-                    : "new-password"
-                }
-                placeholder="6文字以上"
-                value={props.password}
-                onChange={(event) => props.setPassword(event.target.value)}
-              />
+              <div className="password-input-wrap">
+                <input
+                  type={props.showPassword ? "text" : "password"}
+                  autoComplete={
+                    props.authMode === "login"
+                      ? "current-password"
+                      : "new-password"
+                  }
+                  placeholder="6文字以上"
+                  value={props.password}
+                  onChange={(event) => props.setPassword(event.target.value)}
+                />
+                <button
+                  className="password-toggle icon-button"
+                  type="button"
+                  title={
+                    props.showPassword ? "パスワードを隠す" : "パスワードを見る"
+                  }
+                  aria-label={
+                    props.showPassword ? "パスワードを隠す" : "パスワードを見る"
+                  }
+                  aria-pressed={props.showPassword}
+                  onClick={() => props.setShowPassword(!props.showPassword)}
+                >
+                  {props.showPassword ? (
+                    <EyeOff size={17} />
+                  ) : (
+                    <Eye size={17} />
+                  )}
+                </button>
+              </div>
             </Field>
             {props.authMode === "login" && (
               <button
@@ -2832,9 +2989,7 @@ function AuthScreen(props: {
               <>
                 <Field
                   label={
-                    props.accountType === "organization"
-                      ? "企業・団体名"
-                      : "表示名"
+                    props.accountType === "organization" ? "団体名" : "表示名"
                   }
                 >
                   <input
@@ -2883,6 +3038,30 @@ function AuthScreen(props: {
                     />
                   </Field>
                 )}
+                {props.accountType === "student" && (
+                  <>
+                    <Field label="今やっていること（任意）">
+                      <textarea
+                        value={props.currentActivities}
+                        maxLength={240}
+                        placeholder="例：学生団体の運営、英語の勉強"
+                        onChange={(event) =>
+                          props.setCurrentActivities(event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="やってみたいこと（任意）">
+                      <textarea
+                        value={props.wantToTry}
+                        maxLength={240}
+                        placeholder="例：地域イベントの運営、ものづくり"
+                        onChange={(event) =>
+                          props.setWantToTry(event.target.value)
+                        }
+                      />
+                    </Field>
+                  </>
+                )}
               </>
             )}
             <button
@@ -2897,7 +3076,7 @@ function AuthScreen(props: {
               )}
               {props.authMode === "register"
                 ? props.accountType === "organization"
-                  ? "企業・団体として申請"
+                  ? "主催者・団体として申請"
                   : "学生として始める"
                 : "ログインする"}
             </button>
@@ -2935,7 +3114,7 @@ function AuthScreen(props: {
           )}
           <p className="form-footnote">
             {props.accountType === "organization"
-              ? "企業・団体の登録は管理者の確認後に利用できます。"
+              ? "主催者・団体の登録は管理者の確認後に利用できます。"
               : "会津大学メール以外の学生は、登録後に管理者が確認します。"}
           </p>
           <p className="legal-links">
@@ -3067,9 +3246,15 @@ function PendingScreen({
           {appUser.displayName}
           さんの登録情報を管理者が確認しています。
           {appUser.role === "organization"
-            ? "確認が完了したら、イベントを掲載できます。"
+            ? "確認が完了したら、活動を掲載できます。"
             : "確認が完了したら、イベントへの参加を始められます。"}
         </p>
+        <div className="pending-help">
+          <CheckCircle2 size={17} />
+          <span>
+            承認されると、この画面から自動的に利用を開始できます。再ログインは不要です。
+          </span>
+        </div>
         <button className="secondary-action" type="button" onClick={onLogout}>
           <LogOut size={17} /> ログアウト
         </button>
@@ -3120,7 +3305,7 @@ function OrganizationDashboard({
   const [location, setLocation] = useState("会津若松市");
   const [startAtInput, setStartAtInput] = useState("");
   const [capacity, setCapacity] = useState(20);
-  const [category, setCategory] = useState("地域イベント");
+  const [category, setCategory] = useState("交流・コミュニティ");
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
@@ -3149,7 +3334,7 @@ function OrganizationDashboard({
     setLocation("会津若松市");
     setStartAtInput("");
     setCapacity(20);
-    setCategory("地域イベント");
+    setCategory("交流・コミュニティ");
   };
 
   const loadEvents = useCallback(async () => {
@@ -3169,24 +3354,37 @@ function OrganizationDashboard({
   }, [appUser.uid]);
 
   useEffect(() => {
-    void loadEvents().catch(() =>
-      setNotice("イベント情報を取得できませんでした。"),
+    const eventsQuery = query(
+      collection(db, "events"),
+      where("createdBy", "==", appUser.uid),
+      limit(50),
     );
-  }, [loadEvents]);
+    return onSnapshot(
+      eventsQuery,
+      (snapshot) =>
+        setEvents(
+          snapshot.docs.map((eventDoc) => ({
+            id: eventDoc.id,
+            ...eventDoc.data(),
+          })) as AizuEvent[],
+        ),
+      () => setNotice("掲載した活動を取得できませんでした。"),
+    );
+  }, [appUser.uid]);
 
   useEffect(() => {
     if (!selectedEventId) {
       setApplications([]);
       return;
     }
-    void getDocs(
-      query(
-        collection(db, "eventApplications"),
-        where("organizationId", "==", appUser.uid),
-        limit(100),
-      ),
-    )
-      .then((snapshot) =>
+    const applicationsQuery = query(
+      collection(db, "eventApplications"),
+      where("organizationId", "==", appUser.uid),
+      limit(100),
+    );
+    return onSnapshot(
+      applicationsQuery,
+      (snapshot) =>
         setApplications(
           snapshot.docs
             .filter(
@@ -3198,8 +3396,8 @@ function OrganizationDashboard({
               ...applicationDoc.data(),
             })) as EventApplication[],
         ),
-      )
-      .catch(() => setNotice("応募者情報を取得できませんでした。"));
+      () => setNotice("参加者情報を取得できませんでした。"),
+    );
   }, [appUser.uid, selectedEventId]);
 
   useEffect(() => {
@@ -3314,8 +3512,8 @@ function OrganizationDashboard({
       await loadEvents();
       setNotice(
         editingEventId
-          ? "イベントを修正して再申請しました。"
-          : "イベントを審査へ申請しました。管理者の確認をお待ちください。",
+          ? "活動を修正して再申請しました。"
+          : "活動を審査へ申請しました。管理者の確認をお待ちください。",
       );
     } catch (error) {
       setNotice(getFirebaseErrorMessage(error));
@@ -3355,7 +3553,7 @@ function OrganizationDashboard({
           item.id === application.id ? { ...item, status } : item,
         ),
       );
-      setNotice("応募者の状態を更新しました。");
+      setNotice("参加者の状態を更新しました。");
     } catch (error) {
       setNotice(getFirebaseErrorMessage(error));
     }
@@ -3374,9 +3572,7 @@ function OrganizationDashboard({
           <div className="role-card-head">
             <div>
               <p className="eyebrow">NEW EVENT</p>
-              <h2>
-                {editingEventId ? "イベントを修正する" : "イベントを掲載する"}
-              </h2>
+              <h2>{editingEventId ? "活動を修正する" : "活動を掲載する"}</h2>
             </div>
             {editingEventId ? (
               <button
@@ -3395,13 +3591,13 @@ function OrganizationDashboard({
             className="role-form"
             onSubmit={(event) => void createEvent(event)}
           >
-            <Field label="イベント名">
+            <Field label="活動名">
               <input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
               />
             </Field>
-            <Field label="概要">
+            <Field label="活動の概要">
               <textarea
                 value={summary}
                 onChange={(event) => setSummary(event.target.value)}
@@ -3436,6 +3632,7 @@ function OrganizationDashboard({
                 value={startAtInput}
                 min={new Date().toISOString().slice(0, 16)}
                 onChange={(event) => setStartAtInput(event.target.value)}
+                onInput={(event) => setStartAtInput(event.currentTarget.value)}
               />
             </Field>
             <Field label="場所">
@@ -3462,13 +3659,13 @@ function OrganizationDashboard({
           <div className="role-card-head">
             <div>
               <p className="eyebrow">YOUR EVENTS</p>
-              <h2>掲載イベント</h2>
+              <h2>掲載した活動</h2>
             </div>
             <strong>{events.length}件</strong>
           </div>
           <div className="role-list">
             {events.length === 0 ? (
-              <EmptyRoleState text="まだイベントがありません。" />
+              <EmptyRoleState text="まだ活動がありません。" />
             ) : (
               events.map((event) => (
                 <button
@@ -3501,7 +3698,7 @@ function OrganizationDashboard({
           <div className="role-card-head">
             <div>
               <p className="eyebrow">APPLICANTS</p>
-              <h2>応募者を確認</h2>
+              <h2>参加者を確認</h2>
             </div>
             <div className="row-actions">
               {events.find((event) => event.id === selectedEventId)?.status ===
@@ -3522,7 +3719,7 @@ function OrganizationDashboard({
             </div>
           </div>
           {applications.length === 0 ? (
-            <EmptyRoleState text="このイベントにはまだ応募者がいません。" />
+            <EmptyRoleState text="この活動にはまだ参加申請がありません。" />
           ) : (
             <div className="applicant-list">
               {applications.map((application) => (
@@ -3665,10 +3862,59 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }, []);
 
   useEffect(() => {
-    void loadReviewQueue().catch((error) =>
-      setNotice(getFirebaseErrorMessage(error)),
+    const eventUnsubscribe = onSnapshot(
+      query(
+        collection(db, "events"),
+        where("status", "==", "pending_review"),
+        limit(50),
+      ),
+      (snapshot) =>
+        setPendingEvents(
+          snapshot.docs.map((eventDoc) => ({
+            id: eventDoc.id,
+            ...eventDoc.data(),
+          })) as AizuEvent[],
+        ),
+      () => setNotice("イベント審査キューを取得できませんでした。"),
     );
-  }, [loadReviewQueue]);
+    const userUnsubscribe = onSnapshot(
+      query(
+        collection(db, "users"),
+        where("status", "in", ["pending_approval", "pending"]),
+        limit(100),
+      ),
+      (snapshot) =>
+        setPendingUsers(
+          snapshot.docs
+            .map((userDoc) => ({
+              uid: userDoc.id,
+              ...(userDoc.data() as Omit<AppUser, "uid">),
+            }))
+            .filter((user) => user.role !== "admin") as AppUser[],
+        ),
+      () => setNotice("アカウント審査キューを取得できませんでした。"),
+    );
+    const reportUnsubscribe = onSnapshot(
+      query(
+        collection(db, "reports"),
+        where("status", "==", "submitted"),
+        limit(50),
+      ),
+      (snapshot) =>
+        setPendingReports(
+          snapshot.docs.map((reportDoc) => ({
+            id: reportDoc.id,
+            ...reportDoc.data(),
+          })) as ReportRecord[],
+        ),
+      () => setNotice("通報キューを取得できませんでした。"),
+    );
+    return () => {
+      eventUnsubscribe();
+      userUnsubscribe();
+      reportUnsubscribe();
+    };
+  }, []);
 
   const approveEvent = async (event: AizuEvent) => {
     try {
@@ -3860,7 +4106,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   <div>
                     <strong>{user.displayName}</strong>
                     <small>
-                      {user.role === "organization" ? "企業・団体" : "学生"} ·{" "}
+                      {user.role === "organization" ? "主催者・団体" : "学生"} ·{" "}
                       {user.email}
                     </small>
                     <small>

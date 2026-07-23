@@ -8,6 +8,8 @@
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "admin:create": "node scripts/create-admin.mjs",
+    "admin:seed-emulator": "node scripts/seed-emulator-admin.mjs",
+    "emulator:verify-user": "node scripts/verify-emulator-user.mjs",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },
