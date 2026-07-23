@@ -3612,26 +3612,6 @@ function OrganizationDashboard({
   ) => {
     try {
       await updateDoc(doc(db, "eventApplications", application.id), { status });
-      if (status === "attended") {
-        const eventStartAt = events.find(
-          (event) => event.id === application.eventId,
-        )?.startAt;
-        const occurredDate = eventStartAt?.toDate() ?? new Date();
-        await setDoc(doc(db, "activities", application.id), {
-          id: application.id,
-          userId: application.studentId,
-          eventId: application.eventId,
-          title: application.eventTitle,
-          organizationId: appUser.uid,
-          organizationName,
-          verificationStatus: "verified",
-          verifiedBy: appUser.uid,
-          occurredAt: eventStartAt ?? serverTimestamp(),
-          activityMonth: occurredDate.getMonth() + 1,
-          activityYear: occurredDate.getFullYear(),
-          createdAt: serverTimestamp(),
-        });
-      }
       setApplications((current) =>
         current.map((item) =>
           item.id === application.id ? { ...item, status } : item,

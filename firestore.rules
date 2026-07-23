@@ -144,6 +144,19 @@ service cloud.firestore {
       && data.tags is list && data.tags.size() <= 8;
     }
 
+    function validOrganization(data, organizationId) {
+      return data.keys().hasOnly([
+        'id', 'displayName', 'description', 'contactEmail', 'status',
+        'createdBy', 'createdAt', 'updatedAt'
+      ])
+      && data.id == organizationId
+      && data.createdBy == organizationId
+      && data.status in ['pending_approval', 'active', 'rejected', 'suspended']
+      && validString(data.displayName, 1, 100)
+      && validOptionalString(data.description, 1000)
+      && validOptionalString(data.contactEmail, 320);
+    }
+
     match /users/{userId} {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
       allow create: if signedIn()
@@ -190,22 +203,24 @@ service cloud.firestore {
         || (signedIn() && request.auth.uid == organizationId);
       allow create: if signedIn()
         && request.auth.uid == organizationId
-        && request.resource.data.keys().hasOnly([
-          'id', 'displayName', 'description', 'contactEmail', 'status',
-          'createdBy', 'createdAt', 'updatedAt'
-        ])
-        && request.resource.data.id == organizationId
-        && request.resource.data.createdBy == request.auth.uid
+        && validOrganization(request.resource.data, organizationId)
         && request.resource.data.status == 'pending_approval'
-        && validString(request.resource.data.displayName, 1, 100)
-        && validOptionalString(request.resource.data.description, 1000)
-        && validOptionalString(request.resource.data.contactEmail, 320);
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
       allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'updatedAt'
+        ])
+        && request.resource.data.status in ['active', 'rejected', 'suspended']
+        && request.resource.data.updatedAt is timestamp
         || (isActiveOrganization()
           && request.auth.uid == organizationId
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'displayName', 'description', 'contactEmail', 'updatedAt'
-          ]));
+          ])
+          && validOrganization(request.resource.data, organizationId)
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.updatedAt is timestamp);
       allow delete: if false;
     }
 
@@ -224,6 +239,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status', 'updatedAt'
         ])
+        && validEvent(request.resource.data, resource.data.createdBy)
         || (
           isActiveOrganization()
           && resource.data.createdBy == request.auth.uid
@@ -235,6 +251,7 @@ service cloud.firestore {
                 'title', 'summary', 'location', 'startAtLabel', 'startAt',
                 'capacity', 'updatedAt'
               ])
+              && validEvent(request.resource.data, request.auth.uid)
             )
             || (
               resource.data.status == 'revision_required'
@@ -320,15 +337,7 @@ service cloud.firestore {
       allow read: if isAdmin()
         || (signedIn() && resource.data.userId == request.auth.uid)
         || (isActiveOrganization() && resource.data.organizationId == request.auth.uid);
-      allow create: if isActiveOrganization()
-        && request.resource.data.organizationId == request.auth.uid
-        && exists(/databases/$(database)/documents/eventApplications/$(activityId))
-        && get(/databases/$(database)/documents/eventApplications/$(activityId)).data.organizationId == request.auth.uid
-        && get(/databases/$(database)/documents/eventApplications/$(activityId)).data.status == 'attended'
-        && request.resource.data.userId == get(/databases/$(database)/documents/eventApplications/$(activityId)).data.studentId
-        && request.resource.data.eventId == get(/databases/$(database)/documents/eventApplications/$(activityId)).data.eventId
-        && validString(request.resource.data.userId, 1, 128)
-        && validString(request.resource.data.eventId, 1, 128);
+      allow create: if false;
       allow update, delete: if false;
     }
 
@@ -339,7 +348,10 @@ service cloud.firestore {
         && resource.data.recipientId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'isRead', 'readAt'
-        ]);
+        ])
+        && request.resource.data.isRead is bool
+        && (!request.resource.data.keys().hasAny(['readAt'])
+          || request.resource.data.readAt is timestamp);
       allow create, delete: if false;
     }
 
@@ -355,7 +367,9 @@ service cloud.firestore {
         && request.resource.data.newEvents is bool
         && request.resource.data.applicationUpdates is bool
         && request.resource.data.chatMessages is bool
-        && request.resource.data.eventReminders is bool;
+        && request.resource.data.eventReminders is bool
+        && (!request.resource.data.keys().hasAny(['updatedAt'])
+          || request.resource.data.updatedAt is timestamp);
       allow update: if signedIn()
         && request.auth.uid == userId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -365,7 +379,9 @@ service cloud.firestore {
         && request.resource.data.newEvents is bool
         && request.resource.data.applicationUpdates is bool
         && request.resource.data.chatMessages is bool
-        && request.resource.data.eventReminders is bool;
+        && request.resource.data.eventReminders is bool
+        && (!request.resource.data.keys().hasAny(['updatedAt'])
+          || request.resource.data.updatedAt is timestamp);
       allow delete: if false;
     }
 
@@ -391,7 +407,11 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status', 'resolution', 'resolvedAt'
         ])
-        && request.resource.data.status in ['resolved', 'dismissed'];
+        && request.resource.data.status in ['resolved', 'dismissed']
+        && (!request.resource.data.keys().hasAny(['resolution'])
+          || validOptionalString(request.resource.data.resolution, 1000))
+        && (!request.resource.data.keys().hasAny(['resolvedAt'])
+          || request.resource.data.resolvedAt is timestamp);
       allow delete: if false;
     }
 
@@ -399,9 +419,14 @@ service cloud.firestore {
       allow read: if isActiveStudent()
         && resource.data.userId == request.auth.uid;
       allow create: if isActiveStudent()
+        && request.resource.data.keys().hasOnly([
+          'userId', 'eventId', 'createdAt'
+        ])
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.eventId is string
-        && request.resource.data.eventId.size() >= 1;
+        && request.resource.data.eventId.size() >= 1
+        && (!request.resource.data.keys().hasAny(['createdAt'])
+          || request.resource.data.createdAt is timestamp);
       allow delete: if isActiveStudent()
         && resource.data.userId == request.auth.uid;
       allow update: if false;

@@ -7,6 +7,14 @@ import {
 import {setGlobalOptions} from "firebase-functions";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
+import {
+  applicationStatusMessage,
+  reminderBucketForHoursUntil,
+  reminderNotificationPath,
+  shouldDecrementApplicantCount,
+  shouldNotifyPublishedEventStudent,
+  shouldSetChatRoomReadOnly,
+} from "./applicationLogic";
 
 initializeApp();
 setGlobalOptions({maxInstances: 10, region: "asia-northeast1"});
@@ -156,20 +164,12 @@ export const notifyApplicationUpdated = onDocumentUpdated(
     const after = event.data?.after.data();
     if (!before || !after || before.status === after.status) return;
 
-    const statusMessages: Record<string, string> = {
-      confirmed: "参加が確定しました。",
-      rejected: "今回は参加見送りとなりました。",
-      attended: "出席が確認され、活動実績に追加されました。",
-      absent: "出席が確認できませんでした。",
-      cancelled: "参加申請をキャンセルしました。",
-    };
     if (await notificationEnabled(after.studentId, "applicationUpdates")) {
       await db.collection("notifications").add({
         recipientId: after.studentId,
         type: "application_updated",
         title: "参加申請が更新されました",
-        body:
-          statusMessages[after.status] ?? "参加申請の状態が更新されました。",
+        body: applicationStatusMessage(after.status),
         targetType: "application",
         targetId: event.params.applicationId,
         isRead: false,
@@ -204,10 +204,8 @@ export const notifyApplicationUpdated = onDocumentUpdated(
           {merge: true},
         );
     }
-    const wasCounted = ["pending", "confirmed"].includes(before.status);
     if (
-      wasCounted &&
-      ["cancelled", "rejected"].includes(after.status) &&
+      shouldDecrementApplicantCount(before.status, after.status) &&
       typeof after.eventId === "string"
     ) {
       await db.doc(`events/${after.eventId}`).update({
@@ -216,7 +214,7 @@ export const notifyApplicationUpdated = onDocumentUpdated(
       });
     }
     if (
-      ["cancelled", "rejected"].includes(after.status) &&
+      shouldSetChatRoomReadOnly(after.status) &&
       typeof event.params.applicationId === "string"
     ) {
       await db.doc(`chatRooms/${event.params.applicationId}`).set(
@@ -269,7 +267,15 @@ export const notifyEventPublished = onDocumentUpdated(
       })),
     );
     for (const preference of preferences) {
-      if (!preference.enabled || preference.id === after.createdBy) continue;
+      if (
+        !shouldNotifyPublishedEventStudent(
+          preference.id,
+          after.createdBy,
+          preference.enabled,
+        )
+      ) {
+        continue;
+      }
       batch.set(db.collection("notifications").doc(), {
         recipientId: preference.id,
         type: "new_event",
@@ -332,7 +338,7 @@ export const sendEventReminders = onSchedule("every 1 hours", async () => {
     const eventData = eventDocument.data();
     const startAt = eventData.startAt as Timestamp;
     const hoursUntil = (startAt.toMillis() - now.toMillis()) / (60 * 60 * 1000);
-    const bucket = hoursUntil <= 2 ? "2h" : "24h";
+    const bucket = reminderBucketForHoursUntil(hoursUntil);
     const applications = await db
       .collection("eventApplications")
       .where("eventId", "==", eventDocument.id)
@@ -352,8 +358,7 @@ export const sendEventReminders = onSchedule("every 1 hours", async () => {
       if (!preference.enabled) continue;
       const studentId = preference.application.studentId;
       writes.push({
-        path:
-          `notifications/reminder_${eventDocument.id}_${studentId}_${bucket}`,
+        path: reminderNotificationPath(eventDocument.id, studentId, bucket),
         data: {
           recipientId: studentId,
           type: "event_reminder",
