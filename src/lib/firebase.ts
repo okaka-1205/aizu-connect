@@ -23,16 +23,29 @@ const emulatorState = globalThis as typeof globalThis & {
   __AIZU_CONNECT_EMULATORS_CONNECTED__?: boolean;
 };
 
+const firestoreEmulatorPort = Number(
+  import.meta.env.VITE_FIREBASE_FIRESTORE_EMULATOR_PORT ?? 8080,
+);
+const functionsEmulatorPort = Number(
+  import.meta.env.VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT ?? 5001,
+);
+const storageEmulatorPort = Number(
+  import.meta.env.VITE_FIREBASE_STORAGE_EMULATOR_PORT ?? 9199,
+);
+
 if (
   import.meta.env.DEV &&
   import.meta.env.VITE_USE_FIREBASE_EMULATORS === "true" &&
   !emulatorState.__AIZU_CONNECT_EMULATORS_CONNECTED__
 ) {
-  connectAuthEmulator(auth, "http://127.0.0.1:9099", {
-    disableWarnings: true,
-  });
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
-  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
-  connectStorageEmulator(storage, "127.0.0.1", 9199);
+  connectAuthEmulator(
+    auth,
+    import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_URL ??
+      "http://127.0.0.1:9099",
+    { disableWarnings: true },
+  );
+  connectFirestoreEmulator(db, "127.0.0.1", firestoreEmulatorPort);
+  connectFunctionsEmulator(functions, "127.0.0.1", functionsEmulatorPort);
+  connectStorageEmulator(storage, "127.0.0.1", storageEmulatorPort);
   emulatorState.__AIZU_CONNECT_EMULATORS_CONNECTED__ = true;
 }

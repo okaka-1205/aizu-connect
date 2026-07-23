@@ -13,6 +13,8 @@ dist-ssr
 *.local
 .firebase/
 coverage/
+playwright-report/
+test-results/
 .agents/
 skills-lock.json
 

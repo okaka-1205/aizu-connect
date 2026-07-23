@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import {after, before, beforeEach, describe, it} from "node:test";
+import { after, before, beforeEach, describe, it } from "node:test";
 
 import {
   assertFails,
@@ -204,36 +204,44 @@ const seedData = async () => {
     const db = context.firestore();
     await Promise.all([
       db.doc("users/student-1").set(userDoc()),
-      db.doc("users/student-2").set(userDoc({
-        uid: "student-2",
-        email: "student-2@u-aizu.ac.jp",
-        displayName: "Student Two",
-      })),
-      db.doc("users/student-pending").set(userDoc({
-        uid: "student-pending",
-        status: "pending_approval",
-        email: "pending@example.com",
-      })),
-      db.doc("users/org-1").set(userDoc({
-        uid: "org-1",
-        role: "organization",
-        status: "active",
-        email: "org@example.com",
-        displayName: "Aizu Org",
-        university: "主催者・団体",
-        organizationId: "org-1",
-        organizationName: "Aizu Org",
-      })),
-      db.doc("users/org-2").set(userDoc({
-        uid: "org-2",
-        role: "organization",
-        status: "active",
-        email: "org-2@example.com",
-        displayName: "Other Org",
-        university: "主催者・団体",
-        organizationId: "org-2",
-        organizationName: "Other Org",
-      })),
+      db.doc("users/student-2").set(
+        userDoc({
+          uid: "student-2",
+          email: "student-2@u-aizu.ac.jp",
+          displayName: "Student Two",
+        }),
+      ),
+      db.doc("users/student-pending").set(
+        userDoc({
+          uid: "student-pending",
+          status: "pending_approval",
+          email: "pending@example.com",
+        }),
+      ),
+      db.doc("users/org-1").set(
+        userDoc({
+          uid: "org-1",
+          role: "organization",
+          status: "active",
+          email: "org@example.com",
+          displayName: "Aizu Org",
+          university: "主催者・団体",
+          organizationId: "org-1",
+          organizationName: "Aizu Org",
+        }),
+      ),
+      db.doc("users/org-2").set(
+        userDoc({
+          uid: "org-2",
+          role: "organization",
+          status: "active",
+          email: "org-2@example.com",
+          displayName: "Other Org",
+          university: "主催者・団体",
+          organizationId: "org-2",
+          organizationName: "Other Org",
+        }),
+      ),
       db.doc("users/admin-1").set({
         uid: "admin-1",
         role: "admin",
@@ -242,48 +250,64 @@ const seedData = async () => {
         displayName: "Admin",
       }),
       db.doc("studentProfiles/student-1").set(studentProfile()),
-      db.doc("studentProfiles/student-2").set(studentProfile({
-        uid: "student-2",
-        email: "student-2@u-aizu.ac.jp",
-        displayName: "Student Two",
-      })),
+      db.doc("studentProfiles/student-2").set(
+        studentProfile({
+          uid: "student-2",
+          email: "student-2@u-aizu.ac.jp",
+          displayName: "Student Two",
+        }),
+      ),
       db.doc("organizations/org-1").set(organizationDoc()),
-      db.doc("organizations/org-2").set(organizationDoc({
-        id: "org-2",
-        displayName: "Other Org",
-        contactEmail: "org-2@example.com",
-        createdBy: "org-2",
-      })),
+      db.doc("organizations/org-2").set(
+        organizationDoc({
+          id: "org-2",
+          displayName: "Other Org",
+          contactEmail: "org-2@example.com",
+          createdBy: "org-2",
+        }),
+      ),
       db.doc("events/event-published").set(eventDoc()),
-      db.doc("events/event-pending").set(eventDoc({
-        status: "pending_review",
-        title: "Pending Event",
-      })),
-      db.doc("events/event-revision").set(eventDoc({
-        status: "revision_required",
-        title: "Revision Event",
-      })),
-      db.doc("events/event-other-org").set(eventDoc({
-        title: "Other Org Event",
-        organizationId: "org-2",
-        organizationName: "Other Org",
-        createdBy: "org-2",
-      })),
+      db.doc("events/event-pending").set(
+        eventDoc({
+          status: "pending_review",
+          title: "Pending Event",
+        }),
+      ),
+      db.doc("events/event-revision").set(
+        eventDoc({
+          status: "revision_required",
+          title: "Revision Event",
+        }),
+      ),
+      db.doc("events/event-other-org").set(
+        eventDoc({
+          title: "Other Org Event",
+          organizationId: "org-2",
+          organizationName: "Other Org",
+          createdBy: "org-2",
+        }),
+      ),
       db.doc("eventApplications/app-1").set(applicationDoc()),
-      db.doc("eventApplications/app-confirmed").set(applicationDoc({
-        id: "app-confirmed",
-        status: "confirmed",
-      })),
-      db.doc("eventApplications/app-other-student").set(applicationDoc({
-        id: "app-other-student",
-        studentId: "student-2",
-        studentName: "Student Two",
-      })),
+      db.doc("eventApplications/app-confirmed").set(
+        applicationDoc({
+          id: "app-confirmed",
+          status: "confirmed",
+        }),
+      ),
+      db.doc("eventApplications/app-other-student").set(
+        applicationDoc({
+          id: "app-other-student",
+          studentId: "student-2",
+          studentName: "Student Two",
+        }),
+      ),
       db.doc("chatRooms/room-1").set(roomDoc()),
-      db.doc("chatRooms/room-readonly").set(roomDoc({
-        id: "room-readonly",
-        status: "read_only",
-      })),
+      db.doc("chatRooms/room-readonly").set(
+        roomDoc({
+          id: "room-readonly",
+          status: "read_only",
+        }),
+      ),
       db.doc("chatRooms/room-1/messages/message-1").set(messageDoc()),
       db.doc("activities/app-1").set(activityDoc()),
       db.doc("notifications/notification-1").set(notificationDoc()),
@@ -295,11 +319,11 @@ const seedData = async () => {
     await context
       .storage()
       .ref("profile-images/student-1/avatar.png")
-      .putString("image", "raw", {contentType: "image/png"});
+      .putString("image", "raw", { contentType: "image/png" });
     await context
       .storage()
       .ref("event-images/org-1/event-published/cover.png")
-      .putString("image", "raw", {contentType: "image/png"});
+      .putString("image", "raw", { contentType: "image/png" });
   });
 };
 
@@ -327,13 +351,17 @@ after(async () => {
 
 describe("users and profiles", () => {
   it("allows only self or admin to read private user and profile documents", async () => {
-    const {anon, student, otherStudent, admin} = contexts();
+    const { anon, student, otherStudent, admin } = contexts();
     await assertFails(anon.firestore().doc("users/student-1").get());
     await assertSucceeds(student.firestore().doc("users/student-1").get());
     await assertFails(otherStudent.firestore().doc("users/student-1").get());
     await assertSucceeds(admin.firestore().doc("users/student-1").get());
-    await assertSucceeds(student.firestore().doc("studentProfiles/student-1").get());
-    await assertFails(otherStudent.firestore().doc("studentProfiles/student-1").get());
+    await assertSucceeds(
+      student.firestore().doc("studentProfiles/student-1").get(),
+    );
+    await assertFails(
+      otherStudent.firestore().doc("studentProfiles/student-1").get(),
+    );
   });
 
   it("allows valid self-registration but blocks role escalation", async () => {
@@ -342,22 +370,97 @@ describe("users and profiles", () => {
       email_verified: true,
     });
     await assertSucceeds(
-      newStudent.firestore().doc("users/student-new").set(userDoc({
-        uid: "student-new",
-        email: "student-new@u-aizu.ac.jp",
-      })),
+      newStudent
+        .firestore()
+        .doc("users/student-new")
+        .set(
+          userDoc({
+            uid: "student-new",
+            email: "student-new@u-aizu.ac.jp",
+          }),
+        ),
     );
     await assertFails(
-      newStudent.firestore().doc("users/student-new-admin").set(userDoc({
-        uid: "student-new-admin",
-        role: "admin",
-        email: "student-new@u-aizu.ac.jp",
-      })),
+      newStudent
+        .firestore()
+        .doc("users/student-new-admin")
+        .set(
+          userDoc({
+            uid: "student-new-admin",
+            role: "admin",
+            email: "student-new@u-aizu.ac.jp",
+          }),
+        ),
+    );
+    await assertFails(
+      newStudent
+        .firestore()
+        .doc("users/student-new-polluted")
+        .set(
+          userDoc({
+            uid: "student-new-polluted",
+            email: "student-new@u-aizu.ac.jp",
+            organizationId: "org-1",
+            organizationName: "Injected organization",
+          }),
+        ),
+    );
+    await assertFails(
+      newStudent
+        .firestore()
+        .doc("users/student-new-invalid-time")
+        .set(
+          userDoc({
+            uid: "student-new-invalid-time",
+            email: "student-new@u-aizu.ac.jp",
+            createdAt: "not-a-timestamp",
+          }),
+        ),
+    );
+
+    const externalStudent = testEnv.authenticatedContext("student-external", {
+      email: "student@example.com",
+      email_verified: true,
+    });
+    await assertFails(
+      externalStudent
+        .firestore()
+        .doc("users/student-external")
+        .set(
+          userDoc({
+            uid: "student-external",
+            email: "student@example.com",
+            status: "active",
+          }),
+        ),
+    );
+
+    const unverifiedAizuStudent = testEnv.authenticatedContext(
+      "student-unverified",
+      {
+        email: "student-unverified@u-aizu.ac.jp",
+        email_verified: false,
+      },
+    );
+    await assertSucceeds(
+      unverifiedAizuStudent
+        .firestore()
+        .doc("users/student-unverified")
+        .set(
+          userDoc({
+            uid: "student-unverified",
+            email: "student-unverified@u-aizu.ac.jp",
+            status: "active",
+          }),
+        ),
+    );
+    await assertFails(
+      unverifiedAizuStudent.firestore().doc("events/event-published").get(),
     );
   });
 
   it("allows student edits without allowing role or ownership changes", async () => {
-    const {student} = contexts();
+    const { student, admin } = contexts();
     await assertSucceeds(
       student.firestore().doc("users/student-1").update({
         displayName: "Updated Student",
@@ -380,21 +483,42 @@ describe("users and profiles", () => {
         uid: "student-2",
       }),
     );
+    await assertFails(
+      student
+        .firestore()
+        .doc("users/student-1")
+        .update({
+          interests: ["地域活動", { polluted: true }],
+          updatedAt: timestamp,
+        }),
+    );
+    await assertFails(
+      admin.firestore().doc("users/student-1").update({
+        status: "owner",
+        updatedAt: timestamp,
+      }),
+    );
   });
 
   it("denies deletion of identity documents", async () => {
-    const {student, admin} = contexts();
+    const { student, admin } = contexts();
     await assertFails(student.firestore().doc("users/student-1").delete());
-    await assertFails(admin.firestore().doc("studentProfiles/student-1").delete());
+    await assertFails(
+      admin.firestore().doc("studentProfiles/student-1").delete(),
+    );
   });
 });
 
 describe("organizations", () => {
   it("allows admins and owners to read organizations while blocking unrelated users", async () => {
-    const {student, organization, otherOrganization, admin} = contexts();
+    const { student, organization, otherOrganization, admin } = contexts();
     await assertFails(student.firestore().doc("organizations/org-1").get());
-    await assertSucceeds(organization.firestore().doc("organizations/org-1").get());
-    await assertFails(otherOrganization.firestore().doc("organizations/org-1").get());
+    await assertSucceeds(
+      organization.firestore().doc("organizations/org-1").get(),
+    );
+    await assertFails(
+      otherOrganization.firestore().doc("organizations/org-1").get(),
+    );
     await assertSucceeds(admin.firestore().doc("organizations/org-1").get());
   });
 
@@ -404,13 +528,18 @@ describe("organizations", () => {
       email_verified: true,
     });
     await assertSucceeds(
-      orgNew.firestore().doc("organizations/org-new").set(organizationDoc({
-        id: "org-new",
-        status: "pending_approval",
-        createdBy: "org-new",
-      })),
+      orgNew
+        .firestore()
+        .doc("organizations/org-new")
+        .set(
+          organizationDoc({
+            id: "org-new",
+            status: "pending_approval",
+            createdBy: "org-new",
+          }),
+        ),
     );
-    const {organization, admin} = contexts();
+    const { organization, admin } = contexts();
     await assertSucceeds(
       organization.firestore().doc("organizations/org-1").update({
         description: "Updated",
@@ -418,10 +547,13 @@ describe("organizations", () => {
       }),
     );
     await assertFails(
-      organization.firestore().doc("organizations/org-1").update({
-        description: "x".repeat(1001),
-        updatedAt: timestamp,
-      }),
+      organization
+        .firestore()
+        .doc("organizations/org-1")
+        .update({
+          description: "x".repeat(1001),
+          updatedAt: timestamp,
+        }),
     );
     await assertSucceeds(
       admin.firestore().doc("organizations/org-1").update({
@@ -439,41 +571,92 @@ describe("organizations", () => {
 
 describe("events", () => {
   it("enforces event read visibility by role and status", async () => {
-    const {anon, student, pendingStudent, organization, otherOrganization, admin} =
-      contexts();
+    const {
+      anon,
+      student,
+      pendingStudent,
+      organization,
+      otherOrganization,
+      admin,
+    } = contexts();
     await assertFails(anon.firestore().doc("events/event-published").get());
-    await assertSucceeds(student.firestore().doc("events/event-published").get());
-    await assertFails(pendingStudent.firestore().doc("events/event-published").get());
+    await assertSucceeds(
+      student.firestore().doc("events/event-published").get(),
+    );
+    await assertFails(
+      pendingStudent.firestore().doc("events/event-published").get(),
+    );
     await assertFails(student.firestore().doc("events/event-pending").get());
-    await assertSucceeds(organization.firestore().doc("events/event-pending").get());
-    await assertFails(otherOrganization.firestore().doc("events/event-pending").get());
+    await assertSucceeds(
+      organization.firestore().doc("events/event-pending").get(),
+    );
+    await assertFails(
+      otherOrganization.firestore().doc("events/event-pending").get(),
+    );
     await assertSucceeds(admin.firestore().doc("events/event-pending").get());
   });
 
   it("allows active organizations to create valid review events only", async () => {
-    const {organization, student} = contexts();
+    const { organization, student } = contexts();
     await assertSucceeds(
-      organization.firestore().doc("events/event-new").set(eventDoc({
-        title: "New Event",
-        status: "pending_review",
-      })),
+      organization
+        .firestore()
+        .doc("events/event-new")
+        .set(
+          eventDoc({
+            title: "New Event",
+            status: "pending_review",
+          }),
+        ),
     );
     await assertFails(
-      organization.firestore().doc("events/event-invalid").set(eventDoc({
-        title: "",
-        status: "pending_review",
-      })),
+      organization
+        .firestore()
+        .doc("events/event-invalid")
+        .set(
+          eventDoc({
+            title: "",
+            status: "pending_review",
+          }),
+        ),
     );
     await assertFails(
-      student.firestore().doc("events/event-student").set(eventDoc({
-        createdBy: "student-1",
-        organizationId: "student-1",
-      })),
+      organization
+        .firestore()
+        .doc("events/event-invalid-tags")
+        .set(
+          eventDoc({
+            status: "pending_review",
+            tags: ["地域活動", { polluted: true }],
+          }),
+        ),
+    );
+    await assertFails(
+      organization
+        .firestore()
+        .doc("events/event-invalid-time")
+        .set(
+          eventDoc({
+            status: "pending_review",
+            createdAt: "not-a-timestamp",
+          }),
+        ),
+    );
+    await assertFails(
+      student
+        .firestore()
+        .doc("events/event-student")
+        .set(
+          eventDoc({
+            createdBy: "student-1",
+            organizationId: "student-1",
+          }),
+        ),
     );
   });
 
   it("allows only valid admin review and organization revision transitions", async () => {
-    const {organization, admin} = contexts();
+    const { organization, admin } = contexts();
     await assertSucceeds(
       admin.firestore().doc("events/event-pending").update({
         status: "published",
@@ -513,23 +696,36 @@ describe("events", () => {
 
 describe("event applications and activities", () => {
   it("allows application reads only for admin, the student, or the organization", async () => {
-    const {student, otherStudent, organization, otherOrganization, admin} =
+    const { student, otherStudent, organization, otherOrganization, admin } =
       contexts();
-    await assertSucceeds(student.firestore().doc("eventApplications/app-1").get());
-    await assertFails(otherStudent.firestore().doc("eventApplications/app-1").get());
-    await assertSucceeds(organization.firestore().doc("eventApplications/app-1").get());
+    await assertSucceeds(
+      student.firestore().doc("eventApplications/app-1").get(),
+    );
+    await assertFails(
+      otherStudent.firestore().doc("eventApplications/app-1").get(),
+    );
+    await assertSucceeds(
+      organization.firestore().doc("eventApplications/app-1").get(),
+    );
     await assertFails(
       otherOrganization.firestore().doc("eventApplications/app-1").get(),
     );
-    await assertSucceeds(admin.firestore().doc("eventApplications/app-1").get());
+    await assertSucceeds(
+      admin.firestore().doc("eventApplications/app-1").get(),
+    );
   });
 
   it("enforces application status transitions by role", async () => {
-    const {student, organization, admin} = contexts();
+    const { student, organization, admin } = contexts();
     await assertFails(
-      student.firestore().doc("eventApplications/new-app").set(applicationDoc({
-        id: "new-app",
-      })),
+      student
+        .firestore()
+        .doc("eventApplications/new-app")
+        .set(
+          applicationDoc({
+            id: "new-app",
+          }),
+        ),
     );
     await assertFails(
       organization.firestore().doc("eventApplications/app-1").update({
@@ -546,30 +742,43 @@ describe("event applications and activities", () => {
         status: "cancelled",
       }),
     );
-    await assertFails(admin.firestore().doc("eventApplications/app-1").delete());
+    await assertFails(
+      admin.firestore().doc("eventApplications/app-1").delete(),
+    );
   });
 
   it("allows activity reads by related roles and denies all client writes", async () => {
-    const {student, otherStudent, organization, otherOrganization, admin} =
+    const { student, otherStudent, organization, otherOrganization, admin } =
       contexts();
     await assertSucceeds(student.firestore().doc("activities/app-1").get());
     await assertFails(otherStudent.firestore().doc("activities/app-1").get());
-    await assertSucceeds(organization.firestore().doc("activities/app-1").get());
-    await assertFails(otherOrganization.firestore().doc("activities/app-1").get());
+    await assertSucceeds(
+      organization.firestore().doc("activities/app-1").get(),
+    );
+    await assertFails(
+      otherOrganization.firestore().doc("activities/app-1").get(),
+    );
     await assertSucceeds(admin.firestore().doc("activities/app-1").get());
     await assertFails(
-      organization.firestore().doc("activities/app-client").set(activityDoc({
-        id: "app-client",
-      })),
+      organization
+        .firestore()
+        .doc("activities/app-client")
+        .set(
+          activityDoc({
+            id: "app-client",
+          }),
+        ),
     );
   });
 });
 
 describe("chat rooms and messages", () => {
   it("allows only participants to read and update active room summaries", async () => {
-    const {student, otherStudent, organization} = contexts();
+    const { student, otherStudent, organization } = contexts();
     await assertSucceeds(student.firestore().doc("chatRooms/room-1").get());
-    await assertSucceeds(organization.firestore().doc("chatRooms/room-1").get());
+    await assertSucceeds(
+      organization.firestore().doc("chatRooms/room-1").get(),
+    );
     await assertFails(otherStudent.firestore().doc("chatRooms/room-1").get());
     await assertSucceeds(
       student.firestore().doc("chatRooms/room-1").update({
@@ -578,37 +787,49 @@ describe("chat rooms and messages", () => {
       }),
     );
     await assertFails(
-      student.firestore().doc("chatRooms/room-1").update({
-        participantIds: ["student-1"],
-      }),
+      student
+        .firestore()
+        .doc("chatRooms/room-1")
+        .update({
+          participantIds: ["student-1"],
+        }),
     );
   });
 
   it("allows only active-room participants to create messages", async () => {
-    const {student, otherStudent, organization} = contexts();
+    const { student, otherStudent, organization } = contexts();
     await assertSucceeds(
-      organization.firestore().doc("chatRooms/room-1/messages/message-org").set(
-        messageDoc({
-          senderId: "org-1",
-          senderName: "Aizu Org",
-          text: "Welcome",
-        }),
-      ),
+      organization
+        .firestore()
+        .doc("chatRooms/room-1/messages/message-org")
+        .set(
+          messageDoc({
+            senderId: "org-1",
+            senderName: "Aizu Org",
+            text: "Welcome",
+          }),
+        ),
     );
     await assertFails(
-      otherStudent.firestore().doc("chatRooms/room-1/messages/message-other").set(
-        messageDoc({
-          senderId: "student-2",
-          senderName: "Student Two",
-        }),
-      ),
+      otherStudent
+        .firestore()
+        .doc("chatRooms/room-1/messages/message-other")
+        .set(
+          messageDoc({
+            senderId: "student-2",
+            senderName: "Student Two",
+          }),
+        ),
     );
     await assertFails(
-      student.firestore().doc("chatRooms/room-readonly/messages/message-2").set(
-        messageDoc({
-          roomId: "room-readonly",
-        }),
-      ),
+      student
+        .firestore()
+        .doc("chatRooms/room-readonly/messages/message-2")
+        .set(
+          messageDoc({
+            roomId: "room-readonly",
+          }),
+        ),
     );
     await assertFails(
       student.firestore().doc("chatRooms/room-1/messages/message-1").update({
@@ -620,10 +841,16 @@ describe("chat rooms and messages", () => {
 
 describe("notifications, preferences, reports, and saved events", () => {
   it("allows notification reads and read-state updates for recipients", async () => {
-    const {student, otherStudent, admin} = contexts();
-    await assertSucceeds(student.firestore().doc("notifications/notification-1").get());
-    await assertFails(otherStudent.firestore().doc("notifications/notification-1").get());
-    await assertSucceeds(admin.firestore().doc("notifications/notification-1").get());
+    const { student, otherStudent, admin } = contexts();
+    await assertSucceeds(
+      student.firestore().doc("notifications/notification-1").get(),
+    );
+    await assertFails(
+      otherStudent.firestore().doc("notifications/notification-1").get(),
+    );
+    await assertSucceeds(
+      admin.firestore().doc("notifications/notification-1").get(),
+    );
     await assertSucceeds(
       student.firestore().doc("notifications/notification-1").update({
         isRead: true,
@@ -641,7 +868,7 @@ describe("notifications, preferences, reports, and saved events", () => {
   });
 
   it("allows users to manage only their own notification preferences", async () => {
-    const {student, otherStudent} = contexts();
+    const { student, otherStudent } = contexts();
     await assertSucceeds(
       student.firestore().doc("notificationPreferences/student-1").get(),
     );
@@ -666,21 +893,36 @@ describe("notifications, preferences, reports, and saved events", () => {
   });
 
   it("allows signed-in report submission and admin-only review", async () => {
-    const {anon, student, organization, admin} = contexts();
+    const { anon, student, organization, admin } = contexts();
     await assertSucceeds(
-      student.firestore().doc("reports/report-new").set(reportDoc({
-        targetId: "event-published",
-      })),
+      student
+        .firestore()
+        .doc("reports/report-new")
+        .set(
+          reportDoc({
+            targetId: "event-published",
+          }),
+        ),
     );
     await assertFails(
-      anon.firestore().doc("reports/report-anon").set(reportDoc({
-        reporterId: "anon",
-      })),
+      anon
+        .firestore()
+        .doc("reports/report-anon")
+        .set(
+          reportDoc({
+            reporterId: "anon",
+          }),
+        ),
     );
     await assertFails(
-      student.firestore().doc("reports/report-bad").set(reportDoc({
-        reason: "unknown",
-      })),
+      student
+        .firestore()
+        .doc("reports/report-bad")
+        .set(
+          reportDoc({
+            reason: "unknown",
+          }),
+        ),
     );
     await assertFails(student.firestore().doc("reports/report-1").get());
     await assertSucceeds(admin.firestore().doc("reports/report-1").get());
@@ -699,28 +941,48 @@ describe("notifications, preferences, reports, and saved events", () => {
   });
 
   it("allows active students to save only their own events without schema pollution", async () => {
-    const {student, organization, otherStudent} = contexts();
+    const { student, organization, otherStudent } = contexts();
     await assertSucceeds(
-      student.firestore().doc("savedEvents/student-1_event-new").set(
-        savedEventDoc("student-1", {
-          eventId: "event-new",
-        }),
-      ),
+      student
+        .firestore()
+        .doc("savedEvents/student-1_event-new")
+        .set(
+          savedEventDoc("student-1", {
+            eventId: "event-new",
+          }),
+        ),
     );
     await assertFails(
-      student.firestore().doc("savedEvents/student-1_polluted").set(
-        savedEventDoc("student-1", {
-          extra: "polluted",
-        }),
-      ),
+      student
+        .firestore()
+        .doc("savedEvents/student-1_polluted")
+        .set(
+          savedEventDoc("student-1", {
+            extra: "polluted",
+          }),
+        ),
     );
     await assertFails(
-      organization.firestore().doc("savedEvents/org-1_event").set(
-        savedEventDoc("org-1"),
-      ),
+      student
+        .firestore()
+        .doc("savedEvents/student-1_too-long")
+        .set(
+          savedEventDoc("student-1", {
+            eventId: "x".repeat(201),
+          }),
+        ),
     );
     await assertFails(
-      otherStudent.firestore().doc("savedEvents/student-1_event-published").delete(),
+      organization
+        .firestore()
+        .doc("savedEvents/org-1_event")
+        .set(savedEventDoc("org-1")),
+    );
+    await assertFails(
+      otherStudent
+        .firestore()
+        .doc("savedEvents/student-1_event-published")
+        .delete(),
     );
     await assertSucceeds(
       student.firestore().doc("savedEvents/student-1_event-published").delete(),
@@ -730,12 +992,15 @@ describe("notifications, preferences, reports, and saved events", () => {
 
 describe("storage rules", () => {
   it("allows signed-in reads but blocks public reads", async () => {
-    const {anon, student, organization} = contexts();
+    const { anon, student, organization } = contexts();
     await assertFails(
       anon.storage().ref("profile-images/student-1/avatar.png").getMetadata(),
     );
     await assertSucceeds(
-      student.storage().ref("profile-images/student-1/avatar.png").getMetadata(),
+      student
+        .storage()
+        .ref("profile-images/student-1/avatar.png")
+        .getMetadata(),
     );
     await assertSucceeds(
       organization
@@ -746,42 +1011,43 @@ describe("storage rules", () => {
   });
 
   it("allows only active owners to upload valid images in scoped folders", async () => {
-    const {student, pendingStudent, organization, otherOrganization} = contexts();
+    const { student, pendingStudent, organization, otherOrganization } =
+      contexts();
     await assertSucceeds(
       student
         .storage()
         .ref("profile-images/student-1/new.png")
-        .putString("image", "raw", {contentType: "image/png"}),
+        .putString("image", "raw", { contentType: "image/png" }),
     );
     await assertFails(
       student
         .storage()
         .ref("profile-images/student-2/new.png")
-        .putString("image", "raw", {contentType: "image/png"}),
+        .putString("image", "raw", { contentType: "image/png" }),
     );
     await assertFails(
       pendingStudent
         .storage()
         .ref("profile-images/student-pending/new.png")
-        .putString("image", "raw", {contentType: "image/png"}),
+        .putString("image", "raw", { contentType: "image/png" }),
     );
     await assertSucceeds(
       organization
         .storage()
         .ref("event-images/org-1/event-new/cover.webp")
-        .putString("image", "raw", {contentType: "image/webp"}),
+        .putString("image", "raw", { contentType: "image/webp" }),
     );
     await assertFails(
       otherOrganization
         .storage()
         .ref("event-images/org-1/event-new/cover.webp")
-        .putString("image", "raw", {contentType: "image/webp"}),
+        .putString("image", "raw", { contentType: "image/webp" }),
     );
     await assertFails(
       organization
         .storage()
         .ref("event-images/org-1/event-new/cover.gif")
-        .putString("image", "raw", {contentType: "image/gif"}),
+        .putString("image", "raw", { contentType: "image/gif" }),
     );
   });
 });

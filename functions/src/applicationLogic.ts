@@ -1,10 +1,5 @@
 export type ApplicationStatus =
-  | "pending"
-  | "confirmed"
-  | "rejected"
-  | "attended"
-  | "absent"
-  | "cancelled";
+  "pending" | "confirmed" | "rejected" | "attended" | "absent" | "cancelled";
 
 export type ReminderBucket = "2h" | "24h";
 
@@ -44,3 +39,12 @@ export const shouldNotifyPublishedEventStudent = (
   organizerId: string,
   notificationEnabled: boolean,
 ): boolean => notificationEnabled && studentId !== organizerId;
+
+export const isApplicationWindowOpen = (
+  eventStatus: string,
+  startAtMillis: number,
+  nowMillis: number,
+): boolean =>
+  eventStatus === "published" &&
+  Number.isFinite(startAtMillis) &&
+  startAtMillis > nowMillis;

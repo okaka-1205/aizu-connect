@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import {describe, it} from "node:test";
+import { describe, it } from "node:test";
 
 import {
   applicationStatusMessage,
+  isApplicationWindowOpen,
   reminderBucketForHoursUntil,
   reminderNotificationPath,
   shouldDecrementApplicantCount,
@@ -54,6 +55,19 @@ describe("event notification logic", () => {
       shouldNotifyPublishedEventStudent("student-1", "org-1", false),
       false,
     );
+  });
+});
+
+describe("event application window logic", () => {
+  it("accepts only published events that have not started", () => {
+    const now = Date.parse("2026-07-23T00:00:00.000Z");
+    assert.equal(isApplicationWindowOpen("published", now + 60_000, now), true);
+    assert.equal(isApplicationWindowOpen("published", now, now), false);
+    assert.equal(
+      isApplicationWindowOpen("pending_review", now + 60_000, now),
+      false,
+    );
+    assert.equal(isApplicationWindowOpen("published", Number.NaN, now), false);
   });
 });
 

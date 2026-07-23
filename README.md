@@ -11,25 +11,28 @@ npm install
 npm run dev
 ```
 
-Firebase Emulatorを使う場合は、別のターミナルで起動します。
+`.env.local`のFirebaseプロジェクトへ接続せず、端末内だけで全ロールを確認する場合は次のコマンドを使います。Functionsのビルド、Auth・Firestore・Storage・Functions Emulatorの起動、確認用データの投入、Viteの起動までをまとめて行います。
 
 ```bash
-firebase emulators:start
+npm run dev:local
 ```
 
-標準URL：
+ローカル確認用URL：
 
 - React: `http://127.0.0.1:5173/`
-- Emulator UI: `http://127.0.0.1:4000/`
-- Authentication: `127.0.0.1:9099`
-- Firestore: `127.0.0.1:8080`
-- Hosting Emulator: `http://127.0.0.1:5002/`
+- Authentication: `127.0.0.1:19099`
+- Firestore: `127.0.0.1:18082`
+- Functions: `127.0.0.1:15001`
+- Storage: `127.0.0.1:19197`
 
-`src/lib/firebase.ts`は開発時にAuthとFirestoreへ自動接続します。Auth Emulatorだけを起動する場合は次のコマンドを使えます。
+確認用アカウント：
 
-```bash
-firebase emulators:start --only auth
-```
+| ロール | メールアドレス | パスワード |
+| --- | --- | --- |
+| 学生 | `student-e2e@u-aizu.ac.jp` | `password123` |
+| 主催者・団体 | `org-e2e@example.com` | `password123` |
+| 管理者 | `admin@aizu-connect.local` | `admin123` |
+| 承認待ち | `pending-e2e@example.com` | `password123` |
 
 ## Firebase設定
 
@@ -50,7 +53,7 @@ VITE_FIREBASE_APP_ID=...
 VITE_USE_FIREBASE_EMULATORS=false
 ```
 
-ローカルでEmulatorを使う場合は`true`に設定し、別ターミナルで`firebase emulators:start`を起動してください。設定を省略した場合、ブラウザSDKはEmulatorへ接続しません。
+通常の`npm run dev`では、設定を省略するとブラウザSDKはEmulatorへ接続しません。Emulatorを使う場合は、接続設定を含む`npm run dev:local`を使用してください。
 
 ## ロール
 
@@ -102,7 +105,7 @@ npm run build
 npm run check
 ```
 
-`Firebase: Error (auth/network-request-failed)` が表示された場合は、開発サーバーとは別のターミナルで`firebase emulators:start`を起動し、Auth Emulatorの`9099`番ポートが利用可能か確認してください。すでに別のEmulatorが起動している場合は、二重起動せずそのままViteを再読み込みします。
+`Firebase: Error (auth/network-request-failed)` が表示された場合は、クラウド接続が制限されている可能性があります。起動中の通常開発サーバーを終了して`npm run dev:local`を使用してください。
 
 Functionsを使う場合：
 

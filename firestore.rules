@@ -25,7 +25,8 @@ service cloud.firestore {
 
     function isActiveStudent() {
       return hasUser() && userData().role == 'student'
-        && userData().status == 'active';
+        && userData().status == 'active'
+        && request.auth.token.email_verified == true;
     }
 
     function isActiveOrganization() {
@@ -45,6 +46,39 @@ service cloud.firestore {
       return value is number && value >= 0 && value <= 6;
     }
 
+    function validListItem(value, index, maxLength) {
+      return value.size() <= index
+        || validString(value[index], 1, maxLength);
+    }
+
+    function validInterests(value) {
+      return value is list
+        && value.size() <= 5
+        && validListItem(value, 0, 40)
+        && validListItem(value, 1, 40)
+        && validListItem(value, 2, 40)
+        && validListItem(value, 3, 40)
+        && validListItem(value, 4, 40);
+    }
+
+    function validTags(value) {
+      return value is list
+        && value.size() <= 8
+        && validListItem(value, 0, 40)
+        && validListItem(value, 1, 40)
+        && validListItem(value, 2, 40)
+        && validListItem(value, 3, 40)
+        && validListItem(value, 4, 40)
+        && validListItem(value, 5, 40)
+        && validListItem(value, 6, 40)
+        && validListItem(value, 7, 40);
+    }
+
+    function isAizuStudentIdentity(data) {
+      return request.auth.token.email == data.email
+        && data.email.matches('^[^@]+@u-aizu\\.ac\\.jp$');
+    }
+
     function validUser(data, uid) {
       return data.keys().hasOnly([
         'uid', 'role', 'status', 'email', 'displayName', 'university',
@@ -61,20 +95,22 @@ service cloud.firestore {
       && validString(data.university, 1, 80)
       && validString(data.department, 0, 80)
       && validGrade(data.grade)
-      && data.interests is list
-      && data.interests.size() <= 5
+      && validInterests(data.interests)
       && (!data.keys().hasAny(['currentActivities'])
         || validOptionalString(data.currentActivities, 240))
       && (!data.keys().hasAny(['wantToTry'])
         || validOptionalString(data.wantToTry, 240))
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp
       && (
         (
           data.role == 'student'
+          && !data.keys().hasAny(['organizationId', 'organizationName'])
           && (
             data.status == 'pending_approval'
             || (
               data.status == 'active'
-              && request.auth.token.email == data.email
+              && isAizuStudentIdentity(data)
             )
           )
         )
@@ -105,8 +141,7 @@ service cloud.firestore {
       && validString(data.university, 1, 80)
       && validString(data.department, 0, 80)
       && validGrade(data.grade)
-      && data.interests is list
-      && data.interests.size() <= 5
+      && validInterests(data.interests)
       && (!data.keys().hasAny(['currentActivities'])
         || validOptionalString(data.currentActivities, 240))
       && (!data.keys().hasAny(['wantToTry'])
@@ -116,7 +151,13 @@ service cloud.firestore {
       && data.profileCompletionRate >= 0
       && data.profileCompletionRate <= 100
       && data.activityCount is number
-      && data.activityCount >= 0;
+      && data.activityCount >= 0
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp
+      && (
+        data.status == 'pending_approval'
+        || isAizuStudentIdentity(data)
+      );
     }
 
     function validEvent(data, uid) {
@@ -141,7 +182,9 @@ service cloud.firestore {
       && data.capacity is number && data.capacity >= 1 && data.capacity <= 1000
       && data.applicantCount is number && data.applicantCount >= 0
       && validString(data.imageUrl, 1, 500)
-      && data.tags is list && data.tags.size() <= 8;
+      && validTags(data.tags)
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
     }
 
     function validOrganization(data, organizationId) {
@@ -154,7 +197,9 @@ service cloud.firestore {
       && data.status in ['pending_approval', 'active', 'rejected', 'suspended']
       && validString(data.displayName, 1, 100)
       && validOptionalString(data.description, 1000)
-      && validOptionalString(data.contactEmail, 320);
+      && validOptionalString(data.contactEmail, 320)
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
     }
 
     match /users/{userId} {
@@ -168,6 +213,8 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status', 'updatedAt'
         ])
+        && request.resource.data.status in ['active', 'rejected', 'suspended']
+        && request.resource.data.updatedAt is timestamp
         || (
           signedIn() && request.auth.uid == userId
           && resource.data.role == 'student'
@@ -425,6 +472,7 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.eventId is string
         && request.resource.data.eventId.size() >= 1
+        && request.resource.data.eventId.size() <= 200
         && (!request.resource.data.keys().hasAny(['createdAt'])
           || request.resource.data.createdAt is timestamp);
       allow delete: if isActiveStudent()

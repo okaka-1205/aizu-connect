@@ -9,6 +9,7 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import {
   applicationStatusMessage,
+  isApplicationWindowOpen,
   reminderBucketForHoursUntil,
   reminderNotificationPath,
   shouldDecrementApplicantCount,
@@ -60,7 +61,7 @@ export const submitApplication = onCall(async (request) => {
     if (userSnapshot.data()?.status !== "active") {
       throw new HttpsError("permission-denied", "Account is not active.");
     }
-    if (!eventSnapshot.exists || eventSnapshot.data()?.status !== "published") {
+    if (!eventSnapshot.exists) {
       throw new HttpsError("failed-precondition", "Event is not available.");
     }
     if (applicationSnapshot.exists) {
@@ -68,6 +69,22 @@ export const submitApplication = onCall(async (request) => {
     }
 
     const eventData = eventSnapshot.data() ?? {};
+    const startAtMillis =
+      eventData.startAt instanceof Timestamp ?
+        eventData.startAt.toMillis() :
+        Number.NaN;
+    if (
+      !isApplicationWindowOpen(
+        String(eventData.status ?? ""),
+        startAtMillis,
+        Date.now(),
+      )
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Event application period has ended.",
+      );
+    }
     const currentCount = Number(eventData.applicantCount ?? 0);
     const capacity = Number(eventData.capacity ?? 0);
     if (capacity > 0 && currentCount >= capacity) {
@@ -84,8 +101,7 @@ export const submitApplication = onCall(async (request) => {
       eventTitle: eventData.title,
       studentId: userId,
       studentName: userSnapshot.data()?.displayName ?? "学生",
-      studentProfileImageUrl:
-        userSnapshot.data()?.profileImageUrl ?? null,
+      studentProfileImageUrl: userSnapshot.data()?.profileImageUrl ?? null,
       organizationName: eventData.organizationName,
       organizationId,
       status: "pending",
