@@ -12,6 +12,7 @@ initializeApp();
 setGlobalOptions({maxInstances: 10, region: "asia-northeast1"});
 
 const db = getFirestore();
+const isFunctionsEmulator = process.env.FUNCTIONS_EMULATOR === "true";
 
 const notificationEnabled = async (
   userId: string,
@@ -25,7 +26,7 @@ export const submitApplication = onCall(async (request) => {
   const userId = request.auth?.uid;
   const eventId = request.data?.eventId;
   if (!userId) throw new HttpsError("unauthenticated", "Login required.");
-  if (request.auth?.token.email_verified !== true) {
+  if (!isFunctionsEmulator && request.auth?.token.email_verified !== true) {
     throw new HttpsError(
       "failed-precondition",
       "Email verification is required.",
@@ -75,6 +76,8 @@ export const submitApplication = onCall(async (request) => {
       eventTitle: eventData.title,
       studentId: userId,
       studentName: userSnapshot.data()?.displayName ?? "学生",
+      studentProfileImageUrl:
+        userSnapshot.data()?.profileImageUrl ?? null,
       organizationName: eventData.organizationName,
       organizationId,
       status: "pending",

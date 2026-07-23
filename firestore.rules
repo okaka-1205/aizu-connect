@@ -42,19 +42,21 @@ service cloud.firestore {
     }
 
     function validGrade(value) {
-      return value is number && value >= 1 && value <= 6;
+      return value is number && value >= 0 && value <= 6;
     }
 
     function validUser(data, uid) {
       return data.keys().hasOnly([
         'uid', 'role', 'status', 'email', 'displayName', 'university',
         'department', 'grade', 'interests', 'organizationId',
-        'organizationName', 'currentActivities', 'wantToTry', 'createdAt',
-        'updatedAt'
+        'organizationName', 'profileImageUrl', 'currentActivities',
+        'wantToTry', 'createdAt', 'updatedAt'
       ])
       && data.uid == uid
       && data.role in ['student', 'organization']
       && validOptionalString(data.email, 320)
+      && (!data.keys().hasAny(['profileImageUrl'])
+        || validOptionalString(data.profileImageUrl, 500))
       && validString(data.displayName, 1, 80)
       && validString(data.university, 1, 80)
       && validString(data.department, 0, 80)
@@ -91,12 +93,14 @@ service cloud.firestore {
         'uid', 'role', 'status', 'email', 'displayName', 'university',
         'department', 'grade', 'interests', 'verificationMethod',
         'profileCompletionRate', 'activityCount', 'currentActivities',
-        'wantToTry', 'createdAt', 'updatedAt'
+        'wantToTry', 'profileImageUrl', 'createdAt', 'updatedAt'
       ])
       && data.uid == uid
       && data.role == 'student'
       && data.status in ['pending_approval', 'active']
       && validOptionalString(data.email, 320)
+      && (!data.keys().hasAny(['profileImageUrl'])
+        || validOptionalString(data.profileImageUrl, 500))
       && validString(data.displayName, 1, 80)
       && validString(data.university, 1, 80)
       && validString(data.department, 0, 80)
@@ -140,21 +144,6 @@ service cloud.firestore {
       && data.tags is list && data.tags.size() <= 8;
     }
 
-    function validApplication(data) {
-      return data.keys().hasOnly([
-        'id', 'eventId', 'eventTitle', 'studentId', 'studentName',
-        'organizationId', 'organizationName', 'status', 'createdAt'
-      ])
-      && data.id == request.resource.id
-      && data.studentId == request.auth.uid
-      && validString(data.eventId, 3, 120)
-      && validString(data.eventTitle, 1, 80)
-      && validString(data.studentName, 1, 80)
-      && validString(data.organizationId, 1, 128)
-      && validString(data.organizationName, 1, 100)
-      && data.status == 'pending';
-    }
-
     match /users/{userId} {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
       allow create: if signedIn()
@@ -171,7 +160,7 @@ service cloud.firestore {
           && resource.data.role == 'student'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'displayName', 'department', 'grade', 'interests',
-            'currentActivities', 'wantToTry', 'updatedAt'
+            'currentActivities', 'wantToTry', 'profileImageUrl', 'updatedAt'
           ])
           && request.resource.data.uid == resource.data.uid
           && request.resource.data.role == resource.data.role
@@ -190,7 +179,7 @@ service cloud.firestore {
         && request.auth.uid == userId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName', 'department', 'grade', 'interests',
-          'currentActivities', 'wantToTry', 'updatedAt'
+          'currentActivities', 'wantToTry', 'profileImageUrl', 'updatedAt'
         ])
         && validStudentProfile(request.resource.data, userId);
       allow delete: if false;
@@ -294,6 +283,7 @@ service cloud.firestore {
       allow create: if false;
       allow update: if signedIn()
         && request.auth.uid in resource.data.participantIds
+        && resource.data.status == 'active'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'lastMessageText', 'lastMessageAt'
         ])

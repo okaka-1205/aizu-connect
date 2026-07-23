@@ -64,7 +64,8 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { auth, db, functions } from "./lib/firebase";
+import { auth, db, functions, storage } from "./lib/firebase";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 type AccountStatus =
   | "active"
@@ -97,6 +98,7 @@ type AppUser = {
   interests: string[];
   currentActivities?: string;
   wantToTry?: string;
+  profileImageUrl?: string;
   organizationId?: string;
   organizationName?: string;
   createdAt?: Timestamp;
@@ -129,6 +131,7 @@ type EventApplication = {
   eventTitle: string;
   studentId: string;
   studentName: string;
+  studentProfileImageUrl?: string;
   organizationName: string;
   organizationId?: string;
   status:
@@ -291,6 +294,27 @@ const categories: Filter[] = [
   "趣味・スポーツ",
 ];
 
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+const acceptedImageTypes = ["image/jpeg", "image/png", "image/webp"];
+
+const validateImageFile = (file: File, label: string) => {
+  if (!acceptedImageTypes.includes(file.type)) {
+    throw new Error(`${label}はJPEG、PNG、WebPのいずれかを選択してください。`);
+  }
+  if (file.size >= MAX_IMAGE_SIZE) {
+    throw new Error(`${label}は5MB未満の画像を選択してください。`);
+  }
+};
+
+const uploadImage = async (file: File, path: string) => {
+  const imageRef = ref(storage, path);
+  const snapshot = await uploadBytes(imageRef, file, {
+    contentType: file.type,
+    cacheControl: "public,max-age=3600",
+  });
+  return getDownloadURL(snapshot.ref);
+};
+
 const categoryAliases: Record<Exclude<Filter, "すべて">, string[]> = {
   "交流・コミュニティ": ["交流・コミュニティ", "地域イベント", "企業交流"],
   地域活動: ["地域活動", "地域イベント"],
@@ -301,58 +325,6 @@ const categoryAliases: Record<Exclude<Filter, "すべて">, string[]> = {
 
 const matchesCategoryFilter = (category: string, filter: Filter) =>
   filter === "すべて" || categoryAliases[filter].includes(category);
-
-const sampleEvents: Omit<AizuEvent, "id">[] = [
-  {
-    title: "会津若松まちなか交流ミートアップ",
-    summary: "地域の社会人や学生とふらっと話せる、初参加歓迎の交流イベント。",
-    category: "交流・コミュニティ",
-    location: "會津稽古堂",
-    startAtLabel: "8月10日 18:30",
-    organizationName: "Aizu Connect 運営",
-    status: "published",
-    capacity: 40,
-    applicantCount: 0,
-    imageUrl:
-      "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=1200&q=80",
-    tags: ["交流", "初心者歓迎", "放課後"],
-    startAt: Timestamp.fromDate(new Date("2026-08-10T18:30:00+09:00")),
-    organizationVerified: true,
-  },
-  {
-    title: "只見町 夏祭り運営ボランティア",
-    summary: "地域イベントの受付・案内を手伝いながら、会津の人とつながる。",
-    category: "地域活動",
-    location: "只見町 駅前広場",
-    startAtLabel: "8月24日 9:00",
-    organizationName: "只見町地域プロジェクト",
-    status: "published",
-    capacity: 20,
-    applicantCount: 0,
-    imageUrl:
-      "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?auto=format&fit=crop&w=1200&q=80",
-    tags: ["ボランティア", "地域", "交通相談可"],
-    startAt: Timestamp.fromDate(new Date("2026-08-24T09:00:00+09:00")),
-    organizationVerified: true,
-  },
-  {
-    title: "会津でつくる人と話すナイト",
-    summary:
-      "会津でサービスや活動をつくる人と話しながら、次にやってみたいことを見つける交流会。",
-    category: "学び・制作",
-    location: "会津大学 UBIC",
-    startAtLabel: "9月3日 17:00",
-    organizationName: "会津IT企業コミュニティ",
-    status: "published",
-    capacity: 30,
-    applicantCount: 0,
-    imageUrl:
-      "https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=1200&q=80",
-    tags: ["学び", "IT", "初参加歓迎"],
-    startAt: Timestamp.fromDate(new Date("2026-09-03T17:00:00+09:00")),
-    organizationVerified: true,
-  },
-];
 
 const isAizuUniversityEmail = (email: string) =>
   email.trim().toLowerCase().endsWith("@u-aizu.ac.jp");
@@ -403,9 +375,7 @@ const getFirebaseErrorMessage = (error: unknown) => {
       code === "auth/network-request-failed" ||
       error.message.includes("auth/network-request-failed")
     )
-      return import.meta.env.DEV
-        ? "Firebase Authenticationに接続できません。開発中は別ターミナルで `firebase emulators:start` を実行し、Auth Emulator（9099）が起動しているか確認してください。"
-        : "Firebase Authenticationに接続できません。ネットワーク接続とFirebase設定を確認してください。";
+      return "Firebase Authenticationに接続できません。ネットワーク接続とFirebase設定を確認してください。";
     if (
       code === "auth/operation-not-allowed" ||
       error.message.includes("auth/operation-not-allowed")
@@ -421,6 +391,8 @@ const getFirebaseErrorMessage = (error: unknown) => {
       error.message.includes("permission-denied")
     )
       return "この操作を行う権限がありません。アカウントの承認状態を確認してください。";
+    if (error.message.includes("Email verification is required."))
+      return "メールアドレスの確認が必要です。確認メールのリンクを開いてから、もう一度お試しください。";
     if (
       code === "failed-precondition" ||
       error.message.includes("failed-precondition")
@@ -509,6 +481,12 @@ function App() {
     () => events.find((event) => event.id === selectedEventId),
     [events, selectedEventId],
   );
+
+  useEffect(() => {
+    if (!(["home", "search"] as Tab[]).includes(activeTab) && selectedEventId) {
+      setSelectedEventId(null);
+    }
+  }, [activeTab, selectedEventId]);
 
   const filteredEvents = useMemo(() => {
     const normalized = searchText.trim().toLowerCase();
@@ -636,18 +614,9 @@ function App() {
       id: eventDoc.id,
       ...eventDoc.data(),
     })) as AizuEvent[];
-    const visibleEvents =
-      loadedEvents.length > 0
-        ? loadedEvents
-        : import.meta.env.DEV
-          ? sampleEvents.map((event, index) => ({
-              ...event,
-              id: `demo-${index + 1}`,
-            }))
-          : [];
-    setEvents(visibleEvents);
+    setEvents(loadedEvents);
     setSelectedEventId((current) =>
-      current && visibleEvents.some((event) => event.id === current)
+      current && loadedEvents.some((event) => event.id === current)
         ? current
         : null,
     );
@@ -896,34 +865,10 @@ function App() {
     }
   };
 
-  const seedEvents = async () => {
-    if (!appUser) return;
-    setIsActionLoading(true);
-    setMessage("");
-    try {
-      setEvents(
-        sampleEvents.map((event, index) => ({
-          ...event,
-          id: `demo-${index + 1}`,
-        })),
-      );
-      await loadProductData(appUser.uid);
-      setMessage(
-        "開発用のサンプル表示を読み込みました。公開データはFirestoreから表示されます。",
-      );
-    } catch (error) {
-      setMessage(getFirebaseErrorMessage(error));
-    } finally {
-      setIsActionLoading(false);
-    }
-  };
-
   const applyToEvent = async (eventToApply: AizuEvent) => {
     if (!appUser) return;
     if (!eventToApply.createdBy) {
-      setMessage(
-        "これはデモイベントです。公開済みイベントから参加申請できます。",
-      );
+      setMessage("この活動は現在申請できません。公開済みの活動を選択してください。");
       return;
     }
     setIsActionLoading(true);
@@ -1193,14 +1138,6 @@ function App() {
             }}
           />
         )}
-        {import.meta.env.DEV && (
-          <DevStatus
-            appUser={appUser}
-            firebaseUser={firebaseUser}
-            onSeed={() => void seedEvents()}
-            isLoading={isActionLoading}
-          />
-        )}
         <div className="welcome-row">
           <div>
             <p className="eyebrow">WELCOME BACK</p>
@@ -1329,20 +1266,33 @@ function App() {
             events={events}
             notificationPreferences={notificationPreferences}
             onSaveProfile={async (updates) => {
+              const { profileImageFile, ...profileUpdates } = updates;
+              let profileImageUrl = appUser.profileImageUrl;
+              if (profileImageFile) {
+                validateImageFile(profileImageFile, "プロフィール画像");
+                profileImageUrl = await uploadImage(
+                  profileImageFile,
+                  `profile-images/${appUser.uid}/profile-${Date.now()}`,
+                );
+              }
+              const persistedUpdates = {
+                ...profileUpdates,
+                ...(profileImageUrl ? { profileImageUrl } : {}),
+              };
               await updateDoc(doc(db, "users", appUser.uid), {
-                ...updates,
+                ...persistedUpdates,
                 updatedAt: serverTimestamp(),
               });
               await setDoc(
                 doc(db, "studentProfiles", appUser.uid),
                 {
-                  ...updates,
+                  ...persistedUpdates,
                   updatedAt: serverTimestamp(),
                 },
                 { merge: true },
               );
               setAppUser((current) =>
-                current ? { ...current, ...updates } : current,
+                current ? { ...current, ...persistedUpdates } : current,
               );
             }}
             onSaveNotificationPreferences={async (updates) => {
@@ -1446,19 +1396,15 @@ function HomeTab(props: {
   } = props;
   return (
     <section className="tab-page">
-      <div
+      <button
         className="search-launch"
+        type="button"
         onClick={() => setActiveTab("search")}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") setActiveTab("search");
-        }}
       >
         <Search size={18} />
         <span>イベント・活動・地域を探す</span>
         <kbd>⌘ K</kbd>
-      </div>
+      </button>
       <div className="category-row">
         {categories.map((category) => (
           <button
@@ -2035,6 +1981,67 @@ function MessagesTab({
   );
 }
 
+function ImageReviewDialog({
+  title,
+  imageUrl,
+  alt,
+  circular = false,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  imageUrl: string;
+  alt: string;
+  circular?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return createPortal(
+    <div className="image-review-backdrop" role="presentation">
+      <section
+        className="image-review-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="image-review-title"
+      >
+        <div className="image-review-head">
+          <div>
+            <p className="eyebrow">PHOTO REVIEW</p>
+            <h2 id="image-review-title">{title}</h2>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            title="閉じる"
+            aria-label="写真レビューを閉じる"
+            onClick={onCancel}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div
+          className={`image-review-frame${circular ? " circular" : ""}`}
+        >
+          <img src={imageUrl} alt={alt} />
+        </div>
+        <p className="image-review-help">
+          この写真でよければ確定してください。保存するまで公開されません。
+        </p>
+        <div className="image-review-actions">
+          <button className="secondary-action" type="button" onClick={onCancel}>
+            選び直す
+          </button>
+          <button className="primary-action" type="button" onClick={onConfirm}>
+            <Check size={17} />
+            この写真を使う
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function ProfileTab({
   appUser,
   applications,
@@ -2063,6 +2070,7 @@ function ProfileTab({
     interests: string[];
     currentActivities: string;
     wantToTry: string;
+    profileImageFile: File | null;
   }) => Promise<void>;
   onSaveNotificationPreferences: (
     updates: Partial<Omit<NotificationPreferences, "userId">>,
@@ -2082,6 +2090,13 @@ function ProfileTab({
     appUser.currentActivities ?? "",
   );
   const [wantToTry, setWantToTry] = useState(appUser.wantToTry ?? "");
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
+  const [profileImagePreview, setProfileImagePreview] = useState<string | null>(
+    appUser.profileImageUrl ?? null,
+  );
+  const [isProfileImageReviewOpen, setIsProfileImageReviewOpen] =
+    useState(false);
+  const [profileImageInputKey, setProfileImageInputKey] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
   const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(
@@ -2099,6 +2114,13 @@ function ProfileTab({
     activities.length >= 3 ? "地域と接続" : null,
     activities.length >= 5 ? "アクティブメンバー" : null,
   ].filter(Boolean) as string[];
+  const profileMeta = [
+    appUser.university,
+    appUser.department,
+    appUser.grade > 0 ? `${appUser.grade}年` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const startEditing = () => {
     setDisplayName(appUser.displayName);
@@ -2107,6 +2129,9 @@ function ProfileTab({
     setInterestText(appUser.interests.join(", "));
     setCurrentActivities(appUser.currentActivities ?? "");
     setWantToTry(appUser.wantToTry ?? "");
+    setProfileImageFile(null);
+    setProfileImagePreview(appUser.profileImageUrl ?? null);
+    setIsProfileImageReviewOpen(false);
     setProfileMessage("");
     setIsEditing(true);
   };
@@ -2118,20 +2143,17 @@ function ProfileTab({
       .map((interest) => interest.trim())
       .filter(Boolean)
       .slice(0, 5);
-    if (!displayName.trim() || !department.trim() || interests.length === 0) {
-      setProfileMessage("表示名、学科、興味分野を入力してください。");
-      return;
-    }
     setIsSaving(true);
     setProfileMessage("");
     try {
       await onSaveProfile({
-        displayName: displayName.trim().slice(0, 60),
+        displayName: displayName.trim().slice(0, 60) || "名前未設定",
         department: department.trim().slice(0, 80),
-        grade: Math.max(1, Math.min(6, grade)),
+        grade: Math.max(0, Math.min(6, grade)),
         interests,
         currentActivities: currentActivities.trim().slice(0, 240),
         wantToTry: wantToTry.trim().slice(0, 240),
+        profileImageFile,
       });
       setIsEditing(false);
       setProfileMessage("プロフィールを更新しました。");
@@ -2146,14 +2168,16 @@ function ProfileTab({
     <section className="tab-page">
       <div className="profile-hero">
         <div className="profile-avatar">
-          <CircleUserRound size={35} />
+          {appUser.profileImageUrl ? (
+            <img src={appUser.profileImageUrl} alt="プロフィール画像" />
+          ) : (
+            <CircleUserRound size={35} />
+          )}
         </div>
         <div className="profile-copy">
           <p className="eyebrow">MY PROFILE</p>
           <h2>{appUser.displayName}</h2>
-          <p>
-            {appUser.university} · {appUser.department} · {appUser.grade}年
-          </p>
+          <p>{profileMeta || "プロフィール未設定"}</p>
           <div className="interest-list">
             {appUser.interests.map((interest) => (
               <span key={interest}>{interest}</span>
@@ -2200,6 +2224,37 @@ function ProfileTab({
               <X size={17} />
             </button>
           </div>
+          <Field label="プロフィール画像">
+            <div className="image-picker">
+              <div className="profile-image-preview">
+                {profileImagePreview ? (
+                  <img src={profileImagePreview} alt="プロフィール画像のプレビュー" />
+                ) : (
+                  <CircleUserRound size={27} />
+                )}
+              </div>
+              <input
+                key={profileImageInputKey}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    validateImageFile(file, "プロフィール画像");
+                    setProfileImageFile(file);
+                    setProfileImagePreview(URL.createObjectURL(file));
+                    setProfileMessage("");
+                    setIsProfileImageReviewOpen(true);
+                  } catch (error) {
+                    setProfileMessage(getFirebaseErrorMessage(error));
+                    event.target.value = "";
+                  }
+                }}
+              />
+              <small>JPEG・PNG・WebP / 5MB未満</small>
+            </div>
+          </Field>
           <Field label="表示名">
             <input
               value={displayName}
@@ -2218,9 +2273,9 @@ function ProfileTab({
             <Field label="学年">
               <input
                 type="number"
-                min={1}
+                min={0}
                 max={6}
-                value={grade}
+                value={grade > 0 ? grade : ""}
                 onChange={(event) => setGrade(Number(event.target.value))}
               />
             </Field>
@@ -2257,6 +2312,21 @@ function ProfileTab({
             保存する
           </button>
         </form>
+      )}
+      {isProfileImageReviewOpen && profileImagePreview && (
+        <ImageReviewDialog
+          title="プロフィール画像を確認"
+          imageUrl={profileImagePreview}
+          alt="プロフィール画像の確認用プレビュー"
+          circular
+          onCancel={() => {
+            setIsProfileImageReviewOpen(false);
+            setProfileImageFile(null);
+            setProfileImagePreview(appUser.profileImageUrl ?? null);
+            setProfileImageInputKey((current) => current + 1);
+          }}
+          onConfirm={() => setIsProfileImageReviewOpen(false)}
+        />
       )}
       <div className="profile-stats">
         <span>
@@ -2310,7 +2380,7 @@ function ProfileTab({
                   type="button"
                   onClick={() => onOpenSavedEvent(event.id)}
                 >
-                  <img src={event.imageUrl} alt="" />
+                  <img src={event.imageUrl} alt={`${event.title}の写真`} loading="lazy" />
                   <span>
                     <strong>{event.title}</strong>
                     <small>
@@ -2457,15 +2527,10 @@ function EventCard({
     <article className={`event-card ${selected ? "selected" : ""}`}>
       <div
         className="event-card-main"
-        role="button"
-        tabIndex={0}
         onClick={onOpen}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") onOpen();
-        }}
       >
         <div className="event-image-wrap">
-          <img src={event.imageUrl} alt="" />
+          <img src={event.imageUrl} alt={`${event.title}の写真`} loading="lazy" />
           <span className="event-category">{event.category}</span>
           <button
             className={`save-button ${saved ? "saved" : ""}`}
@@ -2533,14 +2598,9 @@ function FeaturedEvent({
   return (
     <article className="featured-event">
       <div
-        role="button"
-        tabIndex={0}
         onClick={onOpen}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") onOpen();
-        }}
       >
-        <img src={event.imageUrl} alt="" />
+        <img src={event.imageUrl} alt={`${event.title}の写真`} />
         <div className="featured-overlay" />
         <div className="featured-content">
           <span className="featured-label">今週のおすすめ</span>
@@ -2549,9 +2609,16 @@ function FeaturedEvent({
             <MapPin size={14} /> {event.location} · {event.startAtLabel}
           </p>
           <div className="featured-action">
-            <span>
+            <button
+              className="featured-detail-link"
+              type="button"
+              onClick={(clickEvent) => {
+                clickEvent.stopPropagation();
+                onOpen();
+              }}
+            >
               詳細を見る <ChevronRight size={15} />
-            </span>
+            </button>
             <button
               className={`save-button ${saved ? "saved" : ""}`}
               title="保存"
@@ -2625,7 +2692,7 @@ function EventDrawer({
           </button>
         </div>
         <div className="detail-visual" aria-hidden="true">
-          <img src={event.imageUrl} alt="" />
+          <img src={event.imageUrl} alt={`${event.title}の写真`} />
           <div className="detail-visual-shade" />
           <div className="detail-visual-copy">
             <span className="detail-visual-badge">{event.category}</span>
@@ -2711,7 +2778,7 @@ function EventDrawer({
                 ? remainingSlots > 0
                   ? "このイベントに参加する"
                   : "定員に達しています"
-                : "デモイベント（閲覧のみ）"}
+                : "現在申請できません"}
           </button>
         </div>
       </section>
@@ -2930,11 +2997,7 @@ function AuthScreen(props: {
                     : "email"
                 }
                 autoComplete="email"
-                placeholder={
-                  props.authMode === "login" && import.meta.env.DEV
-                    ? "you@example.com または admin"
-                    : "you@example.com"
-                }
+                placeholder="you@example.com"
                 value={props.email}
                 onChange={(event) => props.setEmail(event.target.value)}
               />
@@ -3107,11 +3170,6 @@ function AuthScreen(props: {
             </form>
           )}
           {props.message && <div className="form-message">{props.message}</div>}
-          {import.meta.env.DEV && (
-            <p className="auth-environment-note">
-              開発環境：Firebase Emulatorを起動してから操作してください。
-            </p>
-          )}
           <p className="form-footnote">
             {props.accountType === "organization"
               ? "主催者・団体の登録は管理者の確認後に利用できます。"
@@ -3306,6 +3364,12 @@ function OrganizationDashboard({
   const [startAtInput, setStartAtInput] = useState("");
   const [capacity, setCapacity] = useState(20);
   const [category, setCategory] = useState("交流・コミュニティ");
+  const [eventImageFile, setEventImageFile] = useState<File | null>(null);
+  const [eventImagePreview, setEventImagePreview] = useState<string | null>(
+    null,
+  );
+  const [isEventImageReviewOpen, setIsEventImageReviewOpen] = useState(false);
+  const [eventImageInputKey, setEventImageInputKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
@@ -3323,6 +3387,9 @@ function OrganizationDashboard({
     setStartAtInput(toDateTimeInput(event.startAt));
     setCapacity(event.capacity);
     setCategory(event.category);
+    setEventImageFile(null);
+    setEventImagePreview(event.imageUrl);
+    setIsEventImageReviewOpen(false);
     setNotice("イベントを修正して再申請できます。");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -3335,6 +3402,9 @@ function OrganizationDashboard({
     setStartAtInput("");
     setCapacity(20);
     setCategory("交流・コミュニティ");
+    setEventImageFile(null);
+    setEventImagePreview(null);
+    setIsEventImageReviewOpen(false);
   };
 
   const loadEvents = useCallback(async () => {
@@ -3470,6 +3540,10 @@ function OrganizationDashboard({
       setNotice("タイトル、概要、開催日時を入力してください。");
       return;
     }
+    if (!editingEventId && !eventImageFile) {
+      setNotice("イベントの雰囲気が伝わる写真を選択してください。");
+      return;
+    }
     const startAtDate = new Date(startAtInput);
     if (Number.isNaN(startAtDate.getTime())) {
       setNotice("開催日時の形式を確認してください。");
@@ -3478,6 +3552,17 @@ function OrganizationDashboard({
     setIsLoading(true);
     setNotice("");
     try {
+      const eventId = editingEventId ?? doc(collection(db, "events")).id;
+      const currentEvent = events.find((item) => item.id === eventId);
+      const imageUrl = eventImageFile
+        ? await uploadImage(
+            eventImageFile,
+            `event-images/${appUser.uid}/${eventId}/cover-${Date.now()}`,
+          )
+        : currentEvent?.imageUrl;
+      if (!imageUrl) {
+        throw new Error("イベント画像を設定できませんでした。もう一度お試しください。");
+      }
       const eventData = {
         title: title.trim().slice(0, 80),
         summary: summary.trim().slice(0, 220),
@@ -3491,8 +3576,7 @@ function OrganizationDashboard({
         status: "pending_review",
         capacity: Math.max(1, Math.min(capacity, 1000)),
         applicantCount: 0,
-        imageUrl:
-          "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=1200&q=80",
+        imageUrl,
         tags: [category, "学生歓迎"],
         createdBy: appUser.uid,
         updatedAt: serverTimestamp(),
@@ -3503,7 +3587,7 @@ function OrganizationDashboard({
           status: "pending_review",
         });
       } else {
-        await addDoc(collection(db, "events"), {
+        await setDoc(doc(db, "events", eventId), {
           ...eventData,
           createdAt: serverTimestamp(),
         });
@@ -3603,6 +3687,37 @@ function OrganizationDashboard({
                 onChange={(event) => setSummary(event.target.value)}
               />
             </Field>
+            <Field label="イベント写真">
+              <div className="image-picker event-image-picker">
+                <div className="event-image-preview">
+                  {eventImagePreview ? (
+                    <img src={eventImagePreview} alt="イベント画像のプレビュー" />
+                  ) : (
+                    <span>活動の雰囲気が伝わる写真を選択</span>
+                  )}
+                </div>
+                <input
+                  key={eventImageInputKey}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      validateImageFile(file, "イベント画像");
+                      setEventImageFile(file);
+                      setEventImagePreview(URL.createObjectURL(file));
+                      setNotice("");
+                      setIsEventImageReviewOpen(true);
+                    } catch (error) {
+                      setNotice(getFirebaseErrorMessage(error));
+                      event.target.value = "";
+                    }
+                  }}
+                />
+                <small>JPEG・PNG・WebP / 5MB未満</small>
+              </div>
+            </Field>
             <div className="form-grid">
               <Field label="カテゴリ">
                 <select
@@ -3693,6 +3808,25 @@ function OrganizationDashboard({
           </div>
         </section>
       </div>
+      {isEventImageReviewOpen && eventImagePreview && (
+        <ImageReviewDialog
+          title="イベント写真を確認"
+          imageUrl={eventImagePreview}
+          alt="イベント写真の確認用プレビュー"
+          onCancel={() => {
+            setIsEventImageReviewOpen(false);
+            setEventImageFile(null);
+            setEventImagePreview(
+              editingEventId
+                ? events.find((item) => item.id === editingEventId)?.imageUrl ??
+                    null
+                : null,
+            );
+            setEventImageInputKey((current) => current + 1);
+          }}
+          onConfirm={() => setIsEventImageReviewOpen(false)}
+        />
+      )}
       {selectedEventId && (
         <section className="role-card applicant-card">
           <div className="role-card-head">
@@ -3724,6 +3858,16 @@ function OrganizationDashboard({
             <div className="applicant-list">
               {applications.map((application) => (
                 <div className="applicant-row" key={application.id}>
+                  <div className="applicant-avatar">
+                    {application.studentProfileImageUrl ? (
+                      <img
+                        src={application.studentProfileImageUrl}
+                        alt={`${application.studentName}さんのプロフィール画像`}
+                      />
+                    ) : (
+                      <UserRound size={18} />
+                    )}
+                  </div>
                   <div>
                     <strong>{application.studentName}</strong>
                     <small>参加申請 · {application.status}</small>
@@ -4405,33 +4549,6 @@ function LegalDialog({
           ))}
         </div>
       </section>
-    </div>
-  );
-}
-
-function DevStatus({
-  appUser,
-  firebaseUser,
-  onSeed,
-  isLoading,
-}: {
-  appUser: AppUser;
-  firebaseUser: User;
-  onSeed: () => void;
-  isLoading: boolean;
-}) {
-  return (
-    <div className="dev-status">
-      <span>
-        <ShieldCheck size={14} /> 開発環境
-      </span>
-      <i /> Auth接続済み <i /> Firestore接続済み{" "}
-      <button type="button" onClick={onSeed} disabled={isLoading}>
-        <Plus size={14} /> サンプルを追加
-      </button>
-      <small>
-        {firebaseUser.email} · {appUser.status}
-      </small>
     </div>
   );
 }

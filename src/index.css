@@ -511,47 +511,6 @@ input:focus-visible {
   margin: 0 auto;
   padding: 30px 0 42px;
 }
-.dev-status {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 33px;
-  margin-bottom: 18px;
-  padding: 7px 11px;
-  border: 1px solid #cfe1fa;
-  border-radius: 10px;
-  background: #eff6ff;
-  color: #42617f;
-  font-size: 11px;
-  font-weight: 700;
-}
-.dev-status > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: #155eef;
-}
-.dev-status i {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #8db3e7;
-}
-.dev-status button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  border: 0;
-  background: transparent;
-  color: #155eef;
-  font-size: 11px;
-  font-weight: 800;
-}
-.dev-status small {
-  color: #7a8da5;
-  font-weight: 600;
-}
 .welcome-row {
   display: flex;
   align-items: end;
@@ -644,10 +603,12 @@ input:focus-visible {
   box-shadow: 0 8px 24px rgba(41, 71, 110, 0.04);
 }
 .search-launch {
+  width: 100%;
   height: 52px;
   padding: 0 16px;
   border-radius: 14px;
-  cursor: text;
+  cursor: pointer;
+  text-align: left;
   transition: 0.2s ease;
 }
 .search-launch:hover {
@@ -745,7 +706,7 @@ kbd {
   background: #132238;
   box-shadow: 0 18px 40px rgba(32, 57, 86, 0.14);
 }
-.featured-event > div[role="button"] {
+.featured-event > div {
   display: block;
   width: 100%;
   min-height: 290px;
@@ -810,16 +771,21 @@ kbd {
   gap: 10px;
   margin-top: 20px;
 }
-.featured-action > span {
+.featured-detail-link {
   display: inline-flex;
   align-items: center;
   gap: 3px;
   padding: 10px 14px;
+  border: 0;
   border-radius: 8px;
   background: #fff;
   color: #132238;
+  cursor: pointer;
   font-size: 12px;
   font-weight: 900;
+}
+.featured-detail-link:hover {
+  background: #e7f0ff;
 }
 .featured-action .save-button {
   width: 38px;
@@ -1668,7 +1634,7 @@ kbd {
   place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: 11px;
+  border-radius: 50%;
   background: #edf4ff;
   color: #155eef;
 }
@@ -1762,6 +1728,61 @@ kbd {
   min-height: 92px;
   resize: vertical;
 }
+.image-picker {
+  display: grid;
+  gap: 8px;
+}
+.image-picker input[type="file"] {
+  height: auto;
+  padding: 9px;
+  background: #f8fbff;
+  cursor: pointer;
+}
+.image-picker small {
+  color: #8395a8;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.profile-image-preview {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #edf4ff;
+  color: #155eef;
+}
+.profile-image-preview img,
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.event-image-picker {
+  padding: 10px;
+  border: 1px solid #e2eaf2;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+.event-image-preview {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 7;
+  min-height: 120px;
+  margin-bottom: 9px;
+  overflow: hidden;
+  border-radius: 9px;
+  background: #eaf2ff;
+  color: #6c84a1;
+  font-size: 11px;
+  font-weight: 700;
+}
+.event-image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .role-list {
   display: grid;
   gap: 8px;
@@ -1791,10 +1812,26 @@ kbd {
 }
 .role-list-item > span,
 .review-row > div,
-.applicant-row > div:first-child {
+.applicant-row > div:nth-child(2) {
   display: grid;
   min-width: 0;
   gap: 4px;
+}
+.applicant-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #edf4ff;
+  color: #155eef;
+}
+.applicant-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .role-list-item strong,
 .review-row strong,
@@ -1912,9 +1949,85 @@ kbd {
   flex: 0 0 auto;
   width: 70px;
   height: 70px;
-  border-radius: 22px;
+  border-radius: 50%;
   background: #155eef;
   color: #fff;
+}
+.image-review-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(12, 28, 49, 0.58);
+}
+.image-review-dialog {
+  width: min(100%, 460px);
+  max-height: min(720px, calc(100vh - 40px));
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid #dce8f5;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 39, 70, 0.25);
+}
+.image-review-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.image-review-head h2 {
+  margin: 4px 0 0;
+  color: #203852;
+  font-size: 20px;
+}
+.image-review-frame {
+  display: grid;
+  place-items: center;
+  min-height: 260px;
+  margin-top: 18px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #edf4ff;
+}
+.image-review-frame img {
+  display: block;
+  width: 100%;
+  max-height: 380px;
+  object-fit: contain;
+}
+.image-review-frame.circular {
+  width: min(280px, 100%);
+  aspect-ratio: 1;
+  min-height: 0;
+  margin-inline: auto;
+  border-radius: 50%;
+}
+.image-review-frame.circular img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+}
+.image-review-help {
+  margin: 12px 0 0;
+  color: #6f849c;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.image-review-actions {
+  display: flex;
+  justify-content: end;
+  gap: 8px;
+  margin-top: 18px;
+}
+.image-review-actions .primary-action,
+.image-review-actions .secondary-action {
+  width: auto;
+  min-height: 42px;
+  padding-inline: 14px;
 }
 .profile-copy {
   flex: 1;
@@ -2458,12 +2571,6 @@ kbd {
   font-size: 11px;
   font-weight: 800;
 }
-.auth-environment-note {
-  margin: 14px 0 0;
-  color: #71839a;
-  font-size: 11px;
-  line-height: 1.6;
-}
 .verify-card {
   display: grid;
   gap: 14px;
@@ -2750,9 +2857,6 @@ kbd {
     padding-right: 17px;
     padding-left: 17px;
   }
-  .dev-status {
-    display: none;
-  }
   .welcome-row {
     align-items: start;
   }
@@ -2828,7 +2932,10 @@ kbd {
   .profile-avatar {
     width: 58px;
     height: 58px;
-    border-radius: 18px;
+    border-radius: 50%;
+  }
+  .event-image-preview {
+    aspect-ratio: 16 / 9;
   }
   .profile-copy h2 {
     font-size: 22px;

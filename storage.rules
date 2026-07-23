@@ -1,0 +1,44 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userRef(uid) {
+      return firestore.get(
+        /databases/(default)/documents/users/$(uid)
+      );
+    }
+
+    function activeStudent(uid) {
+      return signedIn()
+        && request.auth.uid == uid
+        && userRef(uid).data.role == 'student'
+        && userRef(uid).data.status == 'active';
+    }
+
+    function activeOrganization(uid) {
+      return signedIn()
+        && request.auth.uid == uid
+        && userRef(uid).data.role == 'organization'
+        && userRef(uid).data.status == 'active';
+    }
+
+    function validImage() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    match /profile-images/{userId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if activeStudent(userId) && validImage();
+    }
+
+    match /event-images/{organizationId}/{eventId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if activeOrganization(organizationId) && validImage();
+    }
+  }
+}
