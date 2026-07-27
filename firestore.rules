@@ -31,7 +31,12 @@ service cloud.firestore {
 
     function isActiveOrganization() {
       return hasUser() && userData().role == 'organization'
-        && userData().status == 'active';
+        && userData().status == 'active'
+        && request.auth.token.email_verified == true;
+    }
+
+    function isActiveCreator() {
+      return isActiveStudent() || isActiveOrganization();
     }
 
     function validString(value, min, max) {
@@ -74,6 +79,14 @@ service cloud.firestore {
         && validListItem(value, 7, 40);
     }
 
+    function validTakeaways(value) {
+      return value is list
+        && value.size() <= 3
+        && validListItem(value, 0, 60)
+        && validListItem(value, 1, 60)
+        && validListItem(value, 2, 60);
+    }
+
     function isAizuStudentIdentity(data) {
       return request.auth.token.email == data.email
         && data.email.matches('^[^@]+@u-aizu\\.ac\\.jp$');
@@ -84,11 +97,13 @@ service cloud.firestore {
         'uid', 'role', 'status', 'email', 'displayName', 'university',
         'department', 'grade', 'interests', 'organizationId',
         'organizationName', 'profileImageUrl', 'currentActivities',
-        'wantToTry', 'createdAt', 'updatedAt'
+        'wantToTry', 'reviewReason', 'moderationReason', 'createdAt', 'updatedAt'
       ])
       && data.uid == uid
       && data.role in ['student', 'organization']
       && validOptionalString(data.email, 320)
+      && request.auth.token.email is string
+      && data.email == request.auth.token.email
       && (!data.keys().hasAny(['profileImageUrl'])
         || validOptionalString(data.profileImageUrl, 500))
       && validString(data.displayName, 1, 80)
@@ -100,6 +115,10 @@ service cloud.firestore {
         || validOptionalString(data.currentActivities, 240))
       && (!data.keys().hasAny(['wantToTry'])
         || validOptionalString(data.wantToTry, 240))
+      && (!data.keys().hasAny(['reviewReason'])
+        || validOptionalString(data.reviewReason, 1000))
+      && (!data.keys().hasAny(['moderationReason'])
+        || validOptionalString(data.moderationReason, 1000))
       && data.createdAt is timestamp
       && data.updatedAt is timestamp
       && (
@@ -135,6 +154,8 @@ service cloud.firestore {
       && data.role == 'student'
       && data.status in ['pending_approval', 'active']
       && validOptionalString(data.email, 320)
+      && request.auth.token.email is string
+      && data.email == request.auth.token.email
       && (!data.keys().hasAny(['profileImageUrl'])
         || validOptionalString(data.profileImageUrl, 500))
       && validString(data.displayName, 1, 80)
@@ -158,33 +179,6 @@ service cloud.firestore {
         data.status == 'pending_approval'
         || isAizuStudentIdentity(data)
       );
-    }
-
-    function validEvent(data, uid) {
-      return data.keys().hasOnly([
-        'title', 'summary', 'category', 'location', 'startAtLabel',
-        'startAt', 'organizationName', 'status', 'capacity', 'applicantCount',
-        'imageUrl', 'tags', 'organizationId', 'organizationVerified',
-        'createdBy', 'createdAt', 'updatedAt'
-      ])
-      && data.createdBy == uid
-      && validString(data.title, 1, 80)
-      && validString(data.summary, 1, 220)
-      && validString(data.category, 1, 40)
-      && validString(data.location, 1, 80)
-      && validString(data.startAtLabel, 1, 40)
-      && data.startAt is timestamp
-      && validString(data.organizationName, 1, 100)
-      && validString(data.organizationId, 1, 128)
-      && data.organizationId == uid
-      && data.organizationVerified == true
-      && data.status in ['published', 'pending_review', 'revision_required']
-      && data.capacity is number && data.capacity >= 1 && data.capacity <= 1000
-      && data.applicantCount is number && data.applicantCount >= 0
-      && validString(data.imageUrl, 1, 500)
-      && validTags(data.tags)
-      && data.createdAt is timestamp
-      && data.updatedAt is timestamp;
     }
 
     function validOrganization(data, organizationId) {
@@ -211,7 +205,7 @@ service cloud.firestore {
         && request.resource.data.role == resource.data.role
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'updatedAt'
+          'status', 'reviewReason', 'moderationReason', 'updatedAt'
         ])
         && request.resource.data.status in ['active', 'rejected', 'suspended']
         && request.resource.data.updatedAt is timestamp
@@ -274,44 +268,56 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if isAdmin()
         || (isActiveStudent() && resource.data.status == 'published')
-        || (isActiveOrganization() && resource.data.createdBy == request.auth.uid);
-      allow create: if (
-          isActiveOrganization()
-          && request.resource.data.status == 'pending_review'
-          && validEvent(request.resource.data, request.auth.uid)
-        );
-      allow update: if isAdmin()
-        && resource.data.status == 'pending_review'
-        && request.resource.data.status in ['published', 'revision_required']
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'updatedAt'
-        ])
-        && validEvent(request.resource.data, resource.data.createdBy)
-        || (
-          isActiveOrganization()
-          && resource.data.createdBy == request.auth.uid
+        || (isActiveCreator() && resource.data.createdBy == request.auth.uid);
+      allow create: if false;
+      allow update: if (
+          isAdmin()
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.organizationId == resource.data.organizationId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'revisionReason', 'reviewNote', 'reviewedBy',
+            'reviewedAt', 'moderationReason', 'updatedAt'
+          ])
           && (
             (
-              resource.data.status == 'revision_required'
-              && request.resource.data.status == resource.data.status
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-                'title', 'summary', 'location', 'startAtLabel', 'startAt',
-                'capacity', 'updatedAt'
-              ])
-              && validEvent(request.resource.data, request.auth.uid)
+              resource.data.status == 'pending_review'
+              && request.resource.data.status in [
+                'published', 'revision_required'
+              ]
             )
             || (
-              resource.data.status == 'revision_required'
-              && request.resource.data.status == 'pending_review'
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-                'title', 'summary', 'category', 'location', 'startAtLabel',
-                'startAt', 'organizationName', 'status', 'capacity',
-                'applicantCount', 'imageUrl', 'tags', 'organizationId',
-                'organizationVerified', 'updatedAt'
-              ])
-              && validEvent(request.resource.data, request.auth.uid)
+              resource.data.status == 'published'
+              && request.resource.data.status == 'unpublished'
+            )
+            || (
+              resource.data.status == 'unpublished'
+              && request.resource.data.status == 'published'
             )
           )
+          && request.resource.data.updatedAt is timestamp
+          && (!request.resource.data.keys().hasAny(['revisionReason'])
+            || validOptionalString(request.resource.data.revisionReason, 1000))
+          && (!request.resource.data.keys().hasAny(['reviewNote'])
+            || validOptionalString(request.resource.data.reviewNote, 1000))
+          && (!request.resource.data.keys().hasAny(['reviewedBy'])
+            || validOptionalString(request.resource.data.reviewedBy, 128))
+          && (!request.resource.data.keys().hasAny(['reviewedAt'])
+            || request.resource.data.reviewedAt is timestamp)
+          && (!request.resource.data.keys().hasAny(['moderationReason'])
+            || validOptionalString(request.resource.data.moderationReason, 1000))
+        ) || (
+          isActiveCreator()
+          && resource.data.createdBy == request.auth.uid
+          && resource.data.status in [
+            'published', 'pending_review', 'revision_required'
+          ]
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'cancellationReason', 'cancelledAt', 'updatedAt'
+          ])
+          && validString(request.resource.data.cancellationReason, 1, 500)
+          && request.resource.data.cancelledAt is timestamp
+          && request.resource.data.updatedAt is timestamp
         );
       allow delete: if false;
     }
@@ -319,11 +325,15 @@ service cloud.firestore {
     match /eventApplications/{applicationId} {
       allow read: if isAdmin()
         || (isActiveStudent() && resource.data.studentId == request.auth.uid)
-        || (isActiveOrganization() && resource.data.organizationId == request.auth.uid);
+        || (isActiveCreator() && resource.data.organizationId == request.auth.uid);
       allow create: if false;
-      allow update: if isActiveOrganization()
+      allow update: if isActiveCreator()
         && resource.data.organizationId == request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'organizerNote'
+        ])
+        && (!request.resource.data.keys().hasAny(['organizerNote'])
+          || validOptionalString(request.resource.data.organizerNote, 500))
         && (
           (
             resource.data.status == 'pending'
@@ -333,34 +343,55 @@ service cloud.firestore {
             resource.data.status == 'confirmed'
             && request.resource.data.status in ['attended', 'absent']
           )
+          || (
+            resource.data.status == 'waitlisted'
+            && request.resource.data.status == 'rejected'
+          )
+          || request.resource.data.status == resource.data.status
         )
         || (isActiveStudent()
           && resource.data.studentId == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
-          && resource.data.status in ['pending', 'confirmed']
+          && resource.data.status in ['pending', 'waitlisted', 'confirmed']
           && request.resource.data.status == 'cancelled');
       allow delete: if false;
     }
 
     match /chatRooms/{roomId} {
-      allow read: if signedIn() && request.auth.uid in resource.data.participantIds;
+      function roomEvent() {
+        return get(/databases/$(database)/documents/events/$(resource.data.eventId));
+      }
+
+      allow read: if isActiveCreator()
+        && request.auth.uid in resource.data.participantIds;
       allow create: if false;
-      allow update: if signedIn()
+      allow update: if isActiveCreator()
         && request.auth.uid in resource.data.participantIds
         && resource.data.status == 'active'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'lastMessageText', 'lastMessageAt'
         ])
         && validString(request.resource.data.lastMessageText, 1, 2000)
-        && request.resource.data.lastMessageAt is timestamp;
+        && request.resource.data.lastMessageAt is timestamp
+        || (
+          isActiveCreator()
+          && roomEvent().data.createdBy == request.auth.uid
+          && resource.data.roomType == 'event'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'pinnedMessage', 'organizerNotice', 'updatedAt'
+          ])
+          && validOptionalString(request.resource.data.pinnedMessage, 180)
+          && validOptionalString(request.resource.data.organizerNotice, 220)
+          && request.resource.data.updatedAt is timestamp
+        );
       allow delete: if false;
 
       match /messages/{messageId} {
-        allow read: if signedIn()
+        allow read: if isActiveCreator()
           && request.auth.uid in get(
             /databases/$(database)/documents/chatRooms/$(roomId)
           ).data.participantIds;
-        allow create: if signedIn()
+        allow create: if isActiveCreator()
           && request.auth.uid in get(
             /databases/$(database)/documents/chatRooms/$(roomId)
           ).data.participantIds
@@ -368,15 +399,49 @@ service cloud.firestore {
             /databases/$(database)/documents/chatRooms/$(roomId)
           ).data.status == 'active'
           && request.resource.data.senderId == request.auth.uid
-          && request.resource.data.keys().hasOnly([
-            'roomId', 'senderId', 'senderName', 'type', 'text', 'createdAt'
-          ])
           && request.resource.data.roomId == roomId
-          && request.resource.data.type == 'text'
           && validString(request.resource.data.text, 1, 2000)
           && validString(request.resource.data.senderName, 1, 80)
+          && (
+            (
+              request.resource.data.type == 'text'
+              && request.resource.data.keys().hasOnly([
+                'roomId', 'senderId', 'senderName', 'type', 'text', 'createdAt'
+              ])
+            )
+            || (
+              request.resource.data.type in ['image', 'file']
+              && request.resource.data.keys().hasOnly([
+                'roomId', 'senderId', 'senderName', 'type', 'text',
+                'attachmentUrl', 'attachmentName', 'attachmentType',
+                'attachmentSize', 'createdAt'
+              ])
+              && validString(request.resource.data.attachmentUrl, 1, 1000)
+              && validString(request.resource.data.attachmentName, 1, 200)
+              && validString(request.resource.data.attachmentType, 1, 100)
+              && request.resource.data.attachmentSize is number
+              && request.resource.data.attachmentSize >= 0
+              && request.resource.data.attachmentSize < 10 * 1024 * 1024
+            )
+          )
           && request.resource.data.createdAt is timestamp;
         allow update, delete: if false;
+      }
+
+      match /reads/{userId} {
+        allow read: if isActiveCreator()
+          && request.auth.uid in get(
+            /databases/$(database)/documents/chatRooms/$(roomId)
+          ).data.participantIds;
+        allow create, update: if isActiveCreator()
+          && request.auth.uid == userId
+          && request.auth.uid in get(
+            /databases/$(database)/documents/chatRooms/$(roomId)
+          ).data.participantIds
+          && request.resource.data.keys().hasOnly(['userId', 'readAt'])
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.readAt is timestamp;
+        allow delete: if false;
       }
     }
 
@@ -399,7 +464,20 @@ service cloud.firestore {
         && request.resource.data.isRead is bool
         && (!request.resource.data.keys().hasAny(['readAt'])
           || request.resource.data.readAt is timestamp);
-      allow create, delete: if false;
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'recipientId', 'type', 'title', 'body', 'targetType', 'targetId',
+          'isRead', 'createdAt'
+        ])
+        && validString(request.resource.data.recipientId, 1, 128)
+        && validString(request.resource.data.type, 1, 80)
+        && validString(request.resource.data.title, 1, 160)
+        && validString(request.resource.data.body, 1, 1000)
+        && validString(request.resource.data.targetType, 1, 80)
+        && validString(request.resource.data.targetId, 1, 200)
+        && request.resource.data.isRead == false
+        && request.resource.data.createdAt is timestamp;
+      allow delete: if false;
     }
 
     match /notificationPreferences/{userId} {
@@ -478,6 +556,82 @@ service cloud.firestore {
       allow delete: if isActiveStudent()
         && resource.data.userId == request.auth.uid;
       allow update: if false;
+    }
+
+    match /savedSearches/{savedSearchId} {
+      allow read: if isActiveStudent()
+        && savedSearchId == request.auth.uid + '_default';
+      allow create, update: if isActiveStudent()
+        && savedSearchId == request.auth.uid + '_default'
+        && request.resource.data.keys().hasOnly([
+          'userId', 'searchText', 'category', 'dateFilter', 'dayFilter',
+          'timeFilter', 'feeFilter', 'formatFilter', 'onlyAvailable',
+          'onlyBeginner', 'updatedAt'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && validOptionalString(request.resource.data.searchText, 120)
+        && validString(request.resource.data.category, 1, 40)
+        && request.resource.data.dateFilter in ['すべて', '今週', '今月']
+        && request.resource.data.dayFilter in ['すべて', '平日', '土日']
+        && request.resource.data.timeFilter in ['すべて', '午前', '午後', '夜']
+        && request.resource.data.feeFilter in ['すべて', '無料', '有料']
+        && request.resource.data.formatFilter in [
+          'すべて', '現地', 'オンライン', 'ハイブリッド'
+        ]
+        && request.resource.data.onlyAvailable is bool
+        && request.resource.data.onlyBeginner is bool
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if isActiveStudent()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    match /chatPreferences/{preferenceId} {
+      allow read: if isActiveCreator()
+        && resource.data.userId == request.auth.uid;
+      allow create, update: if isActiveCreator()
+        && preferenceId == request.resource.data.roomId + '_' + request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'userId', 'roomId', 'muted', 'updatedAt'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && validString(request.resource.data.roomId, 1, 200)
+        && request.resource.data.muted is bool
+        && request.resource.data.updatedAt is timestamp
+        && request.auth.uid in get(
+          /databases/$(database)/documents/chatRooms/$(request.resource.data.roomId)
+        ).data.participantIds;
+      allow delete: if isActiveCreator()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    match /publicOrganizerProfiles/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /auditLogs/{auditId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'actorId', 'actorName', 'action', 'targetType', 'targetId',
+          'targetTitle', 'reason', 'createdAt'
+        ])
+        && request.resource.data.actorId == request.auth.uid
+        && validString(request.resource.data.actorName, 1, 80)
+        && validString(request.resource.data.action, 1, 80)
+        && request.resource.data.targetType in ['event', 'user', 'report']
+        && validString(request.resource.data.targetId, 1, 200)
+        && validString(request.resource.data.targetTitle, 1, 200)
+        && validString(request.resource.data.reason, 1, 1000)
+        && request.resource.data.createdAt is timestamp;
+      allow update, delete: if false;
+    }
+
+    match /eventCheckIns/{eventId} {
+      allow read: if isAdmin()
+        || (isActiveCreator()
+          && resource.data.organizerId == request.auth.uid);
+      allow write: if false;
     }
 
     match /{document=**} {

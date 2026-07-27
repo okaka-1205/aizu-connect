@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -18,6 +19,7 @@ import {
 } from "firebase/firestore";
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   onAuthStateChanged,
   reload,
   sendEmailVerification,
@@ -29,10 +31,12 @@ import {
 import { httpsCallable } from "firebase/functions";
 import {
   Bell,
+  CalendarPlus,
   CalendarDays,
   CalendarClock,
   Check,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   CircleUserRound,
   Compass,
@@ -46,20 +50,35 @@ import {
   MapPin,
   MessageCircle,
   MessageSquareText,
+  Pin,
+  Download,
+  ExternalLink,
+  FileText,
+  Filter as FilterIcon,
+  History,
+  Link as LinkIcon,
+  List,
+  Map,
+  Paperclip,
   Plus,
   RefreshCw,
   Search,
+  Send,
   Settings,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserRound,
   UsersRound,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -70,11 +89,12 @@ import { Field } from "./components/Field";
 import { LegalDialog } from "./components/LegalDialog";
 import type { LegalDocument } from "./content/legalDocuments";
 import { useDialogAccessibility } from "./hooks/useDialogAccessibility";
+import communityEventImage from "./assets/event-community.jpg";
+import learningEventImage from "./assets/event-learning.jpg";
+import volunteerEventImage from "./assets/event-volunteer.jpg";
 import { auth, db, functions, storage } from "./lib/firebase";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import {
-  DEV_ADMIN_PASSWORD,
-  DEV_ADMIN_EMAIL,
   categories,
   formatEventStart,
   getFirebaseErrorMessage,
@@ -82,8 +102,10 @@ import {
   isFutureEventStart,
   matchesCategoryFilter,
   normalizeLoginEmail,
+  toCalendarFile,
   toDateTimeInput,
   toDateTimeLocalValue,
+  validateChatAttachment,
   validateImageFile,
   type Filter,
 } from "./lib/appLogic";
@@ -99,6 +121,12 @@ type AccountStatus =
 type Tab = "home" | "search" | "activity" | "messages" | "profile";
 type UserRole = "student" | "organization" | "admin";
 type SearchDateFilter = "すべて" | "今週" | "今月";
+type SearchSort = "開催が近い順" | "人気順" | "新着順";
+type SearchDayFilter = "すべて" | "平日" | "土日";
+type SearchTimeFilter = "すべて" | "午前" | "午後" | "夜";
+type SearchFeeFilter = "すべて" | "無料" | "有料";
+type SearchFormatFilter = "すべて" | "現地" | "オンライン" | "ハイブリッド";
+type SearchView = "list" | "calendar";
 
 type AppUser = {
   uid: string;
@@ -115,6 +143,8 @@ type AppUser = {
   profileImageUrl?: string;
   organizationId?: string;
   organizationName?: string;
+  reviewReason?: string;
+  moderationReason?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 };
@@ -127,16 +157,47 @@ type AizuEvent = {
   location: string;
   startAtLabel: string;
   startAt?: Timestamp;
+  endAtLabel?: string;
+  endAt?: Timestamp;
+  feeType?: "無料" | "有料";
+  feeAmount?: number;
+  eventFormat?: "現地" | "オンライン" | "ハイブリッド";
+  meetingPoint?: string;
+  accessInfo?: string;
+  bringItems?: string;
+  cancellationPolicy?: string;
+  weatherPolicy?: string;
+  accessibility?: string;
+  contactMethod?: string;
   organizationName: string;
-  status: "published" | "pending_review" | "revision_required";
+  status:
+    | "published"
+    | "pending_review"
+    | "revision_required"
+    | "cancelled"
+    | "unpublished";
   capacity: number;
   applicantCount: number;
   imageUrl: string;
   tags: string[];
+  templateKey?: string;
+  beginnerLevel?: "初参加歓迎" | "少し経験者向け" | "誰でも歓迎";
+  takeaways?: string[];
+  atmosphere?: string;
+  organizerDescription?: string;
+  organizerExperience?: string;
+  revisionReason?: string;
+  reviewNote?: string;
+  reviewedBy?: string;
+  reviewedAt?: Timestamp;
+  cancellationReason?: string;
+  cancelledAt?: Timestamp;
+  moderationReason?: string;
   organizationId?: string;
   organizationVerified?: boolean;
   createdBy?: string;
   createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 };
 
 type EventApplication = {
@@ -149,22 +210,39 @@ type EventApplication = {
   organizationName: string;
   organizationId?: string;
   status:
-    "pending" | "confirmed" | "rejected" | "attended" | "absent" | "cancelled";
+    | "pending"
+    | "waitlisted"
+    | "confirmed"
+    | "rejected"
+    | "attended"
+    | "absent"
+    | "cancelled";
+  participantMessage?: string;
+  accessibilityNeeds?: string;
+  emergencyContact?: string;
+  consentAccepted?: boolean;
+  organizerNote?: string;
+  waitlistPosition?: number;
   createdAt?: Timestamp;
 };
 
 type ChatRoom = {
   id: string;
+  roomType?: "application" | "event";
   applicationId: string;
   eventId: string;
   eventTitle: string;
   studentId: string;
   studentName?: string;
   organizationName: string;
+  organizationId?: string;
   participantIds: string[];
   status: "active" | "read_only" | "closed";
   lastMessageText: string;
   lastMessageAt?: Timestamp;
+  pinnedMessage?: string;
+  organizerNotice?: string;
+  updatedAt?: Timestamp;
 };
 
 type ChatMessage = {
@@ -172,9 +250,25 @@ type ChatMessage = {
   roomId: string;
   senderId: string;
   senderName: string;
-  type: "text" | "system";
+  type: "text" | "system" | "image" | "file";
   text: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentType?: string;
+  attachmentSize?: number;
   createdAt?: Timestamp;
+};
+
+type ChatReadReceipt = {
+  userId: string;
+  readAt?: Timestamp;
+};
+
+type ChatPreference = {
+  userId: string;
+  roomId: string;
+  muted: boolean;
+  updatedAt?: Timestamp;
 };
 
 type NotificationItem = {
@@ -202,6 +296,8 @@ type ReportRecord = {
   reason: string;
   description?: string;
   status: "submitted" | "reviewing" | "resolved" | "dismissed";
+  resolution?: string;
+  resolvedAt?: Timestamp;
   createdAt?: Timestamp;
 };
 
@@ -211,10 +307,155 @@ type ActivityRecord = {
   eventId: string;
   title: string;
   organizationName: string;
+  certificateId?: string;
+  participantRole?: string;
+  takeaways?: string[];
   activityYear: number;
   activityMonth: number;
   verificationStatus: "verified" | "revoked";
   createdAt?: Timestamp;
+};
+
+type SavedSearch = {
+  userId: string;
+  searchText: string;
+  category: Filter;
+  dateFilter: SearchDateFilter;
+  dayFilter: SearchDayFilter;
+  timeFilter: SearchTimeFilter;
+  feeFilter: SearchFeeFilter;
+  formatFilter: SearchFormatFilter;
+  onlyAvailable: boolean;
+  onlyBeginner: boolean;
+  updatedAt?: Timestamp;
+};
+
+type PublicOrganizerProfile = {
+  userId: string;
+  displayName: string;
+  description: string;
+  experience: string;
+  publishedEventCount: number;
+  verified: boolean;
+  updatedAt?: Timestamp;
+};
+
+type AuditLog = {
+  id: string;
+  actorId: string;
+  actorName: string;
+  action: string;
+  targetType: "event" | "user" | "report";
+  targetId: string;
+  targetTitle: string;
+  reason: string;
+  createdAt?: Timestamp;
+};
+
+type ApplicationDetails = {
+  participantMessage: string;
+  accessibilityNeeds: string;
+  emergencyContact: string;
+  consentAccepted: boolean;
+};
+
+const eventTemplates = [
+  {
+    key: "交流会",
+    label: "交流会",
+    category: "交流・コミュニティ",
+    title: "学生と地域の交流会",
+    summary:
+      "初めての人も入りやすい少人数の交流会です。会津で活動する人と話しながら、次の一歩を見つけます。",
+    takeaways: [
+      "地域の人とつながる",
+      "話すきっかけを作る",
+      "次に参加したい活動を見つける",
+    ],
+    atmosphere: "少人数で話しやすく、初参加の人にも声をかけながら進めます。",
+    beginnerLevel: "初参加歓迎" as const,
+    imageUrl: communityEventImage,
+  },
+  {
+    key: "勉強会",
+    label: "勉強会",
+    category: "学び・制作",
+    title: "はじめての学び合い会",
+    summary:
+      "テーマに興味がある人が集まり、短いインプットと作業時間で学びを形にするイベントです。",
+    takeaways: [
+      "新しいテーマを学ぶ",
+      "小さな成果物を作る",
+      "一緒に学ぶ仲間を見つける",
+    ],
+    atmosphere: "質問しやすい雰囲気で、知識差があっても参加できます。",
+    beginnerLevel: "誰でも歓迎" as const,
+    imageUrl: learningEventImage,
+  },
+  {
+    key: "ボランティア",
+    label: "地域ボランティア",
+    category: "ボランティア",
+    title: "地域を手伝うボランティア",
+    summary:
+      "地域の現場でできることを一緒に手伝い、活動後に振り返りまで行うイベントです。",
+    takeaways: ["地域課題を知る", "現場で動く経験を得る", "活動実績として残す"],
+    atmosphere: "主催者が役割を案内するので、初めてでも参加しやすいです。",
+    beginnerLevel: "初参加歓迎" as const,
+    imageUrl: volunteerEventImage,
+  },
+] as const;
+
+const defaultTakeaways = [
+  "地域とつながる",
+  "新しい経験を得る",
+  "活動実績として残す",
+];
+
+const csvEscape = (value: string | number | undefined | null) =>
+  `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+const timestampMillis = (value?: Timestamp) => value?.toMillis?.() ?? 0;
+
+const formatChatTime = (value?: Timestamp) =>
+  value
+    ? new Intl.DateTimeFormat("ja-JP", {
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(value.toDate())
+    : "";
+
+const formatChatDay = (value?: Timestamp) =>
+  value
+    ? new Intl.DateTimeFormat("ja-JP", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        weekday: "short",
+      }).format(value.toDate())
+    : "";
+
+const downloadEventCalendar = (event: AizuEvent) => {
+  const startAt = event.startAt?.toDate();
+  if (!startAt) return;
+  const calendar = toCalendarFile({
+    id: event.id,
+    title: event.title,
+    summary: event.summary,
+    location: event.meetingPoint || event.location,
+    startAt,
+    endAt: event.endAt?.toDate(),
+  });
+  const url = URL.createObjectURL(
+    new Blob([calendar], { type: "text/calendar;charset=utf-8" }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${event.title}.ics`;
+  link.click();
+  URL.revokeObjectURL(url);
 };
 
 type NotificationPreferences = {
@@ -273,8 +514,19 @@ function App() {
   const [searchText, setSearchText] = useState("");
   const [searchDateFilter, setSearchDateFilter] =
     useState<SearchDateFilter>("すべて");
+  const [searchSort, setSearchSort] = useState<SearchSort>("開催が近い順");
+  const [searchDayFilter, setSearchDayFilter] =
+    useState<SearchDayFilter>("すべて");
+  const [searchTimeFilter, setSearchTimeFilter] =
+    useState<SearchTimeFilter>("すべて");
+  const [searchFeeFilter, setSearchFeeFilter] =
+    useState<SearchFeeFilter>("すべて");
+  const [searchFormatFilter, setSearchFormatFilter] =
+    useState<SearchFormatFilter>("すべて");
+  const [searchView, setSearchView] = useState<SearchView>("list");
   const [onlyAvailableEvents, setOnlyAvailableEvents] = useState(false);
   const [onlyBeginnerEvents, setOnlyBeginnerEvents] = useState(false);
+  const [savedSearch, setSavedSearch] = useState<SavedSearch | null>(null);
   const [savedEventIds, setSavedEventIds] = useState<string[]>([]);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
@@ -285,8 +537,17 @@ function App() {
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
   const [applicationToCancel, setApplicationToCancel] =
     useState<EventApplication | null>(null);
+  const [applicationEvent, setApplicationEvent] = useState<AizuEvent | null>(
+    null,
+  );
+  const [chatReadReceipts, setChatReadReceipts] = useState<ChatReadReceipt[]>(
+    [],
+  );
+  const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
   const [notificationPreferences, setNotificationPreferences] =
     useState<NotificationPreferences>(() => defaultNotificationPreferences(""));
+  const [isCreatorDashboardOpen, setIsCreatorDashboardOpen] = useState(false);
+  const authenticatedUidRef = useRef<string | null>(null);
 
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === selectedEventId),
@@ -309,7 +570,7 @@ function App() {
     const now = new Date();
     const weekLimit = new Date(now);
     weekLimit.setDate(now.getDate() + 7);
-    return upcomingEvents.filter((event) => {
+    const filtered = upcomingEvents.filter((event) => {
       const matchesFilter = matchesCategoryFilter(event.category, filter);
       const matchesSearch =
         !normalized ||
@@ -318,6 +579,9 @@ function App() {
           event.summary,
           event.location,
           event.organizationName,
+          event.beginnerLevel ?? "",
+          event.atmosphere ?? "",
+          ...(event.takeaways ?? []),
           ...event.tags,
         ]
           .join(" ")
@@ -338,23 +602,106 @@ function App() {
         !onlyAvailableEvents ||
         Number(event.applicantCount ?? 0) < Number(event.capacity ?? 0);
       const matchesBeginner =
-        !onlyBeginnerEvents || event.tags.some((tag) => tag.includes("初心者"));
+        !onlyBeginnerEvents ||
+        event.beginnerLevel === "初参加歓迎" ||
+        event.tags.some((tag) => tag.includes("初心者"));
+      const eventDay = eventDate?.getDay();
+      const matchesDay =
+        searchDayFilter === "すべて" ||
+        eventDay === undefined ||
+        (searchDayFilter === "土日"
+          ? eventDay === 0 || eventDay === 6
+          : eventDay >= 1 && eventDay <= 5);
+      const eventHour = eventDate?.getHours();
+      const matchesTime =
+        searchTimeFilter === "すべて" ||
+        eventHour === undefined ||
+        (searchTimeFilter === "午前"
+          ? eventHour < 12
+          : searchTimeFilter === "午後"
+            ? eventHour >= 12 && eventHour < 18
+            : eventHour >= 18);
+      const matchesFee =
+        searchFeeFilter === "すべて" ||
+        (event.feeType ?? "無料") === searchFeeFilter;
+      const matchesFormat =
+        searchFormatFilter === "すべて" ||
+        (event.eventFormat ?? "現地") === searchFormatFilter;
       return (
         matchesFilter &&
         matchesSearch &&
         matchesDate &&
         matchesCapacity &&
-        matchesBeginner
+        matchesBeginner &&
+        matchesDay &&
+        matchesTime &&
+        matchesFee &&
+        matchesFormat
       );
+    });
+    return filtered.sort((left, right) => {
+      if (searchSort === "人気順") {
+        return (
+          Number(right.applicantCount ?? 0) -
+          Number(left.applicantCount ?? 0)
+        );
+      }
+      if (searchSort === "新着順") {
+        return timestampMillis(right.createdAt) - timestampMillis(left.createdAt);
+      }
+      return timestampMillis(left.startAt) - timestampMillis(right.startAt);
     });
   }, [
     filter,
     onlyAvailableEvents,
     onlyBeginnerEvents,
+    searchDayFilter,
     searchDateFilter,
+    searchFeeFilter,
+    searchFormatFilter,
+    searchSort,
     searchText,
+    searchTimeFilter,
     upcomingEvents,
   ]);
+
+  const recommendedEvent = useMemo(() => {
+    const interests = appUser?.interests ?? [];
+    return [...upcomingEvents].sort((left, right) => {
+      const score = (event: AizuEvent) => {
+        const searchable = [
+          event.category,
+          event.title,
+          ...event.tags,
+          ...(event.takeaways ?? []),
+        ].join(" ");
+        const interestScore = interests.filter((interest) =>
+          searchable.includes(interest),
+        ).length;
+        const daysUntil = Math.max(
+          0,
+          (timestampMillis(event.startAt) - Date.now()) / 86_400_000,
+        );
+        return interestScore * 100 - daysUntil;
+      };
+      return score(right) - score(left);
+    })[0];
+  }, [appUser?.interests, upcomingEvents]);
+
+  const recommendationLabel = useMemo(() => {
+    if (!recommendedEvent) return "開催日が近いイベント";
+    const searchable = [
+      recommendedEvent.category,
+      recommendedEvent.title,
+      ...recommendedEvent.tags,
+    ].join(" ");
+    if (appUser?.interests.some((interest) => searchable.includes(interest))) {
+      return "興味に合うおすすめ";
+    }
+    const daysUntil =
+      (timestampMillis(recommendedEvent.startAt) - Date.now()) / 86_400_000;
+    return daysUntil <= 7 ? "7日以内に開催" : "開催日が近いイベント";
+  }, [appUser?.interests, recommendedEvent]);
 
   useEffect(() => {
     const openSearch = (event: KeyboardEvent) => {
@@ -367,24 +714,82 @@ function App() {
     return () => window.removeEventListener("keydown", openSearch);
   }, []);
 
+  const activityYear = new Date().getFullYear();
   const activityByMonth = useMemo(() => {
     const months = Array.from({ length: 12 }, (_, index) => ({
       month: index + 1,
       count: 0,
     }));
     activities.forEach((activity) => {
-      if (activity.verificationStatus !== "verified") return;
+      if (
+        activity.verificationStatus !== "verified" ||
+        activity.activityYear !== activityYear
+      ) {
+        return;
+      }
       const month = Math.max(1, Math.min(12, activity.activityMonth));
       months[month - 1].count += 1;
     });
     return months;
-  }, [activities]);
+  }, [activities, activityYear]);
+
+  const unreadChatCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    notifications.forEach((notification) => {
+      if (
+        !notification.isRead &&
+        notification.targetType === "chat" &&
+        notification.targetId
+      ) {
+        counts[notification.targetId] =
+          (counts[notification.targetId] ?? 0) + 1;
+      }
+    });
+    return counts;
+  }, [notifications]);
+  const unreadChatTotal = Object.values(unreadChatCounts).reduce(
+    (total, count) => total + count,
+    0,
+  );
 
   useEffect(() => {
     let unsubscribeProfile: (() => void) | null = null;
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       unsubscribeProfile?.();
       unsubscribeProfile = null;
+      if (authenticatedUidRef.current !== (user?.uid ?? null)) {
+        authenticatedUidRef.current = user?.uid ?? null;
+        setActiveTab("home");
+        setSelectedEventId(null);
+        setActiveRoomId(null);
+        setMessageDraft("");
+        setSearchText("");
+        setFilter("すべて");
+        setSearchDateFilter("すべて");
+        setSearchDayFilter("すべて");
+        setSearchTimeFilter("すべて");
+        setSearchFeeFilter("すべて");
+        setSearchFormatFilter("すべて");
+        setSearchSort("開催が近い順");
+        setSearchView("list");
+        setOnlyAvailableEvents(false);
+        setOnlyBeginnerEvents(false);
+        setIsNotificationOpen(false);
+        setIsCreatorDashboardOpen(false);
+        setApplicationEvent(null);
+        setApplicationToCancel(null);
+        setReportTarget(null);
+        setEvents([]);
+        setApplications([]);
+        setChatRooms([]);
+        setChatMessages([]);
+        setChatReadReceipts([]);
+        setChatPreferences([]);
+        setNotifications([]);
+        setActivities([]);
+        setSavedEventIds([]);
+        setSavedSearch(null);
+      }
       setFirebaseUser(user);
       setAppUser(null);
       if (!user) {
@@ -405,8 +810,11 @@ function App() {
           setIsAuthLoading(false);
         },
         (error) => {
-          setMessage(getFirebaseErrorMessage(error));
+          setMessage(
+            `アカウント情報を読み込めませんでした。再ログインしてください。${getFirebaseErrorMessage(error)}`,
+          );
           setIsAuthLoading(false);
+          void signOut(auth);
         },
       );
     });
@@ -422,6 +830,8 @@ function App() {
       setApplications([]);
       setChatRooms([]);
       setActiveRoomId(null);
+      setChatPreferences([]);
+      setChatReadReceipts([]);
       return;
     }
     void loadProductData(appUser.uid).catch((error) => {
@@ -429,12 +839,36 @@ function App() {
     });
   }, [appUser]);
 
+  useEffect(() => {
+    if (!appUser || appUser.status !== "active" || appUser.role !== "student") {
+      return;
+    }
+    const applicationsQuery = query(
+      collection(db, "eventApplications"),
+      where("studentId", "==", appUser.uid),
+      limit(100),
+    );
+    return onSnapshot(
+      applicationsQuery,
+      (snapshot) =>
+        setApplications(
+          snapshot.docs.map((applicationDoc) => ({
+            id: applicationDoc.id,
+            ...applicationDoc.data(),
+          })) as EventApplication[],
+        ),
+      (error) => setMessage(getFirebaseErrorMessage(error)),
+    );
+  }, [appUser]);
+
   const loadProductData = async (uid: string) => {
     const eventSnapshot = await getDocs(
       query(
         collection(db, "events"),
         where("status", "==", "published"),
-        limit(20),
+        where("startAt", ">=", Timestamp.now()),
+        orderBy("startAt", "asc"),
+        limit(50),
       ),
     );
     const loadedEvents = eventSnapshot.docs.map((eventDoc) => ({
@@ -452,7 +886,7 @@ function App() {
       query(
         collection(db, "eventApplications"),
         where("studentId", "==", uid),
-        limit(20),
+        limit(100),
       ),
     );
     setApplications(
@@ -466,7 +900,7 @@ function App() {
       query(
         collection(db, "chatRooms"),
         where("participantIds", "array-contains", uid),
-        limit(20),
+        limit(100),
       ),
     );
     const rooms = roomSnapshot.docs.map((roomDoc) => ({
@@ -475,6 +909,19 @@ function App() {
     })) as ChatRoom[];
     setChatRooms(rooms);
     setActiveRoomId((current) => current ?? rooms[0]?.id ?? null);
+
+    const chatPreferenceSnapshot = await getDocs(
+      query(
+        collection(db, "chatPreferences"),
+        where("userId", "==", uid),
+        limit(100),
+      ),
+    );
+    setChatPreferences(
+      chatPreferenceSnapshot.docs.map((preferenceDoc) => ({
+        ...(preferenceDoc.data() as ChatPreference),
+      })),
+    );
 
     const savedSnapshot = await getDocs(
       query(
@@ -529,6 +976,15 @@ function App() {
       ...(preferenceSnapshot.exists() ? preferenceSnapshot.data() : {}),
       userId: uid,
     } as NotificationPreferences);
+
+    const savedSearchSnapshot = await getDoc(
+      doc(db, "savedSearches", `${uid}_default`),
+    );
+    setSavedSearch(
+      savedSearchSnapshot.exists()
+        ? (savedSearchSnapshot.data() as SavedSearch)
+        : null,
+    );
   };
 
   useEffect(() => {
@@ -557,18 +1013,49 @@ function App() {
     );
   }, [activeRoomId]);
 
+  useEffect(() => {
+    if (!activeRoomId || !appUser) {
+      setChatReadReceipts([]);
+      return;
+    }
+    void setDoc(
+      doc(db, "chatRooms", activeRoomId, "reads", appUser.uid),
+      {
+        userId: appUser.uid,
+        readAt: serverTimestamp(),
+      },
+      { merge: true },
+    ).catch((error: unknown) => setMessage(getFirebaseErrorMessage(error)));
+    return onSnapshot(
+      collection(db, "chatRooms", activeRoomId, "reads"),
+      (snapshot) =>
+        setChatReadReceipts(
+          snapshot.docs.map((receiptDoc) => ({
+            ...(receiptDoc.data() as ChatReadReceipt),
+          })),
+        ),
+      (error) => setMessage(getFirebaseErrorMessage(error)),
+    );
+  }, [activeRoomId, appUser]);
+
   const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage("");
+    const devAdminEmail = import.meta.env.DEV
+      ? (import.meta.env.VITE_DEV_ADMIN_EMAIL ?? "").trim().toLowerCase()
+      : "";
+    const devAdminPassword = import.meta.env.DEV
+      ? (import.meta.env.VITE_DEV_ADMIN_PASSWORD ?? "")
+      : "";
     const normalizedEmail =
       authMode === "login"
-        ? normalizeLoginEmail(email, import.meta.env.DEV)
+        ? normalizeLoginEmail(email, devAdminEmail)
         : email.trim().toLowerCase();
     const normalizedPassword =
-      import.meta.env.DEV &&
-      normalizedEmail === DEV_ADMIN_EMAIL &&
+      devAdminEmail &&
+      normalizedEmail === devAdminEmail &&
       password === "admin"
-        ? DEV_ADMIN_PASSWORD
+        ? devAdminPassword
         : password;
     if (!normalizedEmail || !password) {
       setMessage("メールアドレスとパスワードを入力してください。");
@@ -579,16 +1066,17 @@ function App() {
         setMessage("パスワードは6文字以上にしてください。");
         return;
       }
-      if (accountType === "organization" && !organizationName.trim()) {
-        setMessage("団体名を入力してください。");
-        return;
-      }
       if (accountType === "student" && !displayName.trim()) {
         setMessage("表示名を入力してください。");
         return;
       }
+      if (accountType === "organization" && !organizationName.trim()) {
+        setMessage("団体・自治体名を入力してください。");
+        return;
+      }
     }
     setIsActionLoading(true);
+    let createdUser: User | null = null;
     try {
       if (authMode === "login") {
         await signInWithEmailAndPassword(
@@ -596,7 +1084,7 @@ function App() {
           normalizedEmail,
           normalizedPassword,
         );
-        setMessage("ログインしました。活動を探しにいきましょう。");
+        setMessage("");
         return;
       }
       const credential = await createUserWithEmailAndPassword(
@@ -604,6 +1092,7 @@ function App() {
         normalizedEmail,
         password,
       );
+      createdUser = credential.user;
       const interests = interestText
         .split(",")
         .map((interest) => interest.trim())
@@ -613,55 +1102,50 @@ function App() {
         .trim()
         .slice(0, 240);
       const normalizedWantToTry = wantToTry.trim().slice(0, 240);
-      const status: AccountStatus = isAizuUniversityEmail(normalizedEmail)
+      const isStudent = accountType === "student";
+      const isAizuStudent =
+        isStudent && isAizuUniversityEmail(normalizedEmail);
+      const status: AccountStatus = isAizuStudent
         ? "active"
         : "pending_approval";
-      const isOrganization = accountType === "organization";
+      const normalizedOrganizationName = organizationName.trim().slice(0, 100);
+      const normalizedDisplayName = isStudent
+        ? displayName.trim().slice(0, 80)
+        : normalizedOrganizationName.slice(0, 80);
       const userData: AppUser = {
         uid: credential.user.uid,
-        role: isOrganization ? "organization" : "student",
-        status: isOrganization ? "pending_approval" : status,
+        role: accountType,
+        status,
         email: credential.user.email,
-        displayName: isOrganization
-          ? organizationName || displayName
-          : displayName,
-        university: isOrganization
-          ? "主催者・団体"
-          : isAizuUniversityEmail(normalizedEmail)
+        displayName: normalizedDisplayName,
+        university: isStudent
+          ? isAizuStudent
             ? "会津大学"
-            : "承認待ち大学",
-        department,
-        grade,
-        interests,
-        currentActivities: normalizedCurrentActivities,
-        wantToTry: normalizedWantToTry,
-        ...(isOrganization
+            : "承認待ち大学"
+          : "主催者・団体",
+        department: isStudent ? department.trim().slice(0, 80) : "",
+        grade: isStudent ? grade : 0,
+        interests: isStudent ? interests : [],
+        ...(isStudent
           ? {
-              organizationId: credential.user.uid,
-              organizationName: organizationName || displayName,
+              currentActivities: normalizedCurrentActivities,
+              wantToTry: normalizedWantToTry,
             }
-          : {}),
+          : {
+              organizationId: credential.user.uid,
+              organizationName: normalizedOrganizationName,
+            }),
       };
-      await setDoc(doc(db, "users", credential.user.uid), {
+      const batch = writeBatch(db);
+      batch.set(doc(db, "users", credential.user.uid), {
         ...userData,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      if (isOrganization) {
-        await setDoc(doc(db, "organizations", credential.user.uid), {
-          id: credential.user.uid,
-          displayName: organizationName || displayName,
-          description: "",
-          contactEmail: credential.user.email,
-          status: "pending_approval",
-          createdBy: credential.user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        await setDoc(doc(db, "studentProfiles", credential.user.uid), {
+      if (isStudent) {
+        batch.set(doc(db, "studentProfiles", credential.user.uid), {
           ...userData,
-          verificationMethod: isAizuUniversityEmail(email)
+          verificationMethod: isAizuStudent
             ? "university_email"
             : "manual_review",
           profileCompletionRate: 80,
@@ -669,10 +1153,21 @@ function App() {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
+      } else {
+        batch.set(doc(db, "organizations", credential.user.uid), {
+          id: credential.user.uid,
+          displayName: normalizedOrganizationName,
+          description: "",
+          contactEmail: normalizedEmail,
+          status: "pending_approval",
+          createdBy: credential.user.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
       }
-      let registrationMessage = isOrganization
-        ? "登録しました。管理者の承認後に活動を掲載できます。"
-        : status === "active"
+      await batch.commit();
+      let registrationMessage =
+        status === "active"
           ? "登録完了。会津で参加できる活動を見つけよう。"
           : "登録しました。管理者の承認後に利用できます。";
       try {
@@ -683,8 +1178,10 @@ function App() {
       setAppUser(userData);
       setMessage(registrationMessage);
     } catch (error) {
-      if (authMode === "register" && auth.currentUser) {
-        await signOut(auth).catch(() => undefined);
+      if (createdUser) {
+        await deleteUser(createdUser).catch(async () => {
+          await signOut(auth).catch(() => undefined);
+        });
       }
       setMessage(getFirebaseErrorMessage(error));
     } finally {
@@ -692,7 +1189,10 @@ function App() {
     }
   };
 
-  const applyToEvent = async (eventToApply: AizuEvent) => {
+  const applyToEvent = async (
+    eventToApply: AizuEvent,
+    details: ApplicationDetails,
+  ) => {
     if (!appUser) return;
     if (!eventToApply.createdBy) {
       setMessage(
@@ -704,15 +1204,23 @@ function App() {
     setMessage("");
     try {
       const submitApplication = httpsCallable<
-        { eventId: string },
-        { applicationId: string }
+        { eventId: string } & ApplicationDetails,
+        { applicationId: string; status: "pending" | "waitlisted" }
       >(functions, "submitApplication");
-      const result = await submitApplication({ eventId: eventToApply.id });
+      const result = await submitApplication({
+        eventId: eventToApply.id,
+        ...details,
+      });
       const applicationId = result.data.applicationId;
+      const applicationStatus = result.data.status;
       await loadProductData(appUser.uid);
       setActiveRoomId(applicationId);
-      setActiveTab("messages");
-      setMessage("参加申請を送信しました。主催者からの連絡を待ちましょう。");
+      setActiveTab(applicationStatus === "waitlisted" ? "activity" : "messages");
+      setMessage(
+        applicationStatus === "waitlisted"
+          ? "キャンセル待ちに登録しました。空きが出たら通知します。"
+          : "参加申請を送信しました。主催者からの連絡を待ちましょう。",
+      );
     } catch (error) {
       setMessage(getFirebaseErrorMessage(error));
     } finally {
@@ -720,12 +1228,45 @@ function App() {
     }
   };
 
+  const uploadChatAttachment = async (file: File) => {
+    if (!appUser || !activeRoomId) return;
+    validateChatAttachment(file);
+    const attachmentUrl = await uploadImage(
+      file,
+      `chat-attachments/${activeRoomId}/${appUser.uid}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+    );
+    const messageType = file.type.startsWith("image/") ? "image" : "file";
+    const roomRef = doc(db, "chatRooms", activeRoomId);
+    const messageRef = doc(collection(roomRef, "messages"));
+    const batch = writeBatch(db);
+    batch.set(messageRef, {
+      roomId: activeRoomId,
+      senderId: appUser.uid,
+      senderName: appUser.displayName,
+      type: messageType,
+      text: file.name.slice(0, 200),
+      attachmentUrl,
+      attachmentName: file.name.slice(0, 200),
+      attachmentType: file.type,
+      attachmentSize: file.size,
+      createdAt: serverTimestamp(),
+    });
+    batch.update(roomRef, {
+      lastMessageText: `${messageType === "image" ? "画像" : "ファイル"}を送信しました`,
+      lastMessageAt: serverTimestamp(),
+    });
+    await batch.commit();
+  };
+
   const sendMessage = async () => {
     if (!appUser || !activeRoomId || !messageDraft.trim()) return;
     const text = messageDraft.trim().slice(0, 2000);
     setMessageDraft("");
     try {
-      await addDoc(collection(db, "chatRooms", activeRoomId, "messages"), {
+      const roomRef = doc(db, "chatRooms", activeRoomId);
+      const messageRef = doc(collection(roomRef, "messages"));
+      const batch = writeBatch(db);
+      batch.set(messageRef, {
         roomId: activeRoomId,
         senderId: appUser.uid,
         senderName: appUser.displayName,
@@ -733,22 +1274,77 @@ function App() {
         text,
         createdAt: serverTimestamp(),
       });
-      await setDoc(
-        doc(db, "chatRooms", activeRoomId),
-        {
-          lastMessageText: text,
-          lastMessageAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
+      batch.update(roomRef, {
+        lastMessageText: text,
+        lastMessageAt: serverTimestamp(),
+      });
+      await batch.commit();
     } catch (error) {
       setMessageDraft((current) => current || text);
       setMessage(getFirebaseErrorMessage(error));
     }
   };
 
+  const selectChatRoom = (roomId: string) => {
+    setActiveRoomId(roomId);
+    const unread = notifications.filter(
+      (notification) =>
+        !notification.isRead &&
+        notification.targetType === "chat" &&
+        notification.targetId === roomId,
+    );
+    if (unread.length === 0) return;
+    setNotifications((current) =>
+      current.map((notification) =>
+        unread.some((item) => item.id === notification.id)
+          ? { ...notification, isRead: true }
+          : notification,
+      ),
+    );
+    void Promise.all(
+      unread.map((notification) =>
+        updateDoc(doc(db, "notifications", notification.id), {
+          isRead: true,
+          readAt: serverTimestamp(),
+        }),
+      ),
+    ).catch((error: unknown) => setMessage(getFirebaseErrorMessage(error)));
+  };
+
+  const toggleChatMute = async (roomId: string) => {
+    if (!appUser) return;
+    const current = chatPreferences.find(
+      (preference) => preference.roomId === roomId,
+    );
+    const next: ChatPreference = {
+      userId: appUser.uid,
+      roomId,
+      muted: !current?.muted,
+    };
+    setChatPreferences((preferences) => [
+      ...preferences.filter((preference) => preference.roomId !== roomId),
+      next,
+    ]);
+    try {
+      await setDoc(
+        doc(db, "chatPreferences", `${roomId}_${appUser.uid}`),
+        { ...next, updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+    } catch (error) {
+      setChatPreferences((preferences) => [
+        ...preferences.filter((preference) => preference.roomId !== roomId),
+        ...(current ? [current] : []),
+      ]);
+      setMessage(getFirebaseErrorMessage(error));
+    }
+  };
+
   const cancelApplication = async (application: EventApplication) => {
-    if (!appUser || !["pending", "confirmed"].includes(application.status)) {
+    if (
+      !appUser ||
+      !["pending", "waitlisted", "confirmed"].includes(application.status)
+    ) {
       return;
     }
     setIsActionLoading(true);
@@ -764,6 +1360,20 @@ function App() {
     } finally {
       setIsActionLoading(false);
     }
+  };
+
+  const checkInApplication = async (
+    application: EventApplication,
+    code: string,
+  ) => {
+    if (!appUser) return;
+    const checkIn = httpsCallable<
+      { eventId: string; code: string },
+      { status: "attended" }
+    >(functions, "checkInToEvent");
+    await checkIn({ eventId: application.eventId, code });
+    await loadProductData(appUser.uid);
+    setMessage("受付が完了しました。活動実績へ反映します。");
   };
 
   const submitReport = async (reason: string, description: string) => {
@@ -803,9 +1413,24 @@ function App() {
     setIsNotificationOpen(false);
     setSelectedEventId(null);
     setActiveRoomId(null);
+    setIsCreatorDashboardOpen(false);
     setApplicationToCancel(null);
+    setApplicationEvent(null);
     setReportTarget(null);
     setAuthMode("login");
+    setActiveTab("home");
+    setSearchText("");
+    setFilter("すべて");
+    setSearchDateFilter("すべて");
+    setSearchDayFilter("すべて");
+    setSearchTimeFilter("すべて");
+    setSearchFeeFilter("すべて");
+    setSearchFormatFilter("すべて");
+    setSearchSort("開催が近い順");
+    setSearchView("list");
+    setOnlyAvailableEvents(false);
+    setOnlyBeginnerEvents(false);
+    setMessageDraft("");
     await signOut(auth);
   };
 
@@ -855,7 +1480,7 @@ function App() {
         onLogout={() => void handleLogout()}
       />
     );
-  if (appUser.status === "rejected")
+  if (["rejected", "suspended"].includes(appUser.status))
     return (
       <AccountRejectedScreen
         appUser={appUser}
@@ -875,11 +1500,58 @@ function App() {
     );
   }
   if (appUser.role === "admin") {
-    return <AdminDashboard onLogout={() => void handleLogout()} />;
+    return (
+      <AdminDashboard
+        appUser={appUser}
+        onLogout={() => void handleLogout()}
+      />
+    );
+  }
+  if (isCreatorDashboardOpen) {
+    return (
+      <OrganizationDashboard
+        appUser={appUser}
+        onClose={() => setIsCreatorDashboardOpen(false)}
+        onLogout={() => void handleLogout()}
+      />
+    );
   }
 
   const hasApplied = (eventId: string) =>
     applications.some((application) => application.eventId === eventId);
+  const saveCurrentSearch = async () => {
+    const nextSearch: SavedSearch = {
+      userId: appUser.uid,
+      searchText,
+      category: filter,
+      dateFilter: searchDateFilter,
+      dayFilter: searchDayFilter,
+      timeFilter: searchTimeFilter,
+      feeFilter: searchFeeFilter,
+      formatFilter: searchFormatFilter,
+      onlyAvailable: onlyAvailableEvents,
+      onlyBeginner: onlyBeginnerEvents,
+    };
+    await setDoc(
+      doc(db, "savedSearches", `${appUser.uid}_default`),
+      { ...nextSearch, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+    setSavedSearch(nextSearch);
+    setMessage("検索条件を保存しました。条件に合う新着イベントを通知します。");
+  };
+  const applySavedSearch = () => {
+    if (!savedSearch) return;
+    setSearchText(savedSearch.searchText);
+    setFilter(savedSearch.category);
+    setSearchDateFilter(savedSearch.dateFilter);
+    setSearchDayFilter(savedSearch.dayFilter);
+    setSearchTimeFilter(savedSearch.timeFilter);
+    setSearchFeeFilter(savedSearch.feeFilter);
+    setSearchFormatFilter(savedSearch.formatFilter);
+    setOnlyAvailableEvents(savedSearch.onlyAvailable);
+    setOnlyBeginnerEvents(savedSearch.onlyBeginner);
+  };
   const toggleSaved = (eventId: string) => {
     if (!appUser) return;
     const saved = savedEventIds.includes(eventId);
@@ -922,6 +1594,14 @@ function App() {
             <MapPin size={15} /> 会津若松市 <ChevronRight size={14} />
           </div>
           <div className="header-actions">
+            <button
+              className="creator-entry-button"
+              type="button"
+              onClick={() => setIsCreatorDashboardOpen(true)}
+            >
+              <Plus size={16} />
+              企画
+            </button>
             <button
               className="icon-button"
               title="通知"
@@ -1013,7 +1693,7 @@ function App() {
             <button
               type="button"
               onClick={() => setMessage("")}
-              aria-label="通知を閉じる"
+              aria-label="お知らせを閉じる"
             >
               <X size={16} />
             </button>
@@ -1023,6 +1703,8 @@ function App() {
           <HomeTab
             {...{
               events: upcomingEvents,
+              recommendedEvent,
+              recommendationLabel,
               applications,
               savedEventIds,
               selectedEvent,
@@ -1030,7 +1712,7 @@ function App() {
               setSelectedEventId,
               toggleSaved,
               hasApplied,
-              applyToEvent,
+              requestApplication: setApplicationEvent,
               isActionLoading,
               setActiveTab,
               setFilter,
@@ -1059,10 +1741,28 @@ function App() {
               setSelectedEventId,
               selectedEvent,
               hasApplied,
-              applyToEvent,
+              requestApplication: setApplicationEvent,
               isActionLoading,
               searchDateFilter,
               setSearchDateFilter,
+              searchSort,
+              setSearchSort,
+              searchDayFilter,
+              setSearchDayFilter,
+              searchTimeFilter,
+              setSearchTimeFilter,
+              searchFeeFilter,
+              setSearchFeeFilter,
+              searchFormatFilter,
+              setSearchFormatFilter,
+              searchView,
+              setSearchView,
+              savedSearch,
+              onSaveSearch: () =>
+                void saveCurrentSearch().catch((error) =>
+                  setMessage(getFirebaseErrorMessage(error)),
+                ),
+              onApplySavedSearch: applySavedSearch,
               onlyAvailableEvents,
               setOnlyAvailableEvents,
               onlyBeginnerEvents,
@@ -1071,6 +1771,10 @@ function App() {
                 setSearchText("");
                 setFilter("すべて");
                 setSearchDateFilter("すべて");
+                setSearchDayFilter("すべて");
+                setSearchTimeFilter("すべて");
+                setSearchFeeFilter("すべて");
+                setSearchFormatFilter("すべて");
                 setOnlyAvailableEvents(false);
                 setOnlyBeginnerEvents(false);
               },
@@ -1090,11 +1794,24 @@ function App() {
             {...{
               applications,
               activities,
+              userName: appUser.displayName,
+              activityYear,
               activityByMonth,
               events,
               setSelectedEventId,
               setActiveTab,
+              onOpenMessages: (eventId: string) => {
+                const room =
+                  chatRooms.find(
+                    (item) =>
+                      item.eventId === eventId && item.roomType !== "event",
+                  ) ?? chatRooms.find((item) => item.eventId === eventId);
+                if (room) selectChatRoom(room.id);
+                setActiveTab("messages");
+              },
               onCancelApplication: setApplicationToCancel,
+              onCheckIn: (application: EventApplication, code: string) =>
+                checkInApplication(application, code),
             }}
           />
         )}
@@ -1104,9 +1821,22 @@ function App() {
             activeRoomId={activeRoomId}
             messages={chatMessages}
             draft={messageDraft}
-            onSelectRoom={setActiveRoomId}
+            unreadCounts={unreadChatCounts}
+            readReceipts={chatReadReceipts}
+            mutedRoomIds={chatPreferences
+              .filter((preference) => preference.muted)
+              .map((preference) => preference.roomId)}
+            onSelectRoom={selectChatRoom}
+            onToggleMute={(roomId) => void toggleChatMute(roomId)}
             onDraftChange={setMessageDraft}
             onSend={() => void sendMessage()}
+            onUploadAttachment={async (file) => {
+              try {
+                await uploadChatAttachment(file);
+              } catch (error) {
+                setMessage(getFirebaseErrorMessage(error));
+              }
+            }}
             onReportMessage={(chatMessage) =>
               setReportTarget({
                 targetType: "message",
@@ -1117,6 +1847,10 @@ function App() {
             currentUserId={appUser.uid}
             currentUserRole="student"
             onOpenActivity={() => setActiveTab("activity")}
+            onOpenEvent={(eventId) => {
+              setSelectedEventId(eventId);
+              setActiveTab("search");
+            }}
           />
         )}
         {activeTab === "profile" && (
@@ -1172,6 +1906,7 @@ function App() {
               setNotificationPreferences(nextPreferences);
             }}
             onOpenActivity={() => setActiveTab("activity")}
+            onOpenCreatorDashboard={() => setIsCreatorDashboardOpen(true)}
             onOpenSavedEvent={(eventId) => {
               setSelectedEventId(eventId);
               setActiveTab("search");
@@ -1197,13 +1932,13 @@ function App() {
           active={activeTab === "activity"}
           icon={<CalendarDays size={19} />}
           label="活動"
-          badge={applications.length || undefined}
           onClick={() => setActiveTab("activity")}
         />
         <TabButton
           active={activeTab === "messages"}
           icon={<MessageSquareText size={19} />}
           label="メッセージ"
+          badge={unreadChatTotal || undefined}
           onClick={() => setActiveTab("messages")}
         />
         <TabButton
@@ -1221,6 +1956,18 @@ function App() {
           onSubmit={(reason, description) =>
             void submitReport(reason, description)
           }
+        />
+      )}
+      {applicationEvent && (
+        <ApplicationDialog
+          event={applicationEvent}
+          isSubmitting={isActionLoading}
+          onClose={() => setApplicationEvent(null)}
+          onSubmit={(details) => {
+            const eventToApply = applicationEvent;
+            setApplicationEvent(null);
+            void applyToEvent(eventToApply, details);
+          }}
         />
       )}
       {applicationToCancel && (
@@ -1243,6 +1990,8 @@ function App() {
 
 function HomeTab(props: {
   events: AizuEvent[];
+  recommendedEvent?: AizuEvent;
+  recommendationLabel: string;
   applications: EventApplication[];
   savedEventIds: string[];
   selectedEvent?: AizuEvent;
@@ -1250,7 +1999,7 @@ function HomeTab(props: {
   setSelectedEventId: (id: string) => void;
   toggleSaved: (id: string) => void;
   hasApplied: (id: string) => boolean;
-  applyToEvent: (event: AizuEvent) => Promise<void>;
+  requestApplication: (event: AizuEvent) => void;
   isActionLoading: boolean;
   setActiveTab: (tab: Tab) => void;
   setFilter: (value: Filter) => void;
@@ -1258,13 +2007,15 @@ function HomeTab(props: {
 }) {
   const {
     events,
+    recommendedEvent,
+    recommendationLabel,
     applications,
     savedEventIds,
     selectedEventId,
     setSelectedEventId,
     toggleSaved,
     hasApplied,
-    applyToEvent,
+    requestApplication,
     isActionLoading,
     setActiveTab,
     setFilter,
@@ -1336,12 +2087,13 @@ function HomeTab(props: {
               action="すべて見る"
               onClick={() => setActiveTab("search")}
             />
-            {events[0] && (
+            {recommendedEvent && (
               <FeaturedEvent
-                event={events[0]}
-                saved={savedEventIds.includes(events[0].id)}
-                onSave={() => toggleSaved(events[0].id)}
-                onOpen={() => setSelectedEventId(events[0].id)}
+                event={recommendedEvent}
+                label={recommendationLabel}
+                saved={savedEventIds.includes(recommendedEvent.id)}
+                onSave={() => toggleSaved(recommendedEvent.id)}
+                onOpen={() => setSelectedEventId(recommendedEvent.id)}
               />
             )}
           </section>
@@ -1370,7 +2122,7 @@ function HomeTab(props: {
             <EventDrawer
               event={props.selectedEvent}
               applied={hasApplied(props.selectedEvent.id)}
-              onApply={() => void applyToEvent(props.selectedEvent!)}
+              onApply={() => requestApplication(props.selectedEvent!)}
               isLoading={isActionLoading}
               onReport={() => props.onReport(props.selectedEvent!)}
               onClose={() => setSelectedEventId("")}
@@ -1394,10 +2146,25 @@ function SearchTab(props: {
   setSelectedEventId: (id: string) => void;
   selectedEvent?: AizuEvent;
   hasApplied: (id: string) => boolean;
-  applyToEvent: (event: AizuEvent) => Promise<void>;
+  requestApplication: (event: AizuEvent) => void;
   isActionLoading: boolean;
   searchDateFilter: SearchDateFilter;
   setSearchDateFilter: (value: SearchDateFilter) => void;
+  searchSort: SearchSort;
+  setSearchSort: (value: SearchSort) => void;
+  searchDayFilter: SearchDayFilter;
+  setSearchDayFilter: (value: SearchDayFilter) => void;
+  searchTimeFilter: SearchTimeFilter;
+  setSearchTimeFilter: (value: SearchTimeFilter) => void;
+  searchFeeFilter: SearchFeeFilter;
+  setSearchFeeFilter: (value: SearchFeeFilter) => void;
+  searchFormatFilter: SearchFormatFilter;
+  setSearchFormatFilter: (value: SearchFormatFilter) => void;
+  searchView: SearchView;
+  setSearchView: (value: SearchView) => void;
+  savedSearch: SavedSearch | null;
+  onSaveSearch: () => void;
+  onApplySavedSearch: () => void;
   onlyAvailableEvents: boolean;
   setOnlyAvailableEvents: (value: boolean) => void;
   onlyBeginnerEvents: boolean;
@@ -1405,6 +2172,22 @@ function SearchTab(props: {
   onResetFilters: () => void;
   onReport: (event: AizuEvent) => void;
 }) {
+  const calendarGroups = props.filteredEvents.reduce<Record<string, AizuEvent[]>>(
+    (groups, event) => {
+      const date = event.startAt?.toDate();
+      const key = date
+        ? new Intl.DateTimeFormat("ja-JP", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            weekday: "short",
+          }).format(date)
+        : "日時未定";
+      groups[key] = [...(groups[key] ?? []), event];
+      return groups;
+    },
+    {},
+  );
   return (
     <section className="tab-page">
       <div className="page-title">
@@ -1477,8 +2260,139 @@ function SearchTab(props: {
           初心者歓迎
         </label>
       </div>
+      <div className="search-control-grid">
+        <label>
+          <span>曜日</span>
+          <select
+            aria-label="曜日で絞り込む"
+            value={props.searchDayFilter}
+            onChange={(event) =>
+              props.setSearchDayFilter(event.target.value as SearchDayFilter)
+            }
+          >
+            <option>すべて</option>
+            <option>平日</option>
+            <option>土日</option>
+          </select>
+        </label>
+        <label>
+          <span>時間帯</span>
+          <select
+            aria-label="時間帯で絞り込む"
+            value={props.searchTimeFilter}
+            onChange={(event) =>
+              props.setSearchTimeFilter(event.target.value as SearchTimeFilter)
+            }
+          >
+            <option>すべて</option>
+            <option>午前</option>
+            <option>午後</option>
+            <option>夜</option>
+          </select>
+        </label>
+        <label>
+          <span>料金</span>
+          <select
+            aria-label="料金で絞り込む"
+            value={props.searchFeeFilter}
+            onChange={(event) =>
+              props.setSearchFeeFilter(event.target.value as SearchFeeFilter)
+            }
+          >
+            <option>すべて</option>
+            <option>無料</option>
+            <option>有料</option>
+          </select>
+        </label>
+        <label>
+          <span>開催形式</span>
+          <select
+            aria-label="開催形式で絞り込む"
+            value={props.searchFormatFilter}
+            onChange={(event) =>
+              props.setSearchFormatFilter(
+                event.target.value as SearchFormatFilter,
+              )
+            }
+          >
+            <option>すべて</option>
+            <option>現地</option>
+            <option>オンライン</option>
+            <option>ハイブリッド</option>
+          </select>
+        </label>
+        <label>
+          <span>並び順</span>
+          <select
+            aria-label="イベントの並び順"
+            value={props.searchSort}
+            onChange={(event) =>
+              props.setSearchSort(event.target.value as SearchSort)
+            }
+          >
+            <option>開催が近い順</option>
+            <option>人気順</option>
+            <option>新着順</option>
+          </select>
+        </label>
+      </div>
+      <div className="search-toolbar">
+        <div className="view-switch" aria-label="表示形式">
+          <button
+            className={props.searchView === "list" ? "active" : ""}
+            type="button"
+            title="一覧表示"
+            aria-label="一覧表示"
+            onClick={() => props.setSearchView("list")}
+          >
+            <List size={16} />
+          </button>
+          <button
+            className={props.searchView === "calendar" ? "active" : ""}
+            type="button"
+            title="日付別表示"
+            aria-label="日付別表示"
+            onClick={() => props.setSearchView("calendar")}
+          >
+            <CalendarDays size={16} />
+          </button>
+        </div>
+        <div className="saved-search-actions">
+          {props.savedSearch && (
+            <button type="button" onClick={props.onApplySavedSearch}>
+              <RefreshCw size={14} />
+              保存条件を適用
+            </button>
+          )}
+          <button type="button" onClick={props.onSaveSearch}>
+            <Bell size={14} />
+            この条件を保存
+          </button>
+        </div>
+      </div>
       {props.filteredEvents.length === 0 ? (
         <EmptySearchResults onReset={props.onResetFilters} />
+      ) : props.searchView === "calendar" ? (
+        <div className="calendar-event-groups">
+          {Object.entries(calendarGroups).map(([date, events]) => (
+            <section key={date}>
+              <h3>{date}</h3>
+              <div className="event-grid search-grid">
+                {events.map((event) => (
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    saved={props.savedEventIds.includes(event.id)}
+                    selected={props.selectedEventId === event.id}
+                    applied={props.hasApplied(event.id)}
+                    onSave={() => props.toggleSaved(event.id)}
+                    onOpen={() => props.setSelectedEventId(event.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       ) : (
         <div className="event-grid search-grid">
           {props.filteredEvents.map((event) => (
@@ -1498,7 +2412,7 @@ function SearchTab(props: {
         <EventDrawer
           event={props.selectedEvent}
           applied={props.hasApplied(props.selectedEvent.id)}
-          onApply={() => void props.applyToEvent(props.selectedEvent!)}
+          onApply={() => props.requestApplication(props.selectedEvent!)}
           isLoading={props.isActionLoading}
           onReport={() => props.onReport(props.selectedEvent!)}
           onClose={() => props.setSelectedEventId("")}
@@ -1511,6 +2425,7 @@ function SearchTab(props: {
 const applicationStatusLabel = (status: EventApplication["status"]) => {
   const labels: Record<EventApplication["status"], string> = {
     pending: "主催者確認中",
+    waitlisted: "キャンセル待ち",
     confirmed: "参加確定",
     rejected: "見送り",
     attended: "出席確認済み",
@@ -1526,7 +2441,12 @@ function ApplicationStatusTimeline({
   status: EventApplication["status"];
 }) {
   const terminal = status === "rejected" || status === "cancelled";
-  const currentStep = status === "pending" ? 1 : status === "confirmed" ? 2 : 3;
+  const currentStep =
+    status === "pending" || status === "waitlisted"
+      ? 1
+      : status === "confirmed"
+        ? 2
+        : 3;
   return (
     <div className={`application-timeline ${terminal ? "terminal" : ""}`}>
       {[
@@ -1556,12 +2476,34 @@ function ApplicationStatusTimeline({
 function ActivityTab(props: {
   applications: EventApplication[];
   activities: ActivityRecord[];
+  userName: string;
+  activityYear: number;
   activityByMonth: { month: number; count: number }[];
   events: AizuEvent[];
   setSelectedEventId: (id: string) => void;
   setActiveTab: (tab: Tab) => void;
+  onOpenMessages: (eventId: string) => void;
   onCancelApplication: (application: EventApplication) => void;
+  onCheckIn: (
+    application: EventApplication,
+    code: string,
+  ) => Promise<void>;
 }) {
+  const [selectedCertificate, setSelectedCertificate] =
+    useState<ActivityRecord | null>(null);
+  const [checkInCodes, setCheckInCodes] = useState<Record<string, string>>({});
+  const [checkingInId, setCheckingInId] = useState<string | null>(null);
+  const [checkInError, setCheckInError] = useState("");
+  const [checkInErrorId, setCheckInErrorId] = useState<string | null>(null);
+  const verifiedActivities = props.activities.filter(
+    (activity) => activity.verificationStatus === "verified",
+  );
+  const uniqueOrganizations = new Set(
+    verifiedActivities.map((activity) => activity.organizationName),
+  ).size;
+  const portfolioTakeaways = Array.from(
+    new Set(verifiedActivities.flatMap((activity) => activity.takeaways ?? [])),
+  ).slice(0, 5);
   return (
     <section className="tab-page">
       <div className="page-title">
@@ -1579,10 +2521,31 @@ function ActivityTab(props: {
         <div className="activity-card-head">
           <div>
             <p className="eyebrow">ACTIVITY PORTFOLIO</p>
-            <h3>2026年の活動</h3>
+            <h3>{props.activityYear}年の活動</h3>
           </div>
           <Sparkles size={20} />
         </div>
+        <div className="portfolio-summary">
+          <span>
+            <strong>{verifiedActivities.length}</strong>
+            <small>証明済み活動</small>
+          </span>
+          <span>
+            <strong>{uniqueOrganizations}</strong>
+            <small>つながった主催</small>
+          </span>
+          <span>
+            <strong>{portfolioTakeaways.length}</strong>
+            <small>経験タグ</small>
+          </span>
+        </div>
+        {portfolioTakeaways.length > 0 && (
+          <div className="portfolio-tags">
+            {portfolioTakeaways.map((takeaway) => (
+              <span key={takeaway}>{takeaway}</span>
+            ))}
+          </div>
+        )}
         <div className="month-grid">
           {props.activityByMonth.map((item) => (
             <div
@@ -1625,52 +2588,129 @@ function ActivityTab(props: {
             </button>
           </div>
         ) : (
-          props.applications.map((application) => (
-            <div className="application-item" key={application.id}>
-              <div className="date-block">
-                {(() => {
-                  const event = props.events.find(
-                    (item) => item.id === application.eventId,
-                  );
-                  const eventDate = event?.startAt?.toDate();
-                  return (
-                    <>
-                      <strong>{eventDate?.getDate() ?? "--"}</strong>
-                      <span>
-                        {eventDate ? `${eventDate.getMonth() + 1}月` : "予定"}
-                      </span>
-                    </>
-                  );
-                })()}
+          props.applications.map((application) => {
+            const relatedEvent = props.events.find(
+              (item) => item.id === application.eventId,
+            );
+            const eventDate = relatedEvent?.startAt?.toDate();
+            return (
+              <div className="application-item" key={application.id}>
+                <div className="date-block">
+                  <strong>{eventDate?.getDate() ?? "--"}</strong>
+                  <span>
+                    {eventDate ? `${eventDate.getMonth() + 1}月` : "予定"}
+                  </span>
+                </div>
+                <div className="application-copy">
+                  <strong>{application.eventTitle}</strong>
+                  <span>{application.organizationName}</span>
+                  <small>
+                    {application.status === "confirmed"
+                      ? "参加確定。開催前にメッセージで詳細を確認しましょう。"
+                      : application.status === "waitlisted"
+                        ? `キャンセル待ち${application.waitlistPosition ? ` ${application.waitlistPosition}番目` : ""}です。空きが出たら通知します。`
+                        : application.status === "attended"
+                        ? "出席が確認され、活動実績に反映されています。"
+                        : application.status === "rejected"
+                          ? "今回は参加できませんでした。別の活動を探してみましょう。"
+                          : "申請後の連絡はメッセージから確認できます。"}
+                  </small>
+                  <ApplicationStatusTimeline status={application.status} />
+                  <div className="application-quick-actions">
+                    {relatedEvent && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          props.setSelectedEventId(relatedEvent.id);
+                          props.setActiveTab("search");
+                        }}
+                      >
+                        <Eye size={13} />
+                        詳細を見る
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => props.onOpenMessages(application.eventId)}
+                    >
+                      <MessageCircle size={13} />
+                      連絡を見る
+                    </button>
+                  </div>
+                  {application.status === "confirmed" && (
+                    <form
+                      className="student-check-in"
+                      onSubmit={(submitEvent) => {
+                        submitEvent.preventDefault();
+                        const code = checkInCodes[application.id] ?? "";
+                        if (!/^\d{6}$/.test(code)) {
+                          setCheckInError("6桁の受付コードを入力してください。");
+                          setCheckInErrorId(application.id);
+                          return;
+                        }
+                        setCheckingInId(application.id);
+                        setCheckInError("");
+                        setCheckInErrorId(null);
+                        void props
+                          .onCheckIn(application, code)
+                          .catch((error) => {
+                            setCheckInError(getFirebaseErrorMessage(error));
+                            setCheckInErrorId(application.id);
+                          })
+                          .finally(() => setCheckingInId(null));
+                      }}
+                    >
+                      <input
+                        aria-label={`${application.eventTitle}の受付コード`}
+                        inputMode="numeric"
+                        pattern="[0-9]{6}"
+                        maxLength={6}
+                        placeholder="当日の6桁受付コード"
+                        value={checkInCodes[application.id] ?? ""}
+                        onChange={(changeEvent) =>
+                          setCheckInCodes((current) => ({
+                            ...current,
+                            [application.id]: changeEvent.target.value.replace(
+                              /\D/g,
+                              "",
+                            ),
+                          }))
+                        }
+                      />
+                      <button
+                        type="submit"
+                        disabled={checkingInId === application.id}
+                      >
+                        {checkingInId === application.id ? (
+                          <Loader2 size={13} className="spin" />
+                        ) : (
+                          <Check size={13} />
+                        )}
+                        受付する
+                      </button>
+                    </form>
+                  )}
+                  {checkInError && checkInErrorId === application.id && (
+                    <small className="inline-error">{checkInError}</small>
+                  )}
+                </div>
+                <span className="status-chip">
+                  {applicationStatusLabel(application.status)}
+                </span>
+                {["pending", "waitlisted", "confirmed"].includes(
+                  application.status,
+                ) && (
+                  <button
+                    className="text-button application-cancel"
+                    type="button"
+                    onClick={() => props.onCancelApplication(application)}
+                  >
+                    キャンセル
+                  </button>
+                )}
               </div>
-              <div className="application-copy">
-                <strong>{application.eventTitle}</strong>
-                <span>{application.organizationName}</span>
-                <small>
-                  {application.status === "confirmed"
-                    ? "参加確定。開催前にメッセージで詳細を確認しましょう。"
-                    : application.status === "attended"
-                      ? "出席が確認され、活動実績に反映されています。"
-                      : application.status === "rejected"
-                        ? "今回は参加できませんでした。別の活動を探してみましょう。"
-                        : "申請後の連絡はメッセージから確認できます。"}
-                </small>
-                <ApplicationStatusTimeline status={application.status} />
-              </div>
-              <span className="status-chip">
-                {applicationStatusLabel(application.status)}
-              </span>
-              {["pending", "confirmed"].includes(application.status) && (
-                <button
-                  className="text-button application-cancel"
-                  type="button"
-                  onClick={() => props.onCancelApplication(application)}
-                >
-                  キャンセル
-                </button>
-              )}
-            </div>
-          ))
+            );
+          })
         )}
       </div>
       <SectionHeading eyebrow="VERIFIED HISTORY" title="活動実績" />
@@ -1695,11 +2735,40 @@ function ActivityTab(props: {
                     ? "主催者確認済み"
                     : "無効"}
                 </small>
+                <div className="certificate-card">
+                  <span>
+                    <ShieldCheck size={14} />
+                    活動証明 {activity.certificateId ?? activity.id}
+                  </span>
+                  <small>{activity.participantRole ?? "参加者"}</small>
+                </div>
+                <button
+                  className="certificate-open-button"
+                  type="button"
+                  onClick={() => setSelectedCertificate(activity)}
+                >
+                  <FileText size={14} />
+                  証明書を表示・共有
+                </button>
+                {activity.takeaways && activity.takeaways.length > 0 && (
+                  <div className="activity-takeaways">
+                    {activity.takeaways.slice(0, 3).map((takeaway) => (
+                      <span key={takeaway}>{takeaway}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             </article>
           ))
         )}
       </div>
+      {selectedCertificate && (
+        <CertificateDialog
+          activity={selectedCertificate}
+          userName={props.userName}
+          onClose={() => setSelectedCertificate(null)}
+        />
+      )}
     </section>
   );
 }
@@ -1709,31 +2778,125 @@ function MessagesTab({
   activeRoomId,
   messages,
   draft,
+  unreadCounts = {},
+  readReceipts = [],
+  mutedRoomIds = [],
   onSelectRoom,
+  onToggleMute,
   onDraftChange,
   onSend,
+  onUploadAttachment,
   onReportMessage,
+  onSaveRoomMeta,
   currentUserId,
   currentUserRole,
   onOpenActivity,
+  onOpenEvent,
 }: {
   rooms: ChatRoom[];
   activeRoomId: string | null;
   messages: ChatMessage[];
   draft: string;
+  unreadCounts?: Record<string, number>;
+  readReceipts?: ChatReadReceipt[];
+  mutedRoomIds?: string[];
   onSelectRoom: (roomId: string) => void;
+  onToggleMute?: (roomId: string) => void;
   onDraftChange: (value: string) => void;
   onSend: () => void;
+  onUploadAttachment?: (file: File) => Promise<void> | void;
   onReportMessage?: (message: ChatMessage) => void;
+  onSaveRoomMeta?: (
+    room: ChatRoom,
+    updates: Pick<ChatRoom, "pinnedMessage" | "organizerNotice">,
+  ) => Promise<void>;
   currentUserId: string;
   currentUserRole: "student" | "organization";
   onOpenActivity?: () => void;
+  onOpenEvent?: (eventId: string) => void;
 }) {
   const activeRoom = rooms.find((room) => room.id === activeRoomId);
+  const [pinnedDraft, setPinnedDraft] = useState("");
+  const [noticeDraft, setNoticeDraft] = useState("");
+  const [isMetaEditing, setIsMetaEditing] = useState(false);
+  const [isMetaSaving, setIsMetaSaving] = useState(false);
+  const [roomTypeFilter, setRoomTypeFilter] = useState<
+    "all" | "event" | "application"
+  >("all");
+  const [roomSearch, setRoomSearch] = useState("");
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [attachmentInputKey, setAttachmentInputKey] = useState(0);
+  const conversationListRef = useRef<HTMLDivElement>(null);
+  const chatPanelRef = useRef<HTMLDivElement>(null);
+  const selectRoom = (roomId: string) => {
+    onSelectRoom(roomId);
+    if (window.matchMedia("(max-width: 620px)").matches) {
+      window.requestAnimationFrame(() =>
+        chatPanelRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        }),
+      );
+    }
+  };
   const getCounterpartName = (room: ChatRoom) =>
-    currentUserRole === "organization"
-      ? room.studentName || "参加学生"
-      : room.organizationName;
+    room.roomType === "event"
+      ? "イベント全体"
+      : currentUserRole === "organization"
+        ? room.studentName || "参加学生"
+        : room.organizationName;
+  const getRoomSubtitle = (room: ChatRoom) =>
+    room.roomType === "event"
+      ? `${room.eventTitle} · 全体チャット`
+      : room.eventTitle;
+  const messagePlaceholder =
+    activeRoom?.roomType === "event"
+      ? "全体チャットにメッセージを送る"
+      : currentUserRole === "organization"
+        ? "参加者にメッセージを送る"
+        : "主催者にメッセージを送る";
+  const visibleRooms = [...rooms]
+    .filter(
+      (room) =>
+        roomTypeFilter === "all" || room.roomType === roomTypeFilter,
+    )
+    .filter((room) => !unreadOnly || Boolean(unreadCounts[room.id]))
+    .filter((room) => {
+      const normalized = roomSearch.trim().toLowerCase();
+      return (
+        !normalized ||
+        [
+          room.eventTitle,
+          room.studentName ?? "",
+          room.organizationName,
+          room.lastMessageText,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalized)
+      );
+    })
+    .sort(
+      (left, right) =>
+        timestampMillis(right.lastMessageAt) -
+        timestampMillis(left.lastMessageAt),
+    );
+  const otherReadAt = Math.max(
+    0,
+    ...readReceipts
+      .filter((receipt) => receipt.userId !== currentUserId)
+      .map((receipt) => timestampMillis(receipt.readAt)),
+  );
+  const lastOwnMessageIndex = messages.findLastIndex(
+    (chatMessage) =>
+      chatMessage.senderId === currentUserId && chatMessage.type !== "system",
+  );
+  useEffect(() => {
+    setPinnedDraft(activeRoom?.pinnedMessage ?? "");
+    setNoticeDraft(activeRoom?.organizerNotice ?? "");
+    setIsMetaEditing(false);
+  }, [activeRoom?.id, activeRoom?.organizerNotice, activeRoom?.pinnedMessage]);
   return (
     <section className="tab-page">
       <div className="page-title">
@@ -1757,35 +2920,226 @@ function MessagesTab({
         </div>
       ) : (
         <div className="conversation-layout">
-          <div className="conversation-list">
-            {rooms.map((room) => (
-              <button
-                className={`conversation-item ${room.id === activeRoomId ? "active" : ""}`}
-                key={room.id}
-                type="button"
-                onClick={() => onSelectRoom(room.id)}
-              >
-                <div className="conversation-avatar">
-                  <UsersRound size={19} />
-                </div>
-                <div>
-                  <strong>{getCounterpartName(room)}</strong>
-                  <span>{room.eventTitle}</span>
-                  <small>{room.lastMessageText}</small>
-                </div>
-                <ChevronRight size={17} />
-              </button>
-            ))}
+          <div className="conversation-list" ref={conversationListRef}>
+            <div className="conversation-tools">
+              <div className="conversation-search">
+                <Search size={14} />
+                <input
+                  aria-label="チャットを検索"
+                  placeholder="イベント・参加者を検索"
+                  value={roomSearch}
+                  onChange={(event) => setRoomSearch(event.target.value)}
+                />
+              </div>
+              <div className="conversation-filters" aria-label="チャット種別">
+                {(
+                  [
+                    ["all", "すべて"],
+                    ["event", "全体"],
+                    ["application", "個別"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    className={roomTypeFilter === value ? "active" : ""}
+                    type="button"
+                    key={value}
+                    onClick={() => setRoomTypeFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <button
+                  className={unreadOnly ? "active" : ""}
+                  type="button"
+                  onClick={() => setUnreadOnly((current) => !current)}
+                >
+                  未読
+                </button>
+              </div>
+            </div>
+            {visibleRooms.length === 0 ? (
+              <div className="conversation-no-results">
+                <Search size={18} />
+                条件に合うチャットはありません
+              </div>
+            ) : (
+              visibleRooms.map((room) => (
+                <button
+                  className={`conversation-item ${room.id === activeRoomId ? "active" : ""}`}
+                  key={room.id}
+                  type="button"
+                  onClick={() => selectRoom(room.id)}
+                >
+                  <div className="conversation-avatar">
+                    {room.roomType === "event" ? (
+                      <UsersRound size={19} />
+                    ) : (
+                      <UserRound size={19} />
+                    )}
+                  </div>
+                  <div>
+                    <strong>{getCounterpartName(room)}</strong>
+                    <span>{getRoomSubtitle(room)}</span>
+                    <small>{room.lastMessageText}</small>
+                    <time>{formatChatTime(room.lastMessageAt)}</time>
+                  </div>
+                  {mutedRoomIds.includes(room.id) && <VolumeX size={14} />}
+                  {unreadCounts[room.id] ? (
+                    <em className="unread-badge">{unreadCounts[room.id]}</em>
+                  ) : null}
+                  <ChevronRight size={17} />
+                </button>
+              ))
+            )}
           </div>
           {activeRoom && (
-            <div className="chat-panel">
+            <div className="chat-panel" ref={chatPanelRef}>
               <div className="chat-panel-head">
-                <div>
-                  <span>イベントチャット</span>
-                  <strong>{activeRoom.eventTitle}</strong>
+                <div className="chat-panel-title">
+                  <button
+                    className="icon-button mobile-chat-back"
+                    type="button"
+                    title="チャット一覧へ戻る"
+                    aria-label="チャット一覧へ戻る"
+                    onClick={() =>
+                      conversationListRef.current?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      })
+                    }
+                  >
+                    <ChevronLeft size={17} />
+                  </button>
+                  <div>
+                    <span>
+                      {activeRoom.roomType === "event"
+                        ? "全体チャット"
+                        : "個別チャット"}
+                    </span>
+                    <strong>{activeRoom.eventTitle}</strong>
+                  </div>
                 </div>
-                <small>{getCounterpartName(activeRoom)}</small>
+                <div className="chat-head-actions">
+                  <small>{getCounterpartName(activeRoom)}</small>
+                  {onOpenEvent && (
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title="イベント詳細"
+                      aria-label="イベント詳細を開く"
+                      onClick={() => onOpenEvent(activeRoom.eventId)}
+                    >
+                      <CalendarDays size={15} />
+                    </button>
+                  )}
+                  {onToggleMute && (
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title={
+                        mutedRoomIds.includes(activeRoom.id)
+                          ? "通知をオン"
+                          : "通知をオフ"
+                      }
+                      aria-label={
+                        mutedRoomIds.includes(activeRoom.id)
+                          ? "このチャットの通知をオンにする"
+                          : "このチャットの通知をオフにする"
+                      }
+                      aria-pressed={mutedRoomIds.includes(activeRoom.id)}
+                      onClick={() => onToggleMute(activeRoom.id)}
+                    >
+                      {mutedRoomIds.includes(activeRoom.id) ? (
+                        <VolumeX size={15} />
+                      ) : (
+                        <Volume2 size={15} />
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
+              {(activeRoom.pinnedMessage || activeRoom.organizerNotice) && (
+                <div className="chat-info-stack">
+                  {activeRoom.pinnedMessage && (
+                    <div className="chat-info-card">
+                      <Pin size={15} />
+                      <span>
+                        <strong>固定メッセージ</strong>
+                        <small>{activeRoom.pinnedMessage}</small>
+                      </span>
+                    </div>
+                  )}
+                  {activeRoom.organizerNotice && (
+                    <div className="chat-info-card notice-card">
+                      <Bell size={15} />
+                      <span>
+                        <strong>主催者からのお知らせ</strong>
+                        <small>{activeRoom.organizerNotice}</small>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {currentUserRole === "organization" &&
+                activeRoom.roomType === "event" &&
+                onSaveRoomMeta && (
+                  <div className="chat-meta-editor">
+                    {isMetaEditing ? (
+                      <form
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          setIsMetaSaving(true);
+                          void onSaveRoomMeta(activeRoom, {
+                            pinnedMessage: pinnedDraft.trim().slice(0, 180),
+                            organizerNotice: noticeDraft.trim().slice(0, 220),
+                          }).finally(() => {
+                            setIsMetaSaving(false);
+                            setIsMetaEditing(false);
+                          });
+                        }}
+                      >
+                        <input
+                          aria-label="固定メッセージ"
+                          maxLength={180}
+                          value={pinnedDraft}
+                          placeholder="集合場所、持ち物などを固定"
+                          onChange={(event) =>
+                            setPinnedDraft(event.target.value)
+                          }
+                        />
+                        <input
+                          aria-label="主催者からのお知らせ"
+                          maxLength={220}
+                          value={noticeDraft}
+                          placeholder="当日の変更や連絡事項"
+                          onChange={(event) =>
+                            setNoticeDraft(event.target.value)
+                          }
+                        />
+                        <div className="row-actions">
+                          <button type="submit" disabled={isMetaSaving}>
+                            保存
+                          </button>
+                          <button
+                            className="muted"
+                            type="button"
+                            onClick={() => setIsMetaEditing(false)}
+                          >
+                            閉じる
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsMetaEditing(true)}
+                      >
+                        <Pin size={15} />
+                        固定メッセージ・お知らせを編集
+                      </button>
+                    )}
+                  </div>
+                )}
               {onOpenActivity && (
                 <button
                   className="chat-activity-link"
@@ -1802,27 +3156,79 @@ function MessagesTab({
                     最初のメッセージを送ってみましょう。
                   </p>
                 ) : (
-                  messages.map((chatMessage) => (
-                    <div
-                      className={`chat-message ${chatMessage.type === "system" ? "system" : chatMessage.senderId === currentUserId ? "mine" : "theirs"}`}
-                      key={chatMessage.id}
-                    >
-                      <span>{chatMessage.senderName}</span>
-                      <p>{chatMessage.text}</p>
-                      {chatMessage.senderId !== currentUserId &&
-                        onReportMessage &&
-                        chatMessage.type !== "system" && (
-                          <button
-                            className="message-report-button"
-                            type="button"
-                            title="メッセージを通報"
-                            onClick={() => onReportMessage(chatMessage)}
-                          >
-                            <Flag size={12} />
-                          </button>
+                  messages.map((chatMessage, index) => {
+                    const day = formatChatDay(chatMessage.createdAt);
+                    const previousDay =
+                      index > 0
+                        ? formatChatDay(messages[index - 1].createdAt)
+                        : "";
+                    const isOwn = chatMessage.senderId === currentUserId;
+                    const isRead =
+                      isOwn &&
+                      index === lastOwnMessageIndex &&
+                      otherReadAt >= timestampMillis(chatMessage.createdAt);
+                    return (
+                      <div className="chat-message-block" key={chatMessage.id}>
+                        {day && day !== previousDay && (
+                          <div className="chat-date-separator">
+                            <span>{day}</span>
+                          </div>
                         )}
-                    </div>
-                  ))
+                        <div
+                          className={`chat-message ${chatMessage.type === "system" ? "system" : isOwn ? "mine" : "theirs"}`}
+                        >
+                          <span>{chatMessage.senderName}</span>
+                          {chatMessage.type === "image" &&
+                            chatMessage.attachmentUrl && (
+                              <a
+                                className="chat-image-link"
+                                href={chatMessage.attachmentUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                <img
+                                  src={chatMessage.attachmentUrl}
+                                  alt={chatMessage.attachmentName || "添付画像"}
+                                />
+                              </a>
+                            )}
+                          {chatMessage.type === "file" &&
+                            chatMessage.attachmentUrl && (
+                              <a
+                                className="chat-file-link"
+                                href={chatMessage.attachmentUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                <FileText size={15} />
+                                {chatMessage.attachmentName ||
+                                  chatMessage.text}
+                                <Download size={13} />
+                              </a>
+                            )}
+                          {chatMessage.type !== "file" && (
+                            <p>{chatMessage.text}</p>
+                          )}
+                          <small className="chat-message-time">
+                            {formatChatTime(chatMessage.createdAt)}
+                            {isRead ? " · 既読" : ""}
+                          </small>
+                          {chatMessage.senderId !== currentUserId &&
+                            onReportMessage &&
+                            chatMessage.type !== "system" && (
+                              <button
+                                className="message-report-button"
+                                type="button"
+                                title="メッセージを通報"
+                                onClick={() => onReportMessage(chatMessage)}
+                              >
+                                <Flag size={12} />
+                              </button>
+                            )}
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
               <form
@@ -1832,13 +3238,44 @@ function MessagesTab({
                   onSend();
                 }}
               >
+                {onUploadAttachment && (
+                  <label
+                    className="chat-attachment-button"
+                    title="画像・資料を添付"
+                  >
+                    {isUploadingAttachment ? (
+                      <Loader2 size={17} className="spin" />
+                    ) : (
+                      <Paperclip size={17} />
+                    )}
+                    <input
+                      key={attachmentInputKey}
+                      type="file"
+                      disabled={
+                        activeRoom.status !== "active" ||
+                        isUploadingAttachment
+                      }
+                      accept="image/jpeg,image/png,image/webp,application/pdf,text/plain,text/csv"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (!file) return;
+                        setIsUploadingAttachment(true);
+                        Promise.resolve(onUploadAttachment(file))
+                          .finally(() => {
+                            setIsUploadingAttachment(false);
+                            setAttachmentInputKey((current) => current + 1);
+                          });
+                      }}
+                    />
+                  </label>
+                )}
                 <input
                   value={draft}
                   maxLength={2000}
                   disabled={activeRoom.status !== "active"}
                   placeholder={
                     activeRoom.status === "active"
-                      ? "主催者にメッセージを送る"
+                      ? messagePlaceholder
                       : "このチャットは終了しています"
                   }
                   onChange={(event) => onDraftChange(event.target.value)}
@@ -1848,7 +3285,7 @@ function MessagesTab({
                   disabled={activeRoom.status !== "active" || !draft.trim()}
                   title="送信"
                 >
-                  <MessageSquareText size={17} />
+                  <Send size={17} />
                 </button>
               </form>
             </div>
@@ -1856,6 +3293,265 @@ function MessagesTab({
         </div>
       )}
     </section>
+  );
+}
+
+function ApplicationDialog({
+  event,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}: {
+  event: AizuEvent;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onSubmit: (details: ApplicationDetails) => void;
+}) {
+  const [participantMessage, setParticipantMessage] = useState("");
+  const [accessibilityNeeds, setAccessibilityNeeds] = useState("");
+  const [emergencyContact, setEmergencyContact] = useState("");
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const isWaitlist =
+    Number(event.applicantCount ?? 0) >= Number(event.capacity ?? 0);
+  const dialogRef = useDialogAccessibility<HTMLFormElement>(onClose);
+  return createPortal(
+    <div className="report-backdrop" role="presentation" onClick={onClose}>
+      <form
+        ref={dialogRef}
+        className="application-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="application-dialog-title"
+        tabIndex={-1}
+        onClick={(clickEvent) => clickEvent.stopPropagation()}
+        onSubmit={(submitEvent) => {
+          submitEvent.preventDefault();
+          if (!consentAccepted) return;
+          onSubmit({
+            participantMessage: participantMessage.trim().slice(0, 500),
+            accessibilityNeeds: accessibilityNeeds.trim().slice(0, 500),
+            emergencyContact: emergencyContact.trim().slice(0, 200),
+            consentAccepted,
+          });
+        }}
+      >
+        <div className="report-dialog-head">
+          <div>
+            <p className="eyebrow">
+              {isWaitlist ? "WAITING LIST" : "APPLICATION"}
+            </p>
+            <h2 id="application-dialog-title">
+              {isWaitlist ? "キャンセル待ちに登録" : "参加申請を確認"}
+            </h2>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            title="閉じる"
+            data-dialog-initial-focus
+            onClick={onClose}
+          >
+            <X size={17} />
+          </button>
+        </div>
+        <div className="application-event-summary">
+          <strong>{event.title}</strong>
+          <span>
+            <CalendarDays size={14} />
+            {event.startAtLabel}
+            {event.endAtLabel ? ` - ${event.endAtLabel}` : ""}
+          </span>
+          <span>
+            <MapPin size={14} />
+            {event.meetingPoint || event.location}
+          </span>
+          <span>
+            <UsersRound size={14} />
+            {isWaitlist
+              ? "現在満員です。空きが出た場合に通知します。"
+              : `残り${Math.max(event.capacity - event.applicantCount, 0)}名`}
+          </span>
+        </div>
+        <div className="application-policy">
+          <strong>キャンセルについて</strong>
+          <p>
+            {event.cancellationPolicy ||
+              "参加できなくなった場合は、活動ページから早めにキャンセルしてください。"}
+          </p>
+        </div>
+        <Field label="主催者へのメッセージ（任意）">
+          <textarea
+            maxLength={500}
+            value={participantMessage}
+            placeholder="参加したい理由や事前に伝えたいこと"
+            onChange={(changeEvent) =>
+              setParticipantMessage(changeEvent.target.value)
+            }
+          />
+        </Field>
+        <Field label="配慮してほしいこと（任意）">
+          <textarea
+            maxLength={500}
+            value={accessibilityNeeds}
+            placeholder="移動、聴覚、食事など必要な配慮"
+            onChange={(changeEvent) =>
+              setAccessibilityNeeds(changeEvent.target.value)
+            }
+          />
+        </Field>
+        <Field label="緊急時の連絡先（任意・主催者のみ閲覧）">
+          <input
+            maxLength={200}
+            value={emergencyContact}
+            placeholder="電話番号または連絡方法"
+            onChange={(changeEvent) =>
+              setEmergencyContact(changeEvent.target.value)
+            }
+          />
+        </Field>
+        <label className="application-consent">
+          <input
+            required
+            type="checkbox"
+            checked={consentAccepted}
+            onChange={(changeEvent) =>
+              setConsentAccepted(changeEvent.target.checked)
+            }
+          />
+          <span>
+            イベント内容、キャンセル方針、主催者との情報共有範囲を確認しました
+          </span>
+        </label>
+        <div className="report-dialog-actions">
+          <button className="text-button" type="button" onClick={onClose}>
+            戻る
+          </button>
+          <button
+            className="primary-action"
+            type="submit"
+            disabled={isSubmitting || !consentAccepted}
+          >
+            {isSubmitting ? (
+              <Loader2 size={16} className="spin" />
+            ) : isWaitlist ? (
+              <History size={16} />
+            ) : (
+              <Check size={16} />
+            )}
+            {isWaitlist ? "キャンセル待ちに登録" : "参加申請を送信"}
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body,
+  );
+}
+
+function CertificateDialog({
+  activity,
+  userName,
+  onClose,
+}: {
+  activity: ActivityRecord;
+  userName: string;
+  onClose: () => void;
+}) {
+  const [shareNotice, setShareNotice] = useState("");
+  const dialogRef = useDialogAccessibility<HTMLElement>(onClose);
+  const shareText = `${userName}さんは「${activity.title}」に参加しました。活動証明: ${activity.certificateId ?? activity.id}`;
+  const shareCertificate = async () => {
+    if (navigator.share) {
+      await navigator.share({ title: "Aizu Connect 活動証明", text: shareText });
+      return;
+    }
+    await navigator.clipboard.writeText(shareText);
+    setShareNotice("共有用テキストをコピーしました。");
+  };
+  return createPortal(
+    <div className="image-review-backdrop" role="presentation" onClick={onClose}>
+      <section
+        ref={dialogRef}
+        className="certificate-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="certificate-title"
+        tabIndex={-1}
+        onClick={(clickEvent) => clickEvent.stopPropagation()}
+      >
+        <div className="image-review-head no-print">
+          <div>
+            <p className="eyebrow">ACTIVITY CERTIFICATE</p>
+            <h2 id="certificate-title">活動証明書</h2>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            title="閉じる"
+            data-dialog-initial-focus
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="certificate-sheet">
+          <span className="brand-mark">A</span>
+          <p>AIZU CONNECT ACTIVITY CERTIFICATE</p>
+          <h3>活動証明書</h3>
+          <strong>{userName} 様</strong>
+          <p>
+            下記の活動へ参加し、主催者による出席確認が完了したことを証明します。
+          </p>
+          <dl>
+            <div>
+              <dt>活動名</dt>
+              <dd>{activity.title}</dd>
+            </div>
+            <div>
+              <dt>主催</dt>
+              <dd>{activity.organizationName}</dd>
+            </div>
+            <div>
+              <dt>参加年月</dt>
+              <dd>
+                {activity.activityYear}年{activity.activityMonth}月
+              </dd>
+            </div>
+            <div>
+              <dt>証明番号</dt>
+              <dd>{activity.certificateId ?? activity.id}</dd>
+            </div>
+          </dl>
+          {(activity.takeaways ?? []).length > 0 && (
+            <div className="certificate-skills">
+              {(activity.takeaways ?? []).map((takeaway) => (
+                <span key={takeaway}>{takeaway}</span>
+              ))}
+            </div>
+          )}
+          <small>発行: Aizu Connect / 主催者確認済み</small>
+        </div>
+        {shareNotice && <div className="form-message no-print">{shareNotice}</div>}
+        <div className="image-review-actions no-print">
+          <button
+            className="secondary-action"
+            type="button"
+            onClick={() => void shareCertificate()}
+          >
+            <LinkIcon size={16} />
+            共有
+          </button>
+          <button
+            className="primary-action"
+            type="button"
+            onClick={() => window.print()}
+          >
+            <Download size={16} />
+            PDFとして印刷
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body,
   );
 }
 
@@ -1934,6 +3630,7 @@ function ProfileTab({
   onSaveProfile,
   onSaveNotificationPreferences,
   onOpenActivity,
+  onOpenCreatorDashboard,
   onOpenSavedEvent,
   onLogout,
 }: {
@@ -1957,6 +3654,7 @@ function ProfileTab({
     updates: Partial<Omit<NotificationPreferences, "userId">>,
   ) => Promise<void>;
   onOpenActivity: () => void;
+  onOpenCreatorDashboard: () => void;
   onOpenSavedEvent: (eventId: string) => void;
   onLogout: () => void;
 }) {
@@ -2354,6 +4052,20 @@ function ProfileTab({
         <button
           className="settings-row"
           type="button"
+          onClick={onOpenCreatorDashboard}
+        >
+          <div className="settings-icon">
+            <Plus size={18} />
+          </div>
+          <span>
+            <strong>イベントを企画する</strong>
+            <small>企画申請と参加者管理を開く</small>
+          </span>
+          <ChevronRight size={17} />
+        </button>
+        <button
+          className="settings-row"
+          type="button"
           onClick={() => setLegalDocument("terms")}
         >
           <div className="settings-icon">
@@ -2449,12 +4161,21 @@ function EventCard({
           <div className="event-meta">
             <span>
               <CalendarDays size={14} /> {event.startAtLabel}
+              {event.endAtLabel ? ` - ${event.endAtLabel}` : ""}
             </span>
             <span>
               <MapPin size={14} /> {event.location}
             </span>
+            <span>
+              <FileText size={14} /> {event.feeType ?? "無料"}
+              {event.feeType === "有料" && event.feeAmount
+                ? ` ${event.feeAmount.toLocaleString("ja-JP")}円`
+                : ""}
+            </span>
           </div>
           <div className="tag-row">
+            {event.beginnerLevel && <span>{event.beginnerLevel}</span>}
+            <span>{event.eventFormat ?? "現地"}</span>
             {event.tags.slice(0, 2).map((tag) => (
               <span key={tag}>{tag}</span>
             ))}
@@ -2478,11 +4199,13 @@ function EventCard({
 
 function FeaturedEvent({
   event,
+  label,
   saved,
   onSave,
   onOpen,
 }: {
   event: AizuEvent;
+  label: string;
   saved: boolean;
   onSave: () => void;
   onOpen: () => void;
@@ -2493,7 +4216,7 @@ function FeaturedEvent({
         <img src={event.imageUrl} alt={`${event.title}の写真`} />
         <div className="featured-overlay" />
         <div className="featured-content">
-          <span className="featured-label">今週のおすすめ</span>
+          <span className="featured-label">{label}</span>
           <h3>{event.title}</h3>
           <p>
             <MapPin size={14} /> {event.location} · {event.startAtLabel}
@@ -2529,6 +4252,7 @@ function EventDrawer({
   onApply,
   onReport,
   isLoading,
+  previewMode = false,
   onClose,
 }: {
   event: AizuEvent;
@@ -2536,6 +4260,7 @@ function EventDrawer({
   onApply: () => void;
   onReport: () => void;
   isLoading: boolean;
+  previewMode?: boolean;
   onClose: () => void;
 }) {
   const canApply = Boolean(event.createdBy);
@@ -2544,7 +4269,24 @@ function EventDrawer({
   const remainingSlots = Math.max(0, capacity - applicantCount);
   const organizerVerified =
     event.organizationVerified ?? Boolean(event.createdBy);
+  const [organizerProfile, setOrganizerProfile] =
+    useState<PublicOrganizerProfile | null>(null);
   const dialogRef = useDialogAccessibility<HTMLElement>(onClose);
+  useEffect(() => {
+    if (!event.createdBy) {
+      setOrganizerProfile(null);
+      return;
+    }
+    void getDoc(doc(db, "publicOrganizerProfiles", event.createdBy))
+      .then((snapshot) =>
+        setOrganizerProfile(
+          snapshot.exists()
+            ? (snapshot.data() as PublicOrganizerProfile)
+            : null,
+        ),
+      )
+      .catch(() => setOrganizerProfile(null));
+  }, [event.createdBy]);
 
   return createPortal(
     <div className="detail-overlay" role="presentation" onClick={onClose}>
@@ -2558,7 +4300,7 @@ function EventDrawer({
         onClick={(clickEvent) => clickEvent.stopPropagation()}
       >
         <div className="detail-panel-head">
-          <span>イベント詳細</span>
+          <span>{previewMode ? "公開前プレビュー" : "イベント詳細"}</span>
           <button
             className="icon-button"
             title="閉じる"
@@ -2580,6 +4322,7 @@ function EventDrawer({
             </span>
             <span>
               <CalendarDays size={14} /> {event.startAtLabel}
+              {event.endAtLabel ? ` - ${event.endAtLabel}` : ""}
             </span>
           </div>
         </div>
@@ -2590,13 +4333,27 @@ function EventDrawer({
           <section className="detail-section">
             <h3>このイベントについて</h3>
             <p>
-              会津で新しい人や地域と出会える活動です。初めてでも参加しやすいように、
-              主催者とメッセージで事前に確認できます。
+              {event.atmosphere ||
+                "会津で新しい人や地域と出会える活動です。初めてでも参加しやすいように、主催者とメッセージで事前に確認できます。"}
             </p>
+          </section>
+          <section className="detail-section detail-value-section">
+            <h3>参加すると得られること</h3>
+            <div className="value-chip-grid">
+              {(event.takeaways?.length ? event.takeaways : defaultTakeaways)
+                .slice(0, 3)
+                .map((takeaway) => (
+                  <span key={takeaway}>
+                    <CheckCircle2 size={15} />
+                    {takeaway}
+                  </span>
+                ))}
+            </div>
           </section>
           <div className="detail-facts">
             <span>
               <CalendarDays size={16} /> {event.startAtLabel}
+              {event.endAtLabel ? ` - ${event.endAtLabel}` : ""}
             </span>
             <span>
               <MapPin size={16} /> {event.location}
@@ -2604,14 +4361,85 @@ function EventDrawer({
             <span>
               <UsersRound size={16} /> 定員 {capacity}名
             </span>
+            <span>
+              <Sparkles size={16} /> {event.beginnerLevel ?? "誰でも歓迎"}
+            </span>
+            <span>
+              <FileText size={16} />
+              {event.feeType ?? "無料"}
+              {event.feeType === "有料" && event.feeAmount
+                ? ` ${event.feeAmount.toLocaleString("ja-JP")}円`
+                : ""}
+            </span>
+            <span>
+              <Compass size={16} /> {event.eventFormat ?? "現地"}
+            </span>
           </div>
           <section className="detail-section">
             <h3>参加前に確認</h3>
-            <ul>
-              <li>開催日時と集合場所を確認してください</li>
-              <li>参加申請後はメッセージで主催者と連絡できます</li>
-              <li>参加後、出席確認された活動が実績に反映されます</li>
-            </ul>
+            <dl className="event-guidance-list">
+              <div>
+                <dt>集合場所</dt>
+                <dd>{event.meetingPoint || event.location}</dd>
+              </div>
+              <div>
+                <dt>アクセス</dt>
+                <dd>{event.accessInfo || "申請後に主催者から案内します"}</dd>
+              </div>
+              <div>
+                <dt>持ち物・服装</dt>
+                <dd>{event.bringItems || "特になし"}</dd>
+              </div>
+              <div>
+                <dt>キャンセル</dt>
+                <dd>
+                  {event.cancellationPolicy ||
+                    "参加できない場合は早めにキャンセルしてください"}
+                </dd>
+              </div>
+              <div>
+                <dt>天候・中止時</dt>
+                <dd>
+                  {event.weatherPolicy ||
+                    "変更がある場合は通知と全体チャットで案内します"}
+                </dd>
+              </div>
+              <div>
+                <dt>参加時の配慮</dt>
+                <dd>
+                  {event.accessibility ||
+                    "必要な配慮は申請時に主催者へ伝えられます"}
+                </dd>
+              </div>
+              <div>
+                <dt>連絡方法</dt>
+                <dd>
+                  {event.contactMethod ||
+                    "申請後の個別チャットで主催者へ連絡できます"}
+                </dd>
+              </div>
+            </dl>
+            <div className="detail-secondary-actions">
+              <button
+                type="button"
+                onClick={() => downloadEventCalendar(event)}
+                disabled={!event.startAt}
+              >
+                <CalendarPlus size={15} />
+                カレンダーに追加
+              </button>
+              {(event.eventFormat ?? "現地") !== "オンライン" && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.meetingPoint || event.location)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Map size={15} />
+                  地図で確認
+                  <ExternalLink size={12} />
+                </a>
+              )}
+            </div>
           </section>
           <div className="tag-row detail-tags">
             {event.tags.map((tag) => (
@@ -2630,34 +4458,59 @@ function EventDrawer({
                   <ShieldCheck size={13} /> 承認済み主催者
                 </span>
               )}
+              <p>
+                {organizerProfile?.description ||
+                  event.organizerDescription ||
+                  "参加者が安心して参加できるよう、事前連絡と当日の案内を行います。"}
+              </p>
+              <small>
+                {organizerProfile
+                  ? `公開イベント ${organizerProfile.publishedEventCount}件`
+                  : event.organizerExperience || "Aizu Connectで活動を企画"}
+              </small>
             </div>
           </div>
-          <div className="detail-trust-row">
-            <span>
-              <UsersRound size={15} />
-              {remainingSlots > 0
-                ? `残り${remainingSlots}名`
-                : "定員に達しています"}
-            </span>
-            <button className="text-button" type="button" onClick={onReport}>
-              <Flag size={14} /> 掲載を通報
-            </button>
+          <div className="detail-action-bar">
+            <div className="detail-trust-row">
+              <span>
+                <UsersRound size={15} />
+                {remainingSlots > 0
+                  ? `残り${remainingSlots}名`
+                  : "満員・キャンセル待ち受付中"}
+              </span>
+              {!previewMode && (
+                <button className="text-button" type="button" onClick={onReport}>
+                  <Flag size={14} /> 掲載を通報
+                </button>
+              )}
+            </div>
+            {previewMode ? (
+              <button
+                className="primary-action"
+                type="button"
+                onClick={onClose}
+              >
+                <Check size={17} />
+                プレビューを閉じる
+              </button>
+            ) : (
+              <button
+                className="primary-action"
+                type="button"
+                disabled={applied || isLoading || !canApply}
+                onClick={onApply}
+              >
+                {isLoading && <Loader2 size={17} className="spin" />}
+                {applied
+                  ? "申請済み"
+                  : canApply
+                    ? remainingSlots > 0
+                      ? "このイベントに参加する"
+                      : "キャンセル待ちに登録する"
+                    : "現在申請できません"}
+              </button>
+            )}
           </div>
-          <button
-            className="primary-action"
-            type="button"
-            disabled={applied || isLoading || !canApply || remainingSlots === 0}
-            onClick={onApply}
-          >
-            {isLoading && <Loader2 size={17} className="spin" />}
-            {applied
-              ? "申請済み"
-              : canApply
-                ? remainingSlots > 0
-                  ? "このイベントに参加する"
-                  : "定員に達しています"
-                : "現在申請できません"}
-          </button>
         </div>
       </section>
     </div>,
@@ -2737,7 +4590,9 @@ function TabButton({
     >
       {icon}
       <span>{label}</span>
-      {badge ? <b>{badge}</b> : null}
+      {badge ? (
+        <b aria-label={`${badge}件の未読`}>{badge > 99 ? "99+" : badge}</b>
+      ) : null}
     </button>
   );
 }
@@ -2862,25 +4717,33 @@ function AuthScreen(props: {
               ログイン
             </button>
           </div>
-          {props.authMode === "register" && (
-            <div className="account-type-switch">
-              <button
-                className={props.accountType === "student" ? "active" : ""}
-                type="button"
-                onClick={() => props.setAccountType("student")}
-              >
-                学生として登録
-              </button>
-              <button
-                className={props.accountType === "organization" ? "active" : ""}
-                type="button"
-                onClick={() => props.setAccountType("organization")}
-              >
-                主催者・団体として登録
-              </button>
-            </div>
-          )}
           <form onSubmit={props.handleAuthSubmit}>
+            {props.authMode === "register" && (
+              <div
+                className="account-type-switch"
+                role="group"
+                aria-label="アカウント種別"
+              >
+                <button
+                  className={props.accountType === "student" ? "active" : ""}
+                  type="button"
+                  aria-pressed={props.accountType === "student"}
+                  onClick={() => props.setAccountType("student")}
+                >
+                  個人
+                </button>
+                <button
+                  className={
+                    props.accountType === "organization" ? "active" : ""
+                  }
+                  type="button"
+                  aria-pressed={props.accountType === "organization"}
+                  onClick={() => props.setAccountType("organization")}
+                >
+                  団体・自治体
+                </button>
+              </div>
+            )}
             <Field label="メールアドレス">
               <input
                 type={
@@ -2896,9 +4759,11 @@ function AuthScreen(props: {
                 onChange={(event) => props.setEmail(event.target.value)}
               />
             </Field>
-            <Field label="パスワード">
+            <div className="field">
+              <label htmlFor="auth-password">パスワード</label>
               <div className="password-input-wrap">
                 <input
+                  id="auth-password"
                   type={props.showPassword ? "text" : "password"}
                   autoComplete={
                     props.authMode === "login"
@@ -2930,7 +4795,7 @@ function AuthScreen(props: {
                   )}
                 </button>
               </div>
-            </Field>
+            </div>
             {props.authMode === "login" && (
               <button
                 className="text-button password-reset-link"
@@ -2946,64 +4811,50 @@ function AuthScreen(props: {
             )}
             {props.authMode === "register" && (
               <>
-                <Field
-                  label={
-                    props.accountType === "organization" ? "団体名" : "表示名"
-                  }
-                >
-                  <input
-                    required
-                    maxLength={props.accountType === "organization" ? 100 : 80}
-                    value={
-                      props.accountType === "organization"
-                        ? props.organizationName
-                        : props.displayName
-                    }
-                    onChange={(event) =>
-                      props.accountType === "organization"
-                        ? props.setOrganizationName(event.target.value)
-                        : props.setDisplayName(event.target.value)
-                    }
-                  />
-                </Field>
-                {props.accountType === "student" && (
-                  <div className="form-grid">
-                    <Field label="学科">
-                      <input
-                        maxLength={80}
-                        value={props.department}
-                        onChange={(event) =>
-                          props.setDepartment(event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="学年">
-                      <input
-                        min={1}
-                        max={6}
-                        type="number"
-                        required
-                        value={props.grade}
-                        onChange={(event) =>
-                          props.setGrade(Number(event.target.value))
-                        }
-                      />
-                    </Field>
-                  </div>
-                )}
-                {props.accountType === "student" && (
-                  <Field label="興味分野">
-                    <input
-                      maxLength={200}
-                      value={props.interestText}
-                      onChange={(event) =>
-                        props.setInterestText(event.target.value)
-                      }
-                    />
-                  </Field>
-                )}
-                {props.accountType === "student" && (
+                {props.accountType === "student" ? (
                   <>
+                    <Field label="表示名">
+                      <input
+                        required
+                        maxLength={80}
+                        value={props.displayName}
+                        onChange={(event) =>
+                          props.setDisplayName(event.target.value)
+                        }
+                      />
+                    </Field>
+                    <div className="form-grid">
+                      <Field label="学科">
+                        <input
+                          maxLength={80}
+                          value={props.department}
+                          onChange={(event) =>
+                            props.setDepartment(event.target.value)
+                          }
+                        />
+                      </Field>
+                      <Field label="学年">
+                        <input
+                          min={1}
+                          max={6}
+                          type="number"
+                          required
+                          value={props.grade}
+                          onChange={(event) =>
+                            props.setGrade(Number(event.target.value))
+                          }
+                        />
+                      </Field>
+                    </div>
+                    <Field label="興味分野">
+                      <input
+                        maxLength={200}
+                        value={props.interestText}
+                        onChange={(event) =>
+                          props.setInterestText(event.target.value)
+                        }
+                      />
+                    </Field>
                     <Field label="今やっていること（任意）">
                       <textarea
                         value={props.currentActivities}
@@ -3025,6 +4876,18 @@ function AuthScreen(props: {
                       />
                     </Field>
                   </>
+                ) : (
+                  <Field label="団体・自治体名">
+                    <input
+                      required
+                      maxLength={100}
+                      autoComplete="organization"
+                      value={props.organizationName}
+                      onChange={(event) =>
+                        props.setOrganizationName(event.target.value)
+                      }
+                    />
+                  </Field>
                 )}
               </>
             )}
@@ -3039,9 +4902,7 @@ function AuthScreen(props: {
                 <Check size={17} />
               )}
               {props.authMode === "register"
-                ? props.accountType === "organization"
-                  ? "主催者・団体として申請"
-                  : "学生として始める"
+                ? "登録して始める"
                 : "ログインする"}
             </button>
           </form>
@@ -3076,9 +4937,7 @@ function AuthScreen(props: {
             </div>
           )}
           <p className="form-footnote">
-            {props.accountType === "organization"
-              ? "主催者・団体の登録は管理者の確認後に利用できます。"
-              : "会津大学メール以外の学生は、登録後に管理者が確認します。"}
+            登録後、誰でもイベント企画を申請できます。会津大学メール以外の方は管理者が確認します。
           </p>
           <p className="legal-links">
             登録・利用にあたり、
@@ -3233,10 +5092,29 @@ function AccountRejectedScreen({
       <div className="pending-card">
         <div className="brand-mark">A</div>
         <p className="eyebrow">ACCOUNT REVIEW</p>
-        <h1>登録内容を確認してください</h1>
+        <h1>
+          {appUser.status === "suspended"
+            ? "アカウントを確認してください"
+            : "登録内容を確認してください"}
+        </h1>
         <p>
           {appUser.displayName}
-          さんの登録は、現在の内容では承認されませんでした。
+          さんの
+          {appUser.status === "suspended"
+            ? "アカウントは現在利用を停止しています。"
+            : "登録は、現在の内容では承認されませんでした。"}
+        </p>
+        {(appUser.moderationReason || appUser.reviewReason) && (
+          <div className="pending-help">
+            <Flag size={17} />
+            <span>
+              <strong>運営からの案内</strong>
+              <br />
+              {appUser.moderationReason || appUser.reviewReason}
+            </span>
+          </div>
+        )}
+        <p>
           運営へ問い合わせる場合は、登録したメールアドレスからご連絡ください。
         </p>
         <button className="secondary-action" type="button" onClick={onLogout}>
@@ -3249,9 +5127,11 @@ function AccountRejectedScreen({
 
 function OrganizationDashboard({
   appUser,
+  onClose,
   onLogout,
 }: {
   appUser: AppUser;
+  onClose?: () => void;
   onLogout: () => void;
 }) {
   const [events, setEvents] = useState<AizuEvent[]>([]);
@@ -3262,13 +5142,45 @@ function OrganizationDashboard({
   const [summary, setSummary] = useState("");
   const [location, setLocation] = useState("会津若松市");
   const [startAtInput, setStartAtInput] = useState("");
+  const [endAtInput, setEndAtInput] = useState("");
   const [capacity, setCapacity] = useState(20);
   const [category, setCategory] = useState("交流・コミュニティ");
+  const [feeType, setFeeType] = useState<AizuEvent["feeType"]>("無料");
+  const [feeAmount, setFeeAmount] = useState(0);
+  const [eventFormat, setEventFormat] =
+    useState<AizuEvent["eventFormat"]>("現地");
+  const [meetingPoint, setMeetingPoint] = useState("会津若松市");
+  const [accessInfo, setAccessInfo] = useState("");
+  const [bringItems, setBringItems] = useState("特になし");
+  const [cancellationPolicy, setCancellationPolicy] = useState(
+    "参加できなくなった場合は、開催前日までに活動ページからキャンセルしてください。",
+  );
+  const [weatherPolicy, setWeatherPolicy] = useState(
+    "変更・中止の場合は通知と全体チャットで案内します。",
+  );
+  const [accessibility, setAccessibility] = useState(
+    "必要な配慮は参加申請時にお知らせください。",
+  );
+  const [contactMethod, setContactMethod] = useState(
+    "申請後の個別チャットでお問い合わせください。",
+  );
+  const [organizerDescription, setOrganizerDescription] = useState(
+    "参加者が安心して参加できるよう、事前連絡と当日の案内を行います。",
+  );
+  const [organizerExperience, setOrganizerExperience] = useState(
+    "Aizu Connectでイベントを企画",
+  );
+  const [templateKey, setTemplateKey] = useState<string>(eventTemplates[0].key);
+  const [beginnerLevel, setBeginnerLevel] =
+    useState<AizuEvent["beginnerLevel"]>("初参加歓迎");
+  const [takeawayText, setTakeawayText] = useState("");
+  const [atmosphere, setAtmosphere] = useState("");
   const [eventImageFile, setEventImageFile] = useState<File | null>(null);
   const [eventImagePreview, setEventImagePreview] = useState<string | null>(
-    null,
+    eventTemplates[0].imageUrl,
   );
   const [isEventImageReviewOpen, setIsEventImageReviewOpen] = useState(false);
+  const [isEventPreviewOpen, setIsEventPreviewOpen] = useState(false);
   const [eventImageInputKey, setEventImageInputKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState("");
@@ -3276,12 +5188,115 @@ function OrganizationDashboard({
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [messageDraft, setMessageDraft] = useState("");
+  const [chatReadReceipts, setChatReadReceipts] = useState<ChatReadReceipt[]>(
+    [],
+  );
+  const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [eventSearch, setEventSearch] = useState("");
+  const [eventStatusFilter, setEventStatusFilter] = useState<
+    "all" | AizuEvent["status"]
+  >("all");
+  const [eventSort, setEventSort] = useState<"date" | "newest">("date");
+  const [applicantSearch, setApplicantSearch] = useState("");
+  const [applicantStatusFilter, setApplicantStatusFilter] = useState<
+    "all" | EventApplication["status"]
+  >("all");
+  const [selectedApplicantIds, setSelectedApplicantIds] = useState<string[]>(
+    [],
+  );
+  const [eventCancellationTarget, setEventCancellationTarget] =
+    useState<AizuEvent | null>(null);
+  const [isDraftReady, setIsDraftReady] = useState(false);
+  const [checkInCode, setCheckInCode] = useState("");
   const [pendingApplicationUpdate, setPendingApplicationUpdate] = useState<{
     application: EventApplication;
     status: "rejected" | "absent";
   } | null>(null);
+  const eventFormSectionRef = useRef<HTMLElement>(null);
+  const eventListSectionRef = useRef<HTMLElement>(null);
+  const applicantSectionRef = useRef<HTMLElement>(null);
+  const messagesSectionRef = useRef<HTMLDivElement>(null);
 
   const organizationName = appUser.organizationName || appUser.displayName;
+  const selectedEvent = events.find((event) => event.id === selectedEventId);
+  const selectedTemplate =
+    eventTemplates.find((template) => template.key === templateKey) ??
+    eventTemplates[0];
+  const visibleEvents = useMemo(
+    () =>
+      [...events]
+        .filter(
+          (event) =>
+            eventStatusFilter === "all" || event.status === eventStatusFilter,
+        )
+        .filter((event) =>
+          [event.title, event.location, event.organizationName]
+            .join(" ")
+            .toLowerCase()
+            .includes(eventSearch.trim().toLowerCase()),
+        )
+        .sort((left, right) =>
+          eventSort === "newest"
+            ? timestampMillis(right.createdAt) - timestampMillis(left.createdAt)
+            : timestampMillis(left.startAt) - timestampMillis(right.startAt),
+        ),
+    [eventSearch, eventSort, eventStatusFilter, events],
+  );
+  const visibleApplications = useMemo(
+    () =>
+      applications.filter(
+        (application) =>
+          (applicantStatusFilter === "all" ||
+            application.status === applicantStatusFilter) &&
+          [
+            application.studentName,
+            application.participantMessage ?? "",
+            application.accessibilityNeeds ?? "",
+            application.organizerNote ?? "",
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(applicantSearch.trim().toLowerCase()),
+      ),
+    [applicantSearch, applicantStatusFilter, applications],
+  );
+  const applicantMetrics = useMemo(
+    () => ({
+      total: applications.length,
+      pending: applications.filter((item) => item.status === "pending").length,
+      waitlisted: applications.filter((item) => item.status === "waitlisted")
+        .length,
+      confirmed: applications.filter((item) => item.status === "confirmed")
+        .length,
+      attended: applications.filter((item) => item.status === "attended")
+        .length,
+      absent: applications.filter((item) => item.status === "absent").length,
+    }),
+    [applications],
+  );
+  const unreadChatCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    notifications.forEach((notification) => {
+      if (
+        !notification.isRead &&
+        notification.targetType === "chat" &&
+        notification.targetId
+      ) {
+        counts[notification.targetId] =
+          (counts[notification.targetId] ?? 0) + 1;
+      }
+    });
+    return counts;
+  }, [notifications]);
+  const unreadChatTotal = Object.values(unreadChatCounts).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+
+  const scrollToManagementSection = (element: HTMLElement | null) => {
+    element?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const beginEditEvent = (event: AizuEvent) => {
     setEditingEventId(event.id);
@@ -3289,13 +5304,56 @@ function OrganizationDashboard({
     setSummary(event.summary);
     setLocation(event.location);
     setStartAtInput(toDateTimeInput(event.startAt));
+    setEndAtInput(toDateTimeInput(event.endAt));
     setCapacity(event.capacity);
     setCategory(event.category);
+    setFeeType(event.feeType ?? "無料");
+    setFeeAmount(event.feeAmount ?? 0);
+    setEventFormat(event.eventFormat ?? "現地");
+    setMeetingPoint(event.meetingPoint ?? event.location);
+    setAccessInfo(event.accessInfo ?? "");
+    setBringItems(event.bringItems ?? "特になし");
+    setCancellationPolicy(
+      event.cancellationPolicy ??
+        "参加できなくなった場合は、開催前日までに活動ページからキャンセルしてください。",
+    );
+    setWeatherPolicy(
+      event.weatherPolicy ??
+        "変更・中止の場合は通知と全体チャットで案内します。",
+    );
+    setAccessibility(
+      event.accessibility ?? "必要な配慮は参加申請時にお知らせください。",
+    );
+    setContactMethod(
+      event.contactMethod ??
+        "申請後の個別チャットでお問い合わせください。",
+    );
+    setOrganizerDescription(
+      event.organizerDescription ??
+        "参加者が安心して参加できるよう、事前連絡と当日の案内を行います。",
+    );
+    setOrganizerExperience(
+      event.organizerExperience ?? "Aizu Connectでイベントを企画",
+    );
+    setTemplateKey(event.templateKey ?? eventTemplates[0].key);
+    setBeginnerLevel(event.beginnerLevel ?? "誰でも歓迎");
+    setTakeawayText((event.takeaways ?? defaultTakeaways).join("\n"));
+    setAtmosphere(
+      event.atmosphere ??
+        "初めてでも参加しやすいように、主催者が流れを案内します。",
+    );
     setEventImageFile(null);
     setEventImagePreview(event.imageUrl);
     setIsEventImageReviewOpen(false);
-    setNotice("イベントを修正して再申請できます。");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setNotice(
+      event.status === "published"
+        ? "公開中イベントの変更は、再審査後に反映されます。"
+        : "イベントを修正して再申請できます。",
+    );
+    window.setTimeout(
+      () => scrollToManagementSection(eventFormSectionRef.current),
+      0,
+    );
   };
 
   const clearEventForm = () => {
@@ -3304,12 +5362,193 @@ function OrganizationDashboard({
     setSummary("");
     setLocation("会津若松市");
     setStartAtInput("");
+    setEndAtInput("");
     setCapacity(20);
     setCategory("交流・コミュニティ");
+    setFeeType("無料");
+    setFeeAmount(0);
+    setEventFormat("現地");
+    setMeetingPoint("会津若松市");
+    setAccessInfo("");
+    setBringItems("特になし");
+    setCancellationPolicy(
+      "参加できなくなった場合は、開催前日までに活動ページからキャンセルしてください。",
+    );
+    setWeatherPolicy("変更・中止の場合は通知と全体チャットで案内します。");
+    setAccessibility("必要な配慮は参加申請時にお知らせください。");
+    setContactMethod("申請後の個別チャットでお問い合わせください。");
+    setOrganizerDescription(
+      "参加者が安心して参加できるよう、事前連絡と当日の案内を行います。",
+    );
+    setOrganizerExperience("Aizu Connectでイベントを企画");
+    setTemplateKey(eventTemplates[0].key);
+    setBeginnerLevel("初参加歓迎");
+    setTakeawayText("");
+    setAtmosphere("");
     setEventImageFile(null);
-    setEventImagePreview(null);
+    setEventImagePreview(eventTemplates[0].imageUrl);
     setIsEventImageReviewOpen(false);
   };
+
+  const duplicateEvent = (event: AizuEvent) => {
+    beginEditEvent(event);
+    setEditingEventId(null);
+    setSelectedEventId(null);
+    setTitle(`${event.title}（複製）`.slice(0, 80));
+    setStartAtInput("");
+    setEndAtInput("");
+    setNotice("イベントを複製しました。開催日時を設定して申請してください。");
+  };
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(
+      `aizu-connect:event-draft:${appUser.uid}`,
+    );
+    if (stored) {
+      try {
+        const draft = JSON.parse(stored) as Record<string, unknown>;
+        const draftTemplate =
+          eventTemplates.find(
+            (template) => template.key === String(draft.templateKey ?? ""),
+          ) ?? eventTemplates[0];
+        const restoredTitle =
+          String(draft.title ?? "") === draftTemplate.title
+            ? ""
+            : String(draft.title ?? "");
+        const restoredSummary =
+          String(draft.summary ?? "") === draftTemplate.summary
+            ? ""
+            : String(draft.summary ?? "");
+        const restoredTakeaways =
+          String(draft.takeawayText ?? "") ===
+          draftTemplate.takeaways.join("\n")
+            ? ""
+            : String(draft.takeawayText ?? "");
+        const restoredAtmosphere =
+          String(draft.atmosphere ?? "") === draftTemplate.atmosphere
+            ? ""
+            : String(draft.atmosphere ?? "");
+        const hasMeaningfulDraft = [
+          restoredTitle,
+          restoredSummary,
+          draft.startAtInput,
+        ].some((value) => typeof value === "string" && value.trim().length > 0);
+        if (!hasMeaningfulDraft) {
+          window.localStorage.removeItem(
+            `aizu-connect:event-draft:${appUser.uid}`,
+          );
+          setIsDraftReady(true);
+          return;
+        }
+        setTitle(restoredTitle);
+        setSummary(restoredSummary);
+        setLocation(String(draft.location ?? "会津若松市"));
+        setMeetingPoint(String(draft.meetingPoint ?? "会津若松市"));
+        setStartAtInput(String(draft.startAtInput ?? ""));
+        setEndAtInput(String(draft.endAtInput ?? ""));
+        setCapacity(Number(draft.capacity ?? 20));
+        setCategory(String(draft.category ?? "交流・コミュニティ"));
+        setTemplateKey(String(draft.templateKey ?? eventTemplates[0].key));
+        setBeginnerLevel(
+          (draft.beginnerLevel as AizuEvent["beginnerLevel"]) ??
+            "初参加歓迎",
+        );
+        setTakeawayText(restoredTakeaways);
+        setAtmosphere(restoredAtmosphere);
+        setFeeType((draft.feeType as AizuEvent["feeType"]) ?? "無料");
+        setFeeAmount(Number(draft.feeAmount ?? 0));
+        setEventFormat(
+          (draft.eventFormat as AizuEvent["eventFormat"]) ?? "現地",
+        );
+        setAccessInfo(String(draft.accessInfo ?? ""));
+        setBringItems(String(draft.bringItems ?? "特になし"));
+        setCancellationPolicy(String(draft.cancellationPolicy ?? ""));
+        setWeatherPolicy(String(draft.weatherPolicy ?? ""));
+        setAccessibility(String(draft.accessibility ?? ""));
+        setContactMethod(String(draft.contactMethod ?? ""));
+        setOrganizerDescription(String(draft.organizerDescription ?? ""));
+        setOrganizerExperience(String(draft.organizerExperience ?? ""));
+        setNotice("保存されていた下書きを復元しました。");
+      } catch {
+        window.localStorage.removeItem(
+          `aizu-connect:event-draft:${appUser.uid}`,
+        );
+      }
+    }
+    setIsDraftReady(true);
+  }, [appUser.uid]);
+
+  useEffect(() => {
+    if (!isDraftReady || editingEventId) return;
+    const draft = {
+      title,
+      summary,
+      location,
+      meetingPoint,
+      startAtInput,
+      endAtInput,
+      capacity,
+      category,
+      templateKey,
+      beginnerLevel,
+      takeawayText,
+      atmosphere,
+      feeType,
+      feeAmount,
+      eventFormat,
+      accessInfo,
+      bringItems,
+      cancellationPolicy,
+      weatherPolicy,
+      accessibility,
+      contactMethod,
+      organizerDescription,
+      organizerExperience,
+    };
+    const timer = window.setTimeout(() => {
+      const hasMeaningfulDraft = Boolean(
+        title.trim() || summary.trim() || startAtInput.trim(),
+      );
+      if (hasMeaningfulDraft) {
+        window.localStorage.setItem(
+          `aizu-connect:event-draft:${appUser.uid}`,
+          JSON.stringify(draft),
+        );
+      } else {
+        window.localStorage.removeItem(
+          `aizu-connect:event-draft:${appUser.uid}`,
+        );
+      }
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [
+    accessInfo,
+    accessibility,
+    appUser.uid,
+    atmosphere,
+    beginnerLevel,
+    bringItems,
+    cancellationPolicy,
+    capacity,
+    category,
+    contactMethod,
+    editingEventId,
+    endAtInput,
+    eventFormat,
+    feeAmount,
+    feeType,
+    isDraftReady,
+    location,
+    meetingPoint,
+    organizerDescription,
+    organizerExperience,
+    startAtInput,
+    summary,
+    takeawayText,
+    templateKey,
+    title,
+    weatherPolicy,
+  ]);
 
   const loadEvents = useCallback(async () => {
     const snapshot = await getDocs(
@@ -3347,6 +5586,25 @@ function OrganizationDashboard({
   }, [appUser.uid]);
 
   useEffect(() => {
+    const notificationsQuery = query(
+      collection(db, "notifications"),
+      where("recipientId", "==", appUser.uid),
+      limit(100),
+    );
+    return onSnapshot(
+      notificationsQuery,
+      (snapshot) =>
+        setNotifications(
+          snapshot.docs.map((notificationDoc) => ({
+            id: notificationDoc.id,
+            ...notificationDoc.data(),
+          })) as NotificationItem[],
+        ),
+      () => setNotice("通知を取得できませんでした。"),
+    );
+  }, [appUser.uid]);
+
+  useEffect(() => {
     if (!selectedEventId) {
       setApplications([]);
       return;
@@ -3354,21 +5612,17 @@ function OrganizationDashboard({
     const applicationsQuery = query(
       collection(db, "eventApplications"),
       where("organizationId", "==", appUser.uid),
-      limit(100),
+      where("eventId", "==", selectedEventId),
+      limit(1000),
     );
     return onSnapshot(
       applicationsQuery,
       (snapshot) =>
         setApplications(
-          snapshot.docs
-            .filter(
-              (applicationDoc) =>
-                applicationDoc.data().eventId === selectedEventId,
-            )
-            .map((applicationDoc) => ({
-              id: applicationDoc.id,
-              ...applicationDoc.data(),
-            })) as EventApplication[],
+          snapshot.docs.map((applicationDoc) => ({
+            id: applicationDoc.id,
+            ...applicationDoc.data(),
+          })) as EventApplication[],
         ),
       () => setNotice("参加者情報を取得できませんでした。"),
     );
@@ -3395,6 +5649,24 @@ function OrganizationDashboard({
   }, [appUser.uid]);
 
   useEffect(() => {
+    const preferencesQuery = query(
+      collection(db, "chatPreferences"),
+      where("userId", "==", appUser.uid),
+      limit(100),
+    );
+    return onSnapshot(
+      preferencesQuery,
+      (snapshot) =>
+        setChatPreferences(
+          snapshot.docs.map(
+            (preferenceDoc) => preferenceDoc.data() as ChatPreference,
+          ),
+        ),
+      () => setNotice("チャット通知設定を取得できませんでした。"),
+    );
+  }, [appUser.uid]);
+
+  useEffect(() => {
     if (!activeRoomId) {
       setChatMessages([]);
       return;
@@ -3416,12 +5688,52 @@ function OrganizationDashboard({
     );
   }, [activeRoomId]);
 
+  useEffect(() => {
+    if (!activeRoomId) {
+      setChatReadReceipts([]);
+      return;
+    }
+    void setDoc(
+      doc(db, "chatRooms", activeRoomId, "reads", appUser.uid),
+      { userId: appUser.uid, readAt: serverTimestamp() },
+      { merge: true },
+    ).catch((error: unknown) => setNotice(getFirebaseErrorMessage(error)));
+    return onSnapshot(
+      collection(db, "chatRooms", activeRoomId, "reads"),
+      (snapshot) =>
+        setChatReadReceipts(
+          snapshot.docs.map(
+            (receiptDoc) => receiptDoc.data() as ChatReadReceipt,
+          ),
+        ),
+      () => setNotice("既読情報を取得できませんでした。"),
+    );
+  }, [activeRoomId, appUser.uid]);
+
+  useEffect(() => {
+    setSelectedApplicantIds([]);
+    if (!selectedEventId) {
+      setCheckInCode("");
+      return;
+    }
+    void getDoc(doc(db, "eventCheckIns", selectedEventId))
+      .then((snapshot) =>
+        setCheckInCode(
+          snapshot.exists() ? String(snapshot.data().code ?? "") : "",
+        ),
+      )
+      .catch(() => setCheckInCode(""));
+  }, [selectedEventId]);
+
   const sendOrganizationMessage = async () => {
     if (!activeRoomId || !messageDraft.trim()) return;
     const text = messageDraft.trim().slice(0, 2000);
     setMessageDraft("");
     try {
-      await addDoc(collection(db, "chatRooms", activeRoomId, "messages"), {
+      const roomRef = doc(db, "chatRooms", activeRoomId);
+      const messageRef = doc(collection(roomRef, "messages"));
+      const batch = writeBatch(db);
+      batch.set(messageRef, {
         roomId: activeRoomId,
         senderId: appUser.uid,
         senderName: organizationName,
@@ -3429,24 +5741,172 @@ function OrganizationDashboard({
         text,
         createdAt: serverTimestamp(),
       });
-      await updateDoc(doc(db, "chatRooms", activeRoomId), {
+      batch.update(roomRef, {
         lastMessageText: text,
         lastMessageAt: serverTimestamp(),
       });
+      await batch.commit();
     } catch (error) {
       setMessageDraft((current) => current || text);
       setNotice(getFirebaseErrorMessage(error));
     }
   };
 
-  const createEvent = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!title.trim() || !summary.trim() || !startAtInput.trim()) {
-      setNotice("タイトル、概要、開催日時を入力してください。");
+  const uploadOrganizationAttachment = async (file: File) => {
+    if (!activeRoomId) return;
+    validateChatAttachment(file);
+    const attachmentUrl = await uploadImage(
+      file,
+      `chat-attachments/${activeRoomId}/${appUser.uid}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+    );
+    const messageType = file.type.startsWith("image/") ? "image" : "file";
+    const roomRef = doc(db, "chatRooms", activeRoomId);
+    const messageRef = doc(collection(roomRef, "messages"));
+    const batch = writeBatch(db);
+    batch.set(messageRef, {
+      roomId: activeRoomId,
+      senderId: appUser.uid,
+      senderName: organizationName,
+      type: messageType,
+      text: file.name.slice(0, 200),
+      attachmentUrl,
+      attachmentName: file.name.slice(0, 200),
+      attachmentType: file.type,
+      attachmentSize: file.size,
+      createdAt: serverTimestamp(),
+    });
+    batch.update(roomRef, {
+      lastMessageText: `${messageType === "image" ? "画像" : "ファイル"}を送信しました`,
+      lastMessageAt: serverTimestamp(),
+    });
+    await batch.commit();
+  };
+
+  const selectOrganizationChatRoom = (roomId: string) => {
+    setActiveRoomId(roomId);
+    const unread = notifications.filter(
+      (notification) =>
+        !notification.isRead &&
+        notification.targetType === "chat" &&
+        notification.targetId === roomId,
+    );
+    if (unread.length === 0) return;
+    setNotifications((current) =>
+      current.map((notification) =>
+        unread.some((item) => item.id === notification.id)
+          ? { ...notification, isRead: true }
+          : notification,
+      ),
+    );
+    void Promise.all(
+      unread.map((notification) =>
+        updateDoc(doc(db, "notifications", notification.id), {
+          isRead: true,
+          readAt: serverTimestamp(),
+        }),
+      ),
+    ).catch((error: unknown) => setNotice(getFirebaseErrorMessage(error)));
+  };
+
+  const toggleOrganizationChatMute = async (roomId: string) => {
+    const current = chatPreferences.find(
+      (preference) => preference.roomId === roomId,
+    );
+    await setDoc(
+      doc(db, "chatPreferences", `${roomId}_${appUser.uid}`),
+      {
+        userId: appUser.uid,
+        roomId,
+        muted: !current?.muted,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  };
+
+  const saveRoomMeta = async (
+    room: ChatRoom,
+    updates: Pick<ChatRoom, "pinnedMessage" | "organizerNotice">,
+  ) => {
+    await updateDoc(doc(db, "chatRooms", room.id), {
+      pinnedMessage: updates.pinnedMessage ?? "",
+      organizerNotice: updates.organizerNotice ?? "",
+      updatedAt: serverTimestamp(),
+    });
+    setNotice("全体チャットのお知らせを更新しました。");
+  };
+
+  const exportSelectedEventReport = () => {
+    if (!selectedEvent) {
+      setNotice("レポートを出力するイベントを選択してください。");
       return;
     }
-    if (!editingEventId && !eventImageFile) {
-      setNotice("イベントの雰囲気が伝わる写真を選択してください。");
+    const rows = [
+      [
+        "イベント名",
+        "開催日時",
+        "定員",
+        "申請数",
+        "参加者名",
+        "状態",
+        "申請日時",
+        "参加者メッセージ",
+        "必要な配慮",
+        "緊急連絡先",
+        "運営メモ",
+      ],
+      ...applications.map((application) => [
+        selectedEvent.title,
+        selectedEvent.startAtLabel,
+        selectedEvent.capacity,
+        selectedEvent.applicantCount,
+        application.studentName,
+        applicationStatusLabel(application.status),
+        application.createdAt?.toDate?.().toLocaleString("ja-JP") ?? "",
+        application.participantMessage ?? "",
+        application.accessibilityNeeds ?? "",
+        application.emergencyContact ?? "",
+        application.organizerNote ?? "",
+      ]),
+    ];
+    const csv = rows
+      .map((row) => row.map((value) => csvEscape(value)).join(","))
+      .join("\n");
+    const blob = new Blob([`\uFEFF${csv}`], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${selectedEvent.title}-参加者レポート.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setNotice("参加者レポートを出力しました。");
+  };
+
+  const applyTemplate = (template: (typeof eventTemplates)[number]) => {
+    setTemplateKey(template.key);
+    setCategory(template.category);
+    setBeginnerLevel(template.beginnerLevel);
+    setEventImageFile(null);
+    setEventImagePreview(template.imageUrl);
+    setNotice(
+      "テンプレートの例文を表示しました。入力した内容だけが保存されます。",
+    );
+  };
+
+  const createEvent = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (
+      !title.trim() ||
+      !summary.trim() ||
+      !takeawayText.trim() ||
+      !atmosphere.trim() ||
+      !startAtInput.trim()
+    ) {
+      setNotice(
+        "タイトル、概要、得られること、当日の雰囲気、開催日時を入力してください。",
+      );
       return;
     }
     const startAtDate = new Date(startAtInput);
@@ -3458,17 +5918,38 @@ function OrganizationDashboard({
       setNotice("開催日時は現在より後の日時を指定してください。");
       return;
     }
+    const endAtDate = endAtInput
+      ? new Date(endAtInput)
+      : new Date(startAtDate.getTime() + 2 * 60 * 60 * 1000);
+    if (
+      Number.isNaN(endAtDate.getTime()) ||
+      endAtDate.getTime() <= startAtDate.getTime()
+    ) {
+      setNotice("終了日時は開催日時より後にしてください。");
+      return;
+    }
     setIsLoading(true);
     setNotice("");
     try {
       const eventId = editingEventId ?? doc(collection(db, "events")).id;
+      const takeaways = takeawayText
+        .split(/\n|,/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 3);
       const currentEvent = events.find((item) => item.id === eventId);
+      const templateImage =
+        eventTemplates.find((template) => template.key === templateKey)
+          ?.imageUrl ?? eventTemplates[0].imageUrl;
       const imageUrl = eventImageFile
         ? await uploadImage(
             eventImageFile,
             `event-images/${appUser.uid}/${eventId}/cover-${Date.now()}`,
           )
-        : currentEvent?.imageUrl;
+        : new URL(
+            currentEvent?.imageUrl ?? templateImage,
+            window.location.origin,
+          ).toString();
       if (!imageUrl) {
         throw new Error(
           "イベント画像を設定できませんでした。もう一度お試しください。",
@@ -3479,30 +5960,46 @@ function OrganizationDashboard({
         summary: summary.trim().slice(0, 220),
         category,
         location: location.trim().slice(0, 80),
-        startAtLabel: formatEventStart(startAtInput),
-        startAt: Timestamp.fromDate(startAtDate),
-        organizationName,
-        organizationId: appUser.uid,
-        organizationVerified: true,
-        status: "pending_review",
-        capacity: Math.max(1, Math.min(capacity, 1000)),
-        applicantCount: 0,
+        startAtMillis: startAtDate.getTime(),
+        endAtMillis: endAtDate.getTime(),
+        feeType: feeType ?? "無料",
+        feeAmount:
+          feeType === "有料"
+            ? Math.max(0, Math.min(Number(feeAmount) || 0, 1_000_000))
+            : 0,
+        eventFormat: eventFormat ?? "現地",
+        meetingPoint: meetingPoint.trim().slice(0, 160),
+        accessInfo: accessInfo.trim().slice(0, 300),
+        bringItems: bringItems.trim().slice(0, 300),
+        cancellationPolicy: cancellationPolicy.trim().slice(0, 500),
+        weatherPolicy: weatherPolicy.trim().slice(0, 500),
+        accessibility: accessibility.trim().slice(0, 500),
+        contactMethod: contactMethod.trim().slice(0, 300),
+        capacity: Math.round(Math.max(1, Math.min(capacity, 1000))),
         imageUrl,
-        tags: [category, "学生歓迎"],
-        createdBy: appUser.uid,
-        updatedAt: serverTimestamp(),
+        templateKey,
+        beginnerLevel,
+        takeaways,
+        atmosphere: atmosphere.trim().slice(0, 180),
+        organizerDescription: organizerDescription.trim().slice(0, 500),
+        organizerExperience: organizerExperience.trim().slice(0, 300),
       };
-      if (editingEventId) {
-        await updateDoc(doc(db, "events", editingEventId), {
-          ...eventData,
-          status: "pending_review",
-        });
-      } else {
-        await setDoc(doc(db, "events", eventId), {
-          ...eventData,
-          createdAt: serverTimestamp(),
-        });
-      }
+      const savePlan = httpsCallable<
+        {
+          eventId: string;
+          mode: "create" | "update";
+          event: Record<string, unknown>;
+        },
+        { eventId: string; status: "pending_review" }
+      >(functions, "saveEventPlan");
+      await savePlan({
+        eventId,
+        mode: editingEventId ? "update" : "create",
+        event: eventData,
+      });
+      window.localStorage.removeItem(
+        `aizu-connect:event-draft:${appUser.uid}`,
+      );
       clearEventForm();
       await loadEvents();
       setNotice(
@@ -3534,11 +6031,150 @@ function OrganizationDashboard({
     }
   };
 
+  const bulkUpdateApplications = async (
+    targetStatus: "confirmed" | "attended",
+  ) => {
+    const targets = applications.filter(
+      (application) =>
+        selectedApplicantIds.includes(application.id) &&
+        (targetStatus === "confirmed"
+          ? application.status === "pending"
+          : application.status === "confirmed"),
+    );
+    if (targets.length === 0) {
+      setNotice("更新できる参加者を選択してください。");
+      return;
+    }
+    const batch = writeBatch(db);
+    targets.forEach((application) =>
+      batch.update(doc(db, "eventApplications", application.id), {
+        status: targetStatus,
+      }),
+    );
+    await batch.commit();
+    setSelectedApplicantIds([]);
+    setNotice(
+      targetStatus === "confirmed"
+        ? `${targets.length}名を参加確定にしました。`
+        : `${targets.length}名を出席として記録しました。`,
+    );
+  };
+
+  const saveOrganizerNote = async (
+    application: EventApplication,
+    organizerNote: string,
+  ) => {
+    await updateDoc(doc(db, "eventApplications", application.id), {
+      organizerNote: organizerNote.trim().slice(0, 500),
+    });
+    setNotice(`${application.studentName}さんの運営メモを保存しました。`);
+  };
+
+  const openApplicantChat = (application: EventApplication) => {
+    const room = chatRooms.find(
+      (chatRoom) =>
+        chatRoom.applicationId === application.id &&
+        chatRoom.roomType !== "event",
+    );
+    if (!room) {
+      setNotice("この参加者の個別チャットはまだ作成されていません。");
+      return;
+    }
+    selectOrganizationChatRoom(room.id);
+    scrollToManagementSection(messagesSectionRef.current);
+  };
+
+  const cancelManagedEvent = async (event: AizuEvent, reason: string) => {
+    await updateDoc(doc(db, "events", event.id), {
+      status: "cancelled",
+      cancellationReason: reason.trim().slice(0, 500),
+      cancelledAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    setSelectedEventId(null);
+    setEventCancellationTarget(null);
+    setNotice("イベントを中止し、参加者への通知処理を開始しました。");
+  };
+
+  const selectManagedEvent = (eventId: string) => {
+    setSelectedEventId(eventId);
+    window.setTimeout(
+      () => scrollToManagementSection(applicantSectionRef.current),
+      0,
+    );
+  };
+
+  const openManagedMessages = () => {
+    const selectedRoom = selectedEventId
+      ? (chatRooms.find(
+          (room) =>
+            room.eventId === selectedEventId && room.roomType === "event",
+        ) ?? chatRooms.find((room) => room.eventId === selectedEventId))
+      : undefined;
+    if (selectedRoom) selectOrganizationChatRoom(selectedRoom.id);
+    scrollToManagementSection(messagesSectionRef.current);
+  };
+
+  const previewStartAt = startAtInput ? new Date(startAtInput) : undefined;
+  const previewEndAt = endAtInput ? new Date(endAtInput) : undefined;
+  const previewEvent: AizuEvent = {
+    id: editingEventId ?? "preview",
+    title: title.trim() || "イベント名",
+    summary: summary.trim() || "イベントの概要がここに表示されます。",
+    category,
+    location: location.trim() || "会津若松市",
+    startAtLabel: startAtInput ? formatEventStart(startAtInput) : "日時未設定",
+    startAt:
+      previewStartAt && Number.isFinite(previewStartAt.getTime())
+        ? Timestamp.fromDate(previewStartAt)
+        : undefined,
+    endAtLabel:
+      previewEndAt && Number.isFinite(previewEndAt.getTime())
+        ? new Intl.DateTimeFormat("ja-JP", {
+            hour: "numeric",
+            minute: "2-digit",
+          }).format(previewEndAt)
+        : undefined,
+    endAt:
+      previewEndAt && Number.isFinite(previewEndAt.getTime())
+        ? Timestamp.fromDate(previewEndAt)
+        : undefined,
+    feeType,
+    feeAmount,
+    eventFormat,
+    meetingPoint,
+    accessInfo,
+    bringItems,
+    cancellationPolicy,
+    weatherPolicy,
+    accessibility,
+    contactMethod,
+    organizationName,
+    status: "pending_review",
+    capacity,
+    applicantCount: 0,
+    imageUrl: eventImagePreview ?? eventTemplates[0].imageUrl,
+    tags: [category, "学生歓迎"],
+    templateKey,
+    beginnerLevel,
+    takeaways: takeawayText
+      .split(/\n|,/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 3),
+    atmosphere,
+    organizerDescription,
+    organizerExperience,
+    organizationVerified: appUser.role === "organization",
+    createdBy: appUser.uid,
+  };
+
   return (
     <RoleShell
       title={organizationName}
-      subtitle="主催者ダッシュボード"
+      subtitle="企画ダッシュボード"
       icon={<UsersRound size={19} />}
+      onClose={onClose}
       onLogout={onLogout}
     >
       {notice && (
@@ -3546,12 +6182,68 @@ function OrganizationDashboard({
           {notice}
         </div>
       )}
+      <nav className="management-nav" aria-label="企画管理メニュー">
+        <button
+          type="button"
+          onClick={() => scrollToManagementSection(eventFormSectionRef.current)}
+        >
+          <Plus size={18} />
+          <span>
+            <strong>企画作成</strong>
+            <small>テンプレートから作る</small>
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => scrollToManagementSection(eventListSectionRef.current)}
+        >
+          <CalendarDays size={18} />
+          <span>
+            <strong>イベント</strong>
+            <small>{events.length}件を管理</small>
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            scrollToManagementSection(
+              selectedEventId
+                ? applicantSectionRef.current
+                : eventListSectionRef.current,
+            )
+          }
+        >
+          <UsersRound size={18} />
+          <span>
+            <strong>参加者</strong>
+            <small>
+              {selectedEvent
+                ? `確認待ち ${applicantMetrics.pending}件`
+                : "イベントを選択"}
+            </small>
+          </span>
+        </button>
+        <button type="button" onClick={openManagedMessages}>
+          <MessageCircle size={18} />
+          <span>
+            <strong>連絡</strong>
+            <small>
+              {unreadChatTotal > 0 ? `未読 ${unreadChatTotal}件` : "未読なし"}
+            </small>
+          </span>
+        </button>
+      </nav>
       <div className="role-grid">
-        <section className="role-card">
+        <section
+          className="role-card event-form-card"
+          ref={eventFormSectionRef}
+        >
           <div className="role-card-head">
             <div>
-              <p className="eyebrow">NEW EVENT</p>
-              <h2>{editingEventId ? "活動を修正する" : "活動を掲載する"}</h2>
+              <p className="eyebrow">PLAN EVENT</p>
+              <h2>
+                {editingEventId ? "企画を修正する" : "イベントを企画する"}
+              </h2>
             </div>
             {editingEventId ? (
               <button
@@ -3567,13 +6259,27 @@ function OrganizationDashboard({
             )}
           </div>
           <form
-            className="role-form"
+            className="role-form event-plan-form"
             onSubmit={(event) => void createEvent(event)}
           >
+            <div className="template-picker" aria-label="企画テンプレート">
+              {eventTemplates.map((template) => (
+                <button
+                  className={templateKey === template.key ? "active" : ""}
+                  key={template.key}
+                  type="button"
+                  onClick={() => applyTemplate(template)}
+                >
+                  <Sparkles size={15} />
+                  {template.label}
+                </button>
+              ))}
+            </div>
             <Field label="活動名">
               <input
                 required
                 maxLength={80}
+                placeholder={selectedTemplate.title}
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
               />
@@ -3582,10 +6288,45 @@ function OrganizationDashboard({
               <textarea
                 required
                 maxLength={220}
+                placeholder={selectedTemplate.summary}
                 value={summary}
                 onChange={(event) => setSummary(event.target.value)}
               />
             </Field>
+            <Field label="参加すると得られること（1行ずつ）">
+              <textarea
+                required
+                maxLength={180}
+                placeholder={selectedTemplate.takeaways.join("\n")}
+                value={takeawayText}
+                onChange={(event) => setTakeawayText(event.target.value)}
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="初心者歓迎度">
+                <select
+                  value={beginnerLevel}
+                  onChange={(event) =>
+                    setBeginnerLevel(
+                      event.target.value as AizuEvent["beginnerLevel"],
+                    )
+                  }
+                >
+                  <option>初参加歓迎</option>
+                  <option>誰でも歓迎</option>
+                  <option>少し経験者向け</option>
+                </select>
+              </Field>
+              <Field label="過去の雰囲気・当日の空気感">
+                <input
+                  required
+                  maxLength={180}
+                  placeholder={selectedTemplate.atmosphere}
+                  value={atmosphere}
+                  onChange={(event) => setAtmosphere(event.target.value)}
+                />
+              </Field>
+            </div>
             <Field label="イベント写真">
               <div className="image-picker event-image-picker">
                 <div className="event-image-preview">
@@ -3643,71 +6384,312 @@ function OrganizationDashboard({
                 />
               </Field>
             </div>
-            <Field label="開催日時">
-              <input
-                type="datetime-local"
-                required
-                value={startAtInput}
-                min={toDateTimeLocalValue(new Date())}
-                onChange={(event) => setStartAtInput(event.target.value)}
-                onInput={(event) => setStartAtInput(event.currentTarget.value)}
+            <div className="form-grid">
+              <Field label="開始日時">
+                <input
+                  type="datetime-local"
+                  required
+                  value={startAtInput}
+                  min={toDateTimeLocalValue(new Date())}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setStartAtInput(value);
+                    if (!endAtInput && value) {
+                      const start = new Date(value);
+                      setEndAtInput(
+                        toDateTimeLocalValue(
+                          new Date(start.getTime() + 2 * 60 * 60 * 1000),
+                        ),
+                      );
+                    }
+                  }}
+                  onInput={(event) => {
+                    const value = event.currentTarget.value;
+                    setStartAtInput(value);
+                    if (!endAtInput && value) {
+                      const start = new Date(value);
+                      setEndAtInput(
+                        toDateTimeLocalValue(
+                          new Date(start.getTime() + 2 * 60 * 60 * 1000),
+                        ),
+                      );
+                    }
+                  }}
+                />
+              </Field>
+              <Field label="終了日時">
+                <input
+                  type="datetime-local"
+                  required
+                  value={endAtInput}
+                  min={startAtInput || toDateTimeLocalValue(new Date())}
+                  onChange={(event) => setEndAtInput(event.target.value)}
+                  onInput={(event) => setEndAtInput(event.currentTarget.value)}
+                />
+              </Field>
+            </div>
+            <div className="form-grid">
+              <Field label="開催形式">
+                <select
+                  value={eventFormat}
+                  onChange={(event) =>
+                    setEventFormat(
+                      event.target.value as AizuEvent["eventFormat"],
+                    )
+                  }
+                >
+                  <option>現地</option>
+                  <option>オンライン</option>
+                  <option>ハイブリッド</option>
+                </select>
+              </Field>
+              <Field label="料金">
+                <select
+                  value={feeType}
+                  onChange={(event) =>
+                    setFeeType(event.target.value as AizuEvent["feeType"])
+                  }
+                >
+                  <option>無料</option>
+                  <option>有料</option>
+                </select>
+              </Field>
+            </div>
+            {feeType === "有料" && (
+              <Field label="参加費（円）">
+                <input
+                  type="number"
+                  min={0}
+                  max={1_000_000}
+                  required
+                  value={feeAmount}
+                  onChange={(event) => setFeeAmount(Number(event.target.value))}
+                />
+              </Field>
+            )}
+            <div className="form-grid">
+              <Field label="開催エリア・場所">
+                <input
+                  required
+                  maxLength={80}
+                  value={location}
+                  onChange={(event) => setLocation(event.target.value)}
+                />
+              </Field>
+              <Field label="集合場所・オンラインURL案内">
+                <input
+                  required
+                  maxLength={160}
+                  value={meetingPoint}
+                  onChange={(event) => setMeetingPoint(event.target.value)}
+                />
+              </Field>
+            </div>
+            <Field label="アクセス方法">
+              <textarea
+                maxLength={300}
+                value={accessInfo}
+                placeholder="最寄り駅、駐車場、入室方法など"
+                onChange={(event) => setAccessInfo(event.target.value)}
               />
             </Field>
-            <Field label="場所">
-              <input
+            <Field label="持ち物・服装">
+              <textarea
                 required
-                maxLength={80}
-                value={location}
-                onChange={(event) => setLocation(event.target.value)}
+                maxLength={300}
+                value={bringItems}
+                onChange={(event) => setBringItems(event.target.value)}
               />
             </Field>
-            <button
-              className="primary-action"
-              disabled={isLoading}
-              type="submit"
-            >
-              {isLoading ? (
-                <Loader2 size={17} className="spin" />
-              ) : (
-                <Check size={17} />
-              )}
-              {editingEventId ? "修正して再申請する" : "審査へ申請する"}
-            </button>
+            <Field label="キャンセル方針">
+              <textarea
+                required
+                maxLength={500}
+                value={cancellationPolicy}
+                onChange={(event) => setCancellationPolicy(event.target.value)}
+              />
+            </Field>
+            <Field label="雨天・中止時の対応">
+              <textarea
+                required
+                maxLength={500}
+                value={weatherPolicy}
+                onChange={(event) => setWeatherPolicy(event.target.value)}
+              />
+            </Field>
+            <Field label="バリアフリー・必要な配慮">
+              <textarea
+                required
+                maxLength={500}
+                value={accessibility}
+                onChange={(event) => setAccessibility(event.target.value)}
+              />
+            </Field>
+            <Field label="問い合わせ方法">
+              <textarea
+                required
+                maxLength={300}
+                value={contactMethod}
+                onChange={(event) => setContactMethod(event.target.value)}
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="主催者紹介">
+                <textarea
+                  required
+                  maxLength={500}
+                  value={organizerDescription}
+                  onChange={(event) =>
+                    setOrganizerDescription(event.target.value)
+                  }
+                />
+              </Field>
+              <Field label="主催・開催実績">
+                <textarea
+                  required
+                  maxLength={300}
+                  value={organizerExperience}
+                  onChange={(event) =>
+                    setOrganizerExperience(event.target.value)
+                  }
+                />
+              </Field>
+            </div>
+            <div className="event-form-foot">
+              <small>
+                {editingEventId
+                  ? "変更内容は審査後に反映されます"
+                  : "入力内容はこの端末へ自動保存されます"}
+              </small>
+              <div className="row-actions">
+                <button
+                  className="secondary-action"
+                  type="button"
+                  onClick={() => setIsEventPreviewOpen(true)}
+                >
+                  <Eye size={16} />
+                  公開前プレビュー
+                </button>
+                <button
+                  className="primary-action"
+                  disabled={isLoading}
+                  type="submit"
+                >
+                  {isLoading ? (
+                    <Loader2 size={17} className="spin" />
+                  ) : (
+                    <Check size={17} />
+                  )}
+                  {editingEventId ? "変更を審査へ送る" : "企画を申請する"}
+                </button>
+              </div>
+            </div>
           </form>
         </section>
-        <section className="role-card">
+        <section
+          className="role-card event-list-card"
+          ref={eventListSectionRef}
+        >
           <div className="role-card-head">
             <div>
-              <p className="eyebrow">YOUR EVENTS</p>
-              <h2>掲載した活動</h2>
+              <p className="eyebrow">YOUR PLANS</p>
+              <h2>企画したイベント</h2>
             </div>
             <strong>{events.length}件</strong>
           </div>
+          <div className="management-filter-bar">
+            <div className="conversation-search">
+              <Search size={14} />
+              <input
+                aria-label="企画したイベントを検索"
+                value={eventSearch}
+                placeholder="イベント名・場所を検索"
+                onChange={(event) => setEventSearch(event.target.value)}
+              />
+            </div>
+            <select
+              aria-label="イベント状態で絞り込む"
+              value={eventStatusFilter}
+              onChange={(event) =>
+                setEventStatusFilter(
+                  event.target.value as "all" | AizuEvent["status"],
+                )
+              }
+            >
+              <option value="all">すべての状態</option>
+              <option value="published">公開中</option>
+              <option value="pending_review">審査中</option>
+              <option value="revision_required">修正依頼</option>
+              <option value="cancelled">中止</option>
+              <option value="unpublished">非公開</option>
+            </select>
+            <select
+              aria-label="イベントを並び替える"
+              value={eventSort}
+              onChange={(event) =>
+                setEventSort(event.target.value as "date" | "newest")
+              }
+            >
+              <option value="date">開催が近い順</option>
+              <option value="newest">作成が新しい順</option>
+            </select>
+          </div>
           <div className="role-list">
-            {events.length === 0 ? (
-              <EmptyRoleState text="まだ活動がありません。" />
+            {visibleEvents.length === 0 ? (
+              <EmptyRoleState text="まだ企画はありません。" />
             ) : (
-              events.map((event) => (
-                <button
-                  className={`role-list-item ${selectedEventId === event.id ? "active" : ""}`}
-                  key={event.id}
-                  type="button"
-                  onClick={() => setSelectedEventId(event.id)}
-                >
-                  <span>
-                    <strong>{event.title}</strong>
-                    <small>
-                      {event.startAtLabel} · {event.location}
-                    </small>
-                  </span>
-                  <em className={`status-label ${event.status}`}>
-                    {event.status === "published"
-                      ? "公開中"
-                      : event.status === "pending_review"
-                        ? "審査中"
-                        : "修正依頼"}
-                  </em>
-                </button>
+              visibleEvents.map((event) => (
+                <div className="managed-event-row" key={event.id}>
+                  <button
+                    className={`role-list-item ${selectedEventId === event.id ? "active" : ""}`}
+                    type="button"
+                    onClick={() => selectManagedEvent(event.id)}
+                  >
+                    <span>
+                      <strong>{event.title}</strong>
+                      <small>
+                        {event.startAtLabel} · {event.location}
+                      </small>
+                    </span>
+                    <em className={`status-label ${event.status}`}>
+                      {event.status === "published"
+                        ? "公開中"
+                        : event.status === "pending_review"
+                          ? "審査中"
+                          : event.status === "revision_required"
+                            ? "修正依頼"
+                            : event.status === "cancelled"
+                              ? "中止"
+                              : "非公開"}
+                    </em>
+                  </button>
+                  <div className="managed-event-actions">
+                    <button type="button" onClick={() => duplicateEvent(event)}>
+                      <Plus size={13} />
+                      複製
+                    </button>
+                    {["published", "revision_required"].includes(
+                      event.status,
+                    ) && (
+                      <button type="button" onClick={() => beginEditEvent(event)}>
+                        <Settings size={13} />
+                        編集
+                      </button>
+                    )}
+                    {["published", "pending_review", "revision_required"].includes(
+                      event.status,
+                    ) && (
+                      <button
+                        className="danger-text"
+                        type="button"
+                        onClick={() => setEventCancellationTarget(event)}
+                      >
+                        <X size={13} />
+                        中止
+                      </button>
+                    )}
+                  </div>
+                </div>
               ))
             )}
           </div>
@@ -3732,23 +6714,35 @@ function OrganizationDashboard({
           onConfirm={() => setIsEventImageReviewOpen(false)}
         />
       )}
+      {isEventPreviewOpen && (
+        <EventDrawer
+          event={previewEvent}
+          applied={false}
+          isLoading={false}
+          previewMode
+          onApply={() => undefined}
+          onReport={() => undefined}
+          onClose={() => setIsEventPreviewOpen(false)}
+        />
+      )}
       {selectedEventId && (
-        <section className="role-card applicant-card">
+        <section className="role-card applicant-card" ref={applicantSectionRef}>
           <div className="role-card-head">
             <div>
               <p className="eyebrow">APPLICANTS</p>
               <h2>参加者を確認</h2>
+              {selectedEvent && <small>{selectedEvent.title}</small>}
             </div>
             <div className="row-actions">
-              {events.find((event) => event.id === selectedEventId)?.status ===
-                "revision_required" && (
+              <button type="button" onClick={exportSelectedEventReport}>
+                <Download size={15} />
+                レポート出力
+              </button>
+              {selectedEvent?.status === "revision_required" && (
                 <button
                   type="button"
                   onClick={() => {
-                    const event = events.find(
-                      (item) => item.id === selectedEventId,
-                    );
-                    if (event) beginEditEvent(event);
+                    if (selectedEvent) beginEditEvent(selectedEvent);
                   }}
                 >
                   編集する
@@ -3757,12 +6751,135 @@ function OrganizationDashboard({
               <UsersRound size={20} />
             </div>
           </div>
-          {applications.length === 0 ? (
+          {selectedEvent?.revisionReason && (
+            <div className="revision-reason-banner">
+              <Flag size={16} />
+              <span>
+                <strong>管理者からの修正依頼</strong>
+                <small>{selectedEvent.revisionReason}</small>
+              </span>
+            </div>
+          )}
+          {checkInCode && (
+            <div className="check-in-panel">
+              <span>
+                <small>スマホ受付コード</small>
+                <strong>{checkInCode}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(checkInCode);
+                  setNotice("受付コードをコピーしました。");
+                }}
+              >
+                <LinkIcon size={14} />
+                コピー
+              </button>
+            </div>
+          )}
+          <div className="applicant-metrics">
+            <span>
+              <strong>{applicantMetrics.total}</strong>
+              <small>申請</small>
+            </span>
+            <span>
+              <strong>{applicantMetrics.pending}</strong>
+              <small>確認待ち</small>
+            </span>
+            <span>
+              <strong>{applicantMetrics.waitlisted}</strong>
+              <small>キャンセル待ち</small>
+            </span>
+            <span>
+              <strong>{applicantMetrics.confirmed}</strong>
+              <small>参加確定</small>
+            </span>
+            <span>
+              <strong>{applicantMetrics.attended}</strong>
+              <small>出席</small>
+            </span>
+            <span>
+              <strong>{applicantMetrics.absent}</strong>
+              <small>欠席</small>
+            </span>
+          </div>
+          <div className="participant-toolbar">
+            <div className="conversation-search">
+              <Search size={14} />
+              <input
+                aria-label="参加者を検索"
+                value={applicantSearch}
+                placeholder="名前・配慮事項・メモを検索"
+                onChange={(event) => setApplicantSearch(event.target.value)}
+              />
+            </div>
+            <select
+              aria-label="参加状態で絞り込む"
+              value={applicantStatusFilter}
+              onChange={(event) =>
+                setApplicantStatusFilter(
+                  event.target.value as
+                    | "all"
+                    | EventApplication["status"],
+                )
+              }
+            >
+              <option value="all">すべての状態</option>
+              <option value="pending">確認待ち</option>
+              <option value="waitlisted">キャンセル待ち</option>
+              <option value="confirmed">参加確定</option>
+              <option value="attended">出席済み</option>
+              <option value="absent">欠席</option>
+              <option value="cancelled">キャンセル</option>
+            </select>
+            <div className="row-actions">
+              <button
+                type="button"
+                disabled={selectedApplicantIds.length === 0}
+                onClick={() =>
+                  void bulkUpdateApplications("confirmed").catch((error) =>
+                    setNotice(getFirebaseErrorMessage(error)),
+                  )
+                }
+              >
+                <Check size={14} />
+                選択を承認
+              </button>
+              <button
+                type="button"
+                disabled={selectedApplicantIds.length === 0}
+                onClick={() =>
+                  void bulkUpdateApplications("attended").catch((error) =>
+                    setNotice(getFirebaseErrorMessage(error)),
+                  )
+                }
+              >
+                <ShieldCheck size={14} />
+                選択を出席
+              </button>
+            </div>
+          </div>
+          {visibleApplications.length === 0 ? (
             <EmptyRoleState text="この活動にはまだ参加申請がありません。" />
           ) : (
             <div className="applicant-list">
-              {applications.map((application) => (
+              {visibleApplications.map((application) => (
                 <div className="applicant-row" key={application.id}>
+                  <label className="applicant-select">
+                    <input
+                      type="checkbox"
+                      aria-label={`${application.studentName}さんを選択`}
+                      checked={selectedApplicantIds.includes(application.id)}
+                      onChange={(event) =>
+                        setSelectedApplicantIds((current) =>
+                          event.target.checked
+                            ? [...current, application.id]
+                            : current.filter((id) => id !== application.id),
+                        )
+                      }
+                    />
+                  </label>
                   <div className="applicant-avatar">
                     {application.studentProfileImageUrl ? (
                       <img
@@ -3773,9 +6890,49 @@ function OrganizationDashboard({
                       <UserRound size={18} />
                     )}
                   </div>
-                  <div>
+                  <div className="applicant-main">
                     <strong>{application.studentName}</strong>
-                    <small>参加申請 · {application.status}</small>
+                    <small>
+                      参加申請 · {applicationStatusLabel(application.status)}
+                      {application.waitlistPosition
+                        ? ` ${application.waitlistPosition}番目`
+                        : ""}
+                    </small>
+                    {application.participantMessage && (
+                      <p>{application.participantMessage}</p>
+                    )}
+                    {application.accessibilityNeeds && (
+                      <span className="participant-sensitive-note">
+                        <ShieldCheck size={13} />
+                        必要な配慮: {application.accessibilityNeeds}
+                      </span>
+                    )}
+                    {application.emergencyContact && (
+                      <span className="participant-sensitive-note">
+                        緊急連絡: {application.emergencyContact}
+                      </span>
+                    )}
+                    <input
+                      className="organizer-note-input"
+                      aria-label={`${application.studentName}さんの運営メモ`}
+                      defaultValue={application.organizerNote ?? ""}
+                      maxLength={500}
+                      placeholder="運営メモ（主催者のみ）"
+                      onBlur={(event) => {
+                        if (
+                          event.currentTarget.value.trim() ===
+                          (application.organizerNote ?? "")
+                        ) {
+                          return;
+                        }
+                        void saveOrganizerNote(
+                          application,
+                          event.currentTarget.value,
+                        ).catch((error) =>
+                          setNotice(getFirebaseErrorMessage(error)),
+                        );
+                      }}
+                    />
                   </div>
                   <div className="row-actions">
                     {application.status === "pending" && (
@@ -3805,6 +6962,20 @@ function OrganizationDashboard({
                         </button>
                       </>
                     )}
+                    {application.status === "waitlisted" && (
+                      <button
+                        className="muted"
+                        type="button"
+                        onClick={() =>
+                          setPendingApplicationUpdate({
+                            application,
+                            status: "rejected",
+                          })
+                        }
+                      >
+                        見送り
+                      </button>
+                    )}
                     {application.status === "confirmed" && (
                       <>
                         <button
@@ -3833,6 +7004,14 @@ function OrganizationDashboard({
                       </>
                     )}
                     {application.status === "attended" && <em>活動実績済み</em>}
+                    <button
+                      className="muted"
+                      type="button"
+                      onClick={() => openApplicantChat(application)}
+                    >
+                      <MessageCircle size={14} />
+                      個別連絡
+                    </button>
                   </div>
                 </div>
               ))}
@@ -3840,17 +7019,38 @@ function OrganizationDashboard({
           )}
         </section>
       )}
-      <MessagesTab
-        rooms={chatRooms}
-        activeRoomId={activeRoomId}
-        messages={chatMessages}
-        draft={messageDraft}
-        onSelectRoom={setActiveRoomId}
-        onDraftChange={setMessageDraft}
-        onSend={() => void sendOrganizationMessage()}
-        currentUserId={appUser.uid}
-        currentUserRole="organization"
-      />
+      <div className="organization-messages-section" ref={messagesSectionRef}>
+        <MessagesTab
+          rooms={chatRooms}
+          activeRoomId={activeRoomId}
+          messages={chatMessages}
+          draft={messageDraft}
+          unreadCounts={unreadChatCounts}
+          readReceipts={chatReadReceipts}
+          mutedRoomIds={chatPreferences
+            .filter((preference) => preference.muted)
+            .map((preference) => preference.roomId)}
+          onSelectRoom={selectOrganizationChatRoom}
+          onToggleMute={(roomId) =>
+            void toggleOrganizationChatMute(roomId).catch((error) =>
+              setNotice(getFirebaseErrorMessage(error)),
+            )
+          }
+          onDraftChange={setMessageDraft}
+          onSend={() => void sendOrganizationMessage()}
+          onUploadAttachment={async (file) => {
+            try {
+              await uploadOrganizationAttachment(file);
+            } catch (error) {
+              setNotice(getFirebaseErrorMessage(error));
+            }
+          }}
+          onSaveRoomMeta={saveRoomMeta}
+          currentUserId={appUser.uid}
+          currentUserRole="organization"
+          onOpenEvent={selectManagedEvent}
+        />
+      </div>
       {pendingApplicationUpdate && (
         <ConfirmDialog
           title={
@@ -3873,22 +7073,134 @@ function OrganizationDashboard({
           }}
         />
       )}
+      {eventCancellationTarget && (
+        <ActionReasonDialog
+          title="イベントを中止"
+          description={`「${eventCancellationTarget.title}」を中止し、参加者へ通知します。`}
+          label="中止理由"
+          placeholder="参加者に伝わる具体的な理由を入力してください"
+          confirmLabel="イベントを中止する"
+          danger
+          onClose={() => setEventCancellationTarget(null)}
+          onConfirm={(reason) =>
+            void cancelManagedEvent(eventCancellationTarget, reason).catch(
+              (error) => setNotice(getFirebaseErrorMessage(error)),
+            )
+          }
+        />
+      )}
     </RoleShell>
   );
 }
 
-function AdminDashboard({ onLogout }: { onLogout: () => void }) {
+function AdminDashboard({
+  appUser,
+  onLogout,
+}: {
+  appUser: AppUser;
+  onLogout: () => void;
+}) {
   const [pendingEvents, setPendingEvents] = useState<AizuEvent[]>([]);
   const [pendingUsers, setPendingUsers] = useState<AppUser[]>([]);
   const [pendingReports, setPendingReports] = useState<ReportRecord[]>([]);
+  const [managedUsers, setManagedUsers] = useState<AppUser[]>([]);
+  const [managedEvents, setManagedEvents] = useState<AizuEvent[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [notice, setNotice] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [adminSearch, setAdminSearch] = useState("");
+  const [managedUserStatus, setManagedUserStatus] = useState<
+    "active" | "suspended" | "rejected"
+  >("active");
+  const [reasonAction, setReasonAction] = useState<{
+    title: string;
+    description: string;
+    label: string;
+    placeholder: string;
+    confirmLabel: string;
+    danger?: boolean;
+    action: (reason: string) => Promise<void>;
+  } | null>(null);
   const [confirmation, setConfirmation] = useState<{
     title: string;
     description: string;
     confirmLabel: string;
+    danger?: boolean;
     action: () => Promise<void>;
   } | null>(null);
+
+  const normalizedAdminSearch = adminSearch.trim().toLowerCase();
+  const matchesAdminSearch = (...values: (string | null | undefined)[]) =>
+    !normalizedAdminSearch ||
+    values
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedAdminSearch);
+  const visiblePendingEvents = [...pendingEvents]
+    .filter((event) =>
+      matchesAdminSearch(
+        event.title,
+        event.organizationName,
+        event.location,
+      ),
+    )
+    .sort(
+      (left, right) =>
+        timestampMillis(left.createdAt) - timestampMillis(right.createdAt),
+    );
+  const visiblePendingUsers = [...pendingUsers]
+    .filter((user) =>
+      matchesAdminSearch(user.displayName, user.email, user.university),
+    )
+    .sort(
+      (left, right) =>
+        timestampMillis(left.createdAt) - timestampMillis(right.createdAt),
+    );
+  const visiblePendingReports = [...pendingReports]
+    .filter((report) =>
+      matchesAdminSearch(
+        report.targetTitle,
+        report.reason,
+        report.description,
+      ),
+    )
+    .sort(
+      (left, right) =>
+        timestampMillis(left.createdAt) - timestampMillis(right.createdAt),
+    );
+  const visibleManagedUsers = managedUsers
+    .filter((user) => user.status === managedUserStatus)
+    .filter((user) =>
+      matchesAdminSearch(user.displayName, user.email, user.university),
+    );
+  const visibleManagedEvents = managedEvents.filter((event) =>
+    matchesAdminSearch(event.title, event.organizationName, event.location),
+  );
+  const pendingCreatedTimes = [
+    ...pendingEvents.map((event) => timestampMillis(event.createdAt)),
+    ...pendingUsers.map((user) => timestampMillis(user.createdAt)),
+    ...pendingReports.map((report) => timestampMillis(report.createdAt)),
+  ].filter((value) => value > 0);
+  const oldestPendingDays =
+    pendingCreatedTimes.length > 0
+      ? Math.max(
+          0,
+          Math.floor(
+            (Date.now() - Math.min(...pendingCreatedTimes)) / 86_400_000,
+          ),
+        )
+      : 0;
+  const processedToday = auditLogs.filter((audit) => {
+    const date = audit.createdAt?.toDate();
+    const now = new Date();
+    return (
+      date?.getFullYear() === now.getFullYear() &&
+      date?.getMonth() === now.getMonth() &&
+      date?.getDate() === now.getDate()
+    );
+  }).length;
 
   const loadReviewQueue = useCallback(async () => {
     setIsLoading(true);
@@ -3996,12 +7308,82 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     };
   }, []);
 
+  useEffect(() => {
+    const usersUnsubscribe = onSnapshot(
+      query(collection(db, "users"), limit(300)),
+      (snapshot) =>
+        setManagedUsers(
+          snapshot.docs
+            .map((userDoc) => ({
+              uid: userDoc.id,
+              ...(userDoc.data() as Omit<AppUser, "uid">),
+            }))
+            .filter((user) => user.role !== "admin") as AppUser[],
+        ),
+      () => setNotice("ユーザー管理データを取得できませんでした。"),
+    );
+    const eventsUnsubscribe = onSnapshot(
+      query(collection(db, "events"), limit(300)),
+      (snapshot) =>
+        setManagedEvents(
+          snapshot.docs
+            .map(
+              (eventDoc) =>
+                ({
+                  id: eventDoc.id,
+                  ...eventDoc.data(),
+                }) as AizuEvent,
+            )
+            .filter((event) =>
+              ["published", "unpublished"].includes(event.status),
+            ) as AizuEvent[],
+        ),
+      () => setNotice("公開イベント管理データを取得できませんでした。"),
+    );
+    const auditUnsubscribe = onSnapshot(
+      query(
+        collection(db, "auditLogs"),
+        orderBy("createdAt", "desc"),
+        limit(100),
+      ),
+      (snapshot) =>
+        setAuditLogs(
+          snapshot.docs.map((auditDoc) => ({
+            id: auditDoc.id,
+            ...auditDoc.data(),
+          })) as AuditLog[],
+        ),
+      () => setNotice("監査履歴を取得できませんでした。"),
+    );
+    return () => {
+      usersUnsubscribe();
+      eventsUnsubscribe();
+      auditUnsubscribe();
+    };
+  }, []);
+
   const approveEvent = async (event: AizuEvent) => {
     try {
-      await updateDoc(doc(db, "events", event.id), {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "events", event.id), {
         status: "published",
+        reviewNote: "公開基準を満たしていることを確認しました。",
+        revisionReason: deleteField(),
+        reviewedBy: appUser.uid,
+        reviewedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      batch.set(doc(collection(db, "auditLogs")), {
+        actorId: appUser.uid,
+        actorName: appUser.displayName,
+        action: "event_publish",
+        targetType: "event",
+        targetId: event.id,
+        targetTitle: event.title,
+        reason: "公開基準を満たしていることを確認",
+        createdAt: serverTimestamp(),
+      });
+      await batch.commit();
       setPendingEvents((current) =>
         current.filter((item) => item.id !== event.id),
       );
@@ -4011,16 +7393,42 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  const requestEventRevision = async (event: AizuEvent) => {
+  const requestEventRevision = async (event: AizuEvent, reason: string) => {
     try {
-      await updateDoc(doc(db, "events", event.id), {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "events", event.id), {
         status: "revision_required",
+        revisionReason: reason.trim().slice(0, 1000),
+        reviewedBy: appUser.uid,
+        reviewedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      batch.set(doc(collection(db, "notifications")), {
+        recipientId: event.createdBy,
+        type: "event_revision_required",
+        title: "イベントの修正をお願いします",
+        body: reason.trim().slice(0, 1000),
+        targetType: "event",
+        targetId: event.id,
+        isRead: false,
+        createdAt: serverTimestamp(),
+      });
+      batch.set(doc(collection(db, "auditLogs")), {
+        actorId: appUser.uid,
+        actorName: appUser.displayName,
+        action: "event_revision_required",
+        targetType: "event",
+        targetId: event.id,
+        targetTitle: event.title,
+        reason: reason.trim().slice(0, 1000),
+        createdAt: serverTimestamp(),
+      });
+      await batch.commit();
       setPendingEvents((current) =>
         current.filter((item) => item.id !== event.id),
       );
-      setNotice("イベントを差し戻しました。主催者に修正を依頼してください。");
+      setReasonAction(null);
+      setNotice("理由を添えてイベントを差し戻しました。");
     } catch (error) {
       setNotice(getFirebaseErrorMessage(error));
     }
@@ -4031,6 +7439,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       const batch = writeBatch(db);
       batch.update(doc(db, "users", user.uid), {
         status: "active",
+        reviewReason: deleteField(),
+        moderationReason: deleteField(),
         updatedAt: serverTimestamp(),
       });
       if (user.role === "organization") {
@@ -4039,6 +7449,26 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           updatedAt: serverTimestamp(),
         });
       }
+      batch.set(doc(collection(db, "notifications")), {
+        recipientId: user.uid,
+        type: "account_approved",
+        title: "アカウントが承認されました",
+        body: "Aizu Connectのすべての機能を利用できます。",
+        targetType: "profile",
+        targetId: user.uid,
+        isRead: false,
+        createdAt: serverTimestamp(),
+      });
+      batch.set(doc(collection(db, "auditLogs")), {
+        actorId: appUser.uid,
+        actorName: appUser.displayName,
+        action: "user_approve",
+        targetType: "user",
+        targetId: user.uid,
+        targetTitle: user.displayName,
+        reason: "登録情報を確認",
+        createdAt: serverTimestamp(),
+      });
       await batch.commit();
       setPendingUsers((current) =>
         current.filter((item) => item.uid !== user.uid),
@@ -4049,11 +7479,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  const rejectUser = async (user: AppUser) => {
+  const rejectUser = async (user: AppUser, reason: string) => {
     try {
       const batch = writeBatch(db);
       batch.update(doc(db, "users", user.uid), {
         status: "rejected",
+        reviewReason: reason.trim().slice(0, 1000),
         updatedAt: serverTimestamp(),
       });
       if (user.role === "organization") {
@@ -4062,10 +7493,21 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           updatedAt: serverTimestamp(),
         });
       }
+      batch.set(doc(collection(db, "auditLogs")), {
+        actorId: appUser.uid,
+        actorName: appUser.displayName,
+        action: "user_reject",
+        targetType: "user",
+        targetId: user.uid,
+        targetTitle: user.displayName,
+        reason: reason.trim().slice(0, 1000),
+        createdAt: serverTimestamp(),
+      });
       await batch.commit();
       setPendingUsers((current) =>
         current.filter((item) => item.uid !== user.uid),
       );
+      setReasonAction(null);
       setNotice("アカウントを見送りました。");
     } catch (error) {
       setNotice(getFirebaseErrorMessage(error));
@@ -4075,25 +7517,120 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const resolveReport = async (
     report: ReportRecord,
     status: "resolved" | "dismissed",
+    reason: string,
   ) => {
+    await runAdminAction(
+      status === "resolved" ? "resolve_report" : "dismiss_report",
+      report.id,
+      reason,
+      status === "resolved"
+        ? "通報を対応済みにしました。"
+        : "通報を棄却しました。",
+    );
+  };
+
+  type AdminAction =
+    | "resolve_report"
+    | "dismiss_report"
+    | "suspend_user"
+    | "restore_user"
+    | "delete_user"
+    | "unpublish_event"
+    | "restore_event"
+    | "delete_event";
+
+  const runAdminAction = async (
+    action: AdminAction,
+    targetId: string,
+    reason: string,
+    successMessage: string,
+  ) => {
+    setIsLoading(true);
     try {
-      await updateDoc(doc(db, "reports", report.id), {
-        status,
-        resolution: status === "resolved" ? "reviewed" : "no_violation",
-        resolvedAt: serverTimestamp(),
+      const manageResource = httpsCallable<
+        { action: AdminAction; targetId: string; reason: string },
+        { status: string }
+      >(functions, "adminManageResource");
+      await manageResource({
+        action,
+        targetId,
+        reason: reason.trim().slice(0, 1000),
       });
-      setPendingReports((current) =>
-        current.filter((item) => item.id !== report.id),
-      );
-      setNotice(
-        status === "resolved"
-          ? "通報を対応済みにしました。"
-          : "通報を棄却しました。",
-      );
+      setReasonAction(null);
+      setNotice(successMessage);
     } catch (error) {
       setNotice(getFirebaseErrorMessage(error));
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  const updateManagedUserStatus = async (
+    user: AppUser,
+    status: "active" | "suspended",
+    reason: string,
+  ) => {
+    await runAdminAction(
+      status === "suspended" ? "suspend_user" : "restore_user",
+      user.uid,
+      reason,
+      status === "suspended"
+        ? "アカウントを停止しました。"
+        : "アカウントを復旧しました。",
+    );
+  };
+
+  const updateManagedEventStatus = async (
+    event: AizuEvent,
+    status: "published" | "unpublished",
+    reason: string,
+  ) => {
+    await runAdminAction(
+      status === "unpublished" ? "unpublish_event" : "restore_event",
+      event.id,
+      reason,
+      status === "unpublished"
+        ? "イベントを非公開にしました。"
+        : "イベントを再公開しました。",
+    );
+  };
+
+  const deleteManagedEvent = async (event: AizuEvent, reason: string) => {
+    await runAdminAction(
+      "delete_event",
+      event.id,
+      reason,
+      "イベントと関連する申請・チャットを削除しました。",
+    );
+  };
+
+  const deleteManagedUser = async (user: AppUser, reason: string) => {
+    await runAdminAction(
+      "delete_user",
+      user.uid,
+      reason,
+      "ユーザーの認証アカウントと関連データを削除しました。",
+    );
+  };
+
+  const eventRiskFlags = (event: AizuEvent) =>
+    [
+      event.organizationVerified === false ? "未承認主催者" : null,
+      !event.cancellationPolicy ? "キャンセル方針なし" : null,
+      !event.meetingPoint ? "集合案内なし" : null,
+      !event.accessibility ? "配慮情報なし" : null,
+      event.feeType === "有料" && !event.feeAmount ? "料金未確定" : null,
+    ].filter(Boolean) as string[];
+  const userRiskFlags = (user: AppUser) =>
+    [
+      !user.email ? "メール未設定" : null,
+      user.role === "student" &&
+      user.email &&
+      !isAizuUniversityEmail(user.email)
+        ? "学外メール"
+        : null,
+      !user.department ? "所属未設定" : null,
+    ].filter(Boolean) as string[];
 
   return (
     <RoleShell
@@ -4107,6 +7644,21 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           {notice}
         </div>
       )}
+      <div className="admin-toolbar">
+        <div className="conversation-search">
+          <Search size={15} />
+          <input
+            aria-label="管理対象を検索"
+            value={adminSearch}
+            placeholder="イベント・氏名・通報理由を横断検索"
+            onChange={(event) => setAdminSearch(event.target.value)}
+          />
+        </div>
+        <span>
+          <FilterIcon size={14} />
+          古い申請から表示
+        </span>
+      </div>
       <div className="role-metrics">
         <div>
           <strong>{pendingEvents.length}</strong>
@@ -4121,8 +7673,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <span>通報対応</span>
         </div>
         <div>
-          <strong>原則拒否</strong>
-          <span>Security Rules</span>
+          <strong>{oldestPendingDays}日</strong>
+          <span>最も古い未処理</span>
+        </div>
+        <div>
+          <strong>{processedToday}</strong>
+          <span>本日の処理</span>
         </div>
       </div>
       <div className="role-grid">
@@ -4135,40 +7691,120 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             <CalendarDays size={20} />
           </div>
           <div className="role-list">
-            {pendingEvents.length === 0 ? (
+            {visiblePendingEvents.length === 0 ? (
               <EmptyRoleState text="審査待ちのイベントはありません。" />
             ) : (
-              pendingEvents.map((event) => (
-                <div className="review-row" key={event.id}>
-                  <div>
-                    <strong>{event.title}</strong>
-                    <small>
-                      {event.organizationName} · {event.startAtLabel}
-                    </small>
+              visiblePendingEvents.map((event) => (
+                <article className="admin-review-item" key={event.id}>
+                  <div className="review-row">
+                    <div>
+                      <strong>{event.title}</strong>
+                      <small>
+                        {event.organizationName} · {event.startAtLabel}
+                      </small>
+                      {eventRiskFlags(event).length > 0 && (
+                        <div className="risk-chip-row">
+                          {eventRiskFlags(event).map((risk) => (
+                            <span key={risk}>{risk}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="row-actions">
+                      <button
+                        className="muted"
+                        type="button"
+                        aria-expanded={expandedEventId === event.id}
+                        onClick={() =>
+                          setExpandedEventId((current) =>
+                            current === event.id ? null : event.id,
+                          )
+                        }
+                      >
+                        <Eye size={14} />
+                        {expandedEventId === event.id
+                          ? "内容を閉じる"
+                          : "内容を見る"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmation({
+                            title: "イベントを公開しますか？",
+                            description: `「${event.title}」を学生向けのイベント一覧へ公開します。`,
+                            confirmLabel: "公開する",
+                            action: () => approveEvent(event),
+                          })
+                        }
+                      >
+                        公開する
+                      </button>
+                      <button
+                        className="muted"
+                        type="button"
+                        onClick={() =>
+                          setReasonAction({
+                            title: "イベントを差し戻す",
+                            description: `「${event.title}」を非公開のまま主催者へ戻します。`,
+                            label: "修正してほしい内容",
+                            placeholder:
+                              "不足情報と、公開に必要な修正を具体的に入力してください",
+                            confirmLabel: "差し戻す",
+                            danger: true,
+                            action: (reason) =>
+                              requestEventRevision(event, reason),
+                          })
+                        }
+                      >
+                        差し戻す
+                      </button>
+                    </div>
                   </div>
-                  <div className="row-actions">
-                    <button
-                      type="button"
-                      onClick={() => void approveEvent(event)}
-                    >
-                      公開する
-                    </button>
-                    <button
-                      className="muted"
-                      type="button"
-                      onClick={() =>
-                        setConfirmation({
-                          title: "イベントを差し戻しますか？",
-                          description: `「${event.title}」を非公開のまま主催者へ戻します。`,
-                          confirmLabel: "差し戻す",
-                          action: () => requestEventRevision(event),
-                        })
-                      }
-                    >
-                      差し戻す
-                    </button>
-                  </div>
-                </div>
+                  {expandedEventId === event.id && (
+                    <div className="admin-event-preview">
+                      <img
+                        src={event.imageUrl}
+                        alt={`${event.title}の審査用画像`}
+                      />
+                      <div>
+                        <div className="admin-event-preview-head">
+                          <span>{event.category}</span>
+                          <strong>
+                            {event.beginnerLevel ?? "初心者歓迎度 未設定"}
+                          </strong>
+                        </div>
+                        <p>{event.summary}</p>
+                        <dl>
+                          <div>
+                            <dt>日時</dt>
+                            <dd>{event.startAtLabel}</dd>
+                          </div>
+                          <div>
+                            <dt>場所</dt>
+                            <dd>{event.location}</dd>
+                          </div>
+                          <div>
+                            <dt>定員</dt>
+                            <dd>{event.capacity}名</dd>
+                          </div>
+                        </dl>
+                        {event.atmosphere && (
+                          <div className="admin-event-note">
+                            <strong>雰囲気</strong>
+                            <span>{event.atmosphere}</span>
+                          </div>
+                        )}
+                        {event.takeaways && event.takeaways.length > 0 && (
+                          <div className="value-chip-grid compact">
+                            {event.takeaways.slice(0, 3).map((takeaway) => (
+                              <span key={takeaway}>{takeaway}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </article>
               ))
             )}
           </div>
@@ -4194,10 +7830,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </button>
           </div>
           <div className="role-list">
-            {pendingUsers.length === 0 ? (
+            {visiblePendingUsers.length === 0 ? (
               <EmptyRoleState text="審査待ちはありません。会津大学メールの学生は自動承認されます。" />
             ) : (
-              pendingUsers.map((user) => (
+              visiblePendingUsers.map((user) => (
                 <div className="review-row" key={user.uid}>
                   <div>
                     <strong>{user.displayName}</strong>
@@ -4208,24 +7844,42 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     <small>
                       {user.university} · {user.department} · {user.status}
                     </small>
+                    {userRiskFlags(user).length > 0 && (
+                      <div className="risk-chip-row">
+                        {userRiskFlags(user).map((risk) => (
+                          <span key={risk}>{risk}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="row-actions">
                     <button
                       type="button"
-                      onClick={() => void approveUser(user)}
+                      onClick={() =>
+                        setConfirmation({
+                          title: "アカウントを承認しますか？",
+                          description: `${user.displayName}さんがAizu Connectを利用できるようになります。`,
+                          confirmLabel: "承認する",
+                          action: () => approveUser(user),
+                        })
+                      }
                     >
                       承認する
                     </button>
                     <button
-                      className="muted"
-                      type="button"
-                      onClick={() =>
-                        setConfirmation({
-                          title: "アカウントを見送りますか？",
-                          description: `${user.displayName}さんはAizu Connectを利用できなくなります。`,
-                          confirmLabel: "見送る",
-                          action: () => rejectUser(user),
-                        })
+                        className="muted"
+                        type="button"
+                        onClick={() =>
+                          setReasonAction({
+                            title: "アカウントを見送る",
+                            description: `${user.displayName}さんへ理由を表示して利用を制限します。`,
+                            label: "見送り理由",
+                            placeholder:
+                              "不足している確認情報や、再申請に必要な内容を入力してください",
+                            confirmLabel: "理由を添えて見送る",
+                            danger: true,
+                            action: (reason) => rejectUser(user, reason),
+                          })
                       }
                     >
                       見送る
@@ -4245,11 +7899,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </div>
           <Flag size={20} />
         </div>
-        {pendingReports.length === 0 ? (
+        {visiblePendingReports.length === 0 ? (
           <EmptyRoleState text="確認が必要な通報はありません。" />
         ) : (
           <div className="role-list">
-            {pendingReports.map((report) => (
+            {visiblePendingReports.map((report) => (
               <div className="review-row" key={report.id}>
                 <div>
                   <strong>{report.targetTitle || "対象コンテンツ"}</strong>
@@ -4260,22 +7914,70 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   {report.description && <small>{report.description}</small>}
                 </div>
                 <div className="row-actions">
+                  {report.targetType === "event" && (
+                    <button
+                      className="danger-action"
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() =>
+                        setReasonAction({
+                          title: "通報対象イベントを削除",
+                          description: `「${report.targetTitle || "対象イベント"}」を、申請・チャットを含めて削除します。この操作は元に戻せません。`,
+                          label: "削除理由・対応記録",
+                          placeholder:
+                            "確認した違反内容と、削除が必要な理由を入力してください",
+                          confirmLabel: "イベントを削除する",
+                          danger: true,
+                          action: (reason) =>
+                            deleteManagedEvent(
+                              {
+                                id: report.targetId,
+                                title:
+                                  report.targetTitle || "対象イベント",
+                              } as AizuEvent,
+                              reason,
+                            ),
+                        })
+                      }
+                    >
+                      <Trash2 size={14} />
+                      対象を削除
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => void resolveReport(report, "resolved")}
+                    disabled={isLoading}
+                    onClick={() =>
+                      setReasonAction({
+                        title: "通報を対応済みにする",
+                        description: `「${report.targetTitle || "対象コンテンツ"}」の確認が完了したものとしてキューを閉じます。`,
+                        label: "対応内容・記録",
+                        placeholder:
+                          "確認した内容と、実施した対応を入力してください",
+                        confirmLabel: "対応済みにする",
+                        action: (reason) =>
+                          resolveReport(report, "resolved", reason),
+                      })
+                    }
                   >
                     対応済み
                   </button>
                   <button
                     className="muted"
                     type="button"
+                    disabled={isLoading}
                     onClick={() =>
-                      setConfirmation({
-                        title: "問題なしとして閉じますか？",
+                      setReasonAction({
+                        title: "問題なしとして閉じる",
                         description:
                           "この通報は対応キューから外れ、提出済みの状態には戻せません。",
+                        label: "問題なしと判断した理由",
+                        placeholder:
+                          "確認した事実と判断根拠を入力してください",
                         confirmLabel: "問題なしとして閉じる",
-                        action: () => resolveReport(report, "dismissed"),
+                        danger: true,
+                        action: (reason) =>
+                          resolveReport(report, "dismissed", reason),
                       })
                     }
                   >
@@ -4287,18 +7989,265 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </div>
         )}
       </section>
+      <div className="role-grid admin-operations-grid">
+        <section className="role-card">
+          <div className="role-card-head">
+            <div>
+              <p className="eyebrow">USER OPERATIONS</p>
+              <h2>ユーザー管理</h2>
+            </div>
+            <UsersRound size={20} />
+          </div>
+          <div className="admin-status-tabs" aria-label="ユーザー状態">
+            {(
+              [
+                ["active", "利用中"],
+                ["suspended", "停止中"],
+                ["rejected", "見送り"],
+              ] as const
+            ).map(([status, label]) => (
+              <button
+                className={managedUserStatus === status ? "active" : ""}
+                type="button"
+                key={status}
+                onClick={() => setManagedUserStatus(status)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="role-list admin-compact-list">
+            {visibleManagedUsers.length === 0 ? (
+              <EmptyRoleState text="条件に合うユーザーはいません。" />
+            ) : (
+              visibleManagedUsers.slice(0, 30).map((user) => (
+                <div className="review-row" key={user.uid}>
+                  <div>
+                    <strong>{user.displayName}</strong>
+                    <small>
+                      {user.email} ·{" "}
+                      {user.role === "organization" ? "団体" : "学生"}
+                    </small>
+                    {(user.moderationReason || user.reviewReason) && (
+                      <small>
+                        理由: {user.moderationReason || user.reviewReason}
+                      </small>
+                    )}
+                  </div>
+                  <div className="row-actions">
+                    {user.status === "active" ? (
+                      <button
+                        className="muted"
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() =>
+                          setReasonAction({
+                            title: "アカウントを停止",
+                            description: `${user.displayName}さんの利用を停止します。`,
+                            label: "停止理由",
+                            placeholder:
+                              "違反内容、確認事項、復旧条件を入力してください",
+                            confirmLabel: "利用を停止する",
+                            danger: true,
+                            action: (reason) =>
+                              updateManagedUserStatus(
+                                user,
+                                "suspended",
+                                reason,
+                              ),
+                          })
+                        }
+                      >
+                        停止
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() =>
+                          setReasonAction({
+                            title: "アカウントを復旧",
+                            description: `${user.displayName}さんの利用を再開します。`,
+                            label: "復旧理由",
+                            placeholder:
+                              "確認済みの内容と、復旧可能と判断した理由を入力してください",
+                            confirmLabel: "利用を再開する",
+                            action: (reason) =>
+                              updateManagedUserStatus(user, "active", reason),
+                          })
+                        }
+                      >
+                        復旧
+                      </button>
+                    )}
+                    <button
+                      className="danger-action"
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() =>
+                        setReasonAction({
+                          title: "ユーザーを完全に削除",
+                          description: `${user.displayName}さんの認証アカウント、参加申請、チャット、プロフィールを削除します。この操作は元に戻せません。`,
+                          label: "削除理由・対応記録",
+                          placeholder:
+                            "削除が必要な理由と、事前に確認した内容を入力してください",
+                          confirmLabel: "ユーザーを削除する",
+                          danger: true,
+                          action: (reason) =>
+                            deleteManagedUser(user, reason),
+                        })
+                      }
+                    >
+                      <Trash2 size={14} />
+                      削除
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+        <section className="role-card">
+          <div className="role-card-head">
+            <div>
+              <p className="eyebrow">EVENT OPERATIONS</p>
+              <h2>公開イベント管理</h2>
+            </div>
+            <CalendarDays size={20} />
+          </div>
+          <div className="role-list admin-compact-list">
+            {visibleManagedEvents.length === 0 ? (
+              <EmptyRoleState text="管理対象のイベントはありません。" />
+            ) : (
+              visibleManagedEvents.slice(0, 30).map((event) => (
+                <div className="review-row" key={event.id}>
+                  <div>
+                    <strong>{event.title}</strong>
+                    <small>
+                      {event.organizationName} ·{" "}
+                      {event.status === "published" ? "公開中" : "非公開"}
+                    </small>
+                    {event.moderationReason && (
+                      <small>理由: {event.moderationReason}</small>
+                    )}
+                  </div>
+                  <div className="row-actions">
+                    <button
+                      className={event.status === "published" ? "muted" : ""}
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() =>
+                        setReasonAction({
+                          title:
+                            event.status === "published"
+                              ? "イベントを非公開"
+                              : "イベントを再公開",
+                          description: `「${event.title}」の公開状態を変更します。`,
+                          label:
+                            event.status === "published"
+                              ? "非公開にする理由"
+                              : "再公開する理由",
+                          placeholder:
+                            event.status === "published"
+                              ? "安全確認の内容と主催者への案内を入力してください"
+                              : "修正・確認済みの内容を入力してください",
+                          confirmLabel:
+                            event.status === "published"
+                              ? "非公開にする"
+                              : "再公開する",
+                          danger: event.status === "published",
+                          action: (reason) =>
+                            updateManagedEventStatus(
+                              event,
+                              event.status === "published"
+                                ? "unpublished"
+                                : "published",
+                              reason,
+                            ),
+                        })
+                      }
+                    >
+                      {event.status === "published" ? "非公開" : "再公開"}
+                    </button>
+                    <button
+                      className="danger-action"
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() =>
+                        setReasonAction({
+                          title: "イベントを完全に削除",
+                          description: `「${event.title}」と参加申請・チャットを削除します。この操作は元に戻せません。`,
+                          label: "削除理由・対応記録",
+                          placeholder:
+                            "違反内容や削除依頼など、削除が必要な理由を入力してください",
+                          confirmLabel: "イベントを削除する",
+                          danger: true,
+                          action: (reason) =>
+                            deleteManagedEvent(event, reason),
+                        })
+                      }
+                    >
+                      <Trash2 size={14} />
+                      削除
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
+      <section className="role-card audit-log-card">
+        <div className="role-card-head">
+          <div>
+            <p className="eyebrow">AUDIT HISTORY</p>
+            <h2>操作履歴</h2>
+          </div>
+          <History size={20} />
+        </div>
+        {auditLogs.length === 0 ? (
+          <EmptyRoleState text="管理操作を行うと、理由と日時がここに残ります。" />
+        ) : (
+          <div className="audit-log-list">
+            {auditLogs.slice(0, 50).map((audit) => (
+              <div key={audit.id}>
+                <span>
+                  <strong>{audit.targetTitle}</strong>
+                  <small>
+                    {audit.actorName} · {audit.action}
+                  </small>
+                </span>
+                <p>{audit.reason}</p>
+                <time>{formatChatTime(audit.createdAt)}</time>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
       {confirmation && (
         <ConfirmDialog
           title={confirmation.title}
           description={confirmation.description}
           confirmLabel={confirmation.confirmLabel}
-          danger
+          danger={confirmation.danger}
           onClose={() => setConfirmation(null)}
           onConfirm={() => {
             const action = confirmation.action;
             setConfirmation(null);
             void action();
           }}
+        />
+      )}
+      {reasonAction && (
+        <ActionReasonDialog
+          title={reasonAction.title}
+          description={reasonAction.description}
+          label={reasonAction.label}
+          placeholder={reasonAction.placeholder}
+          confirmLabel={reasonAction.confirmLabel}
+          danger={reasonAction.danger}
+          onClose={() => setReasonAction(null)}
+          onConfirm={(reason) => void reasonAction.action(reason)}
         />
       )}
     </RoleShell>
@@ -4309,12 +8258,14 @@ function RoleShell({
   title,
   subtitle,
   icon,
+  onClose,
   onLogout,
   children,
 }: {
   title: string;
   subtitle: string;
   icon: ReactNode;
+  onClose?: () => void;
   onLogout: () => void;
   children: ReactNode;
 }) {
@@ -4331,6 +8282,15 @@ function RoleShell({
         <div className="role-header-user">
           {icon}
           <strong>{title}</strong>
+          {onClose && (
+            <button
+              className="secondary-action compact-action"
+              type="button"
+              onClick={onClose}
+            >
+              ホームへ戻る
+            </button>
+          )}
           <button
             className="icon-button"
             title="ログアウト"
@@ -4373,7 +8333,8 @@ function NotificationPanel({
         </div>
         <button
           className="icon-button"
-          title="通知を閉じる"
+          title="通知パネルを閉じる"
+          aria-label="通知パネルを閉じる"
           type="button"
           onClick={onClose}
         >
@@ -4486,6 +8447,88 @@ function ReportDialog({
               <Flag size={16} />
             )}
             通報を送信
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body,
+  );
+}
+
+function ActionReasonDialog({
+  title,
+  description,
+  label,
+  placeholder,
+  confirmLabel,
+  danger = false,
+  onClose,
+  onConfirm,
+}: {
+  title: string;
+  description: string;
+  label: string;
+  placeholder: string;
+  confirmLabel: string;
+  danger?: boolean;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const dialogRef = useDialogAccessibility<HTMLFormElement>(onClose);
+  return createPortal(
+    <div className="report-backdrop" role="presentation" onClick={onClose}>
+      <form
+        ref={dialogRef}
+        className="report-dialog action-reason-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="action-reason-title"
+        tabIndex={-1}
+        onClick={(clickEvent) => clickEvent.stopPropagation()}
+        onSubmit={(submitEvent) => {
+          submitEvent.preventDefault();
+          const normalized = reason.trim();
+          if (!normalized) return;
+          onConfirm(normalized);
+        }}
+      >
+        <div className="report-dialog-head">
+          <div>
+            <p className="eyebrow">REASON REQUIRED</p>
+            <h2 id="action-reason-title">{title}</h2>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            title="閉じる"
+            data-dialog-initial-focus
+            onClick={onClose}
+          >
+            <X size={17} />
+          </button>
+        </div>
+        <p>{description}</p>
+        <Field label={label}>
+          <textarea
+            required
+            minLength={5}
+            maxLength={1000}
+            value={reason}
+            placeholder={placeholder}
+            onChange={(changeEvent) => setReason(changeEvent.target.value)}
+          />
+        </Field>
+        <div className="report-dialog-actions">
+          <button className="text-button" type="button" onClick={onClose}>
+            キャンセル
+          </button>
+          <button
+            className={danger ? "danger-action" : "primary-action"}
+            type="submit"
+            disabled={reason.trim().length < 5}
+          >
+            {confirmLabel}
           </button>
         </div>
       </form>

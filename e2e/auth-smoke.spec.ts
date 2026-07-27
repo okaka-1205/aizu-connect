@@ -11,7 +11,7 @@ test.describe("auth entry", () => {
     ).toBeVisible();
     await expect(page.getByLabel("メールアドレス")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "学生として始める" }),
+      page.getByRole("button", { name: "登録して始める" }),
     ).toBeVisible();
     await expect(page.getByLabel("メールアドレス")).toHaveAttribute(
       "required",
@@ -21,6 +21,17 @@ test.describe("auth entry", () => {
       "minlength",
       "6",
     );
+    const accountType = page.getByRole("group", {
+      name: "アカウント種別",
+    });
+    await expect(
+      accountType.getByRole("button", { name: "個人" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await accountType.getByRole("button", { name: "団体・自治体" }).click();
+    await expect(page.getByLabel("団体・自治体名")).toBeVisible();
+    await expect(page.getByLabel("表示名")).toBeHidden();
+    await accountType.getByRole("button", { name: "個人" }).click();
+    await expect(page.getByLabel("表示名")).toBeVisible();
 
     await page.getByRole("button", { name: "ログイン" }).click();
 
@@ -33,6 +44,9 @@ test.describe("auth entry", () => {
     await expect(
       page.getByRole("button", { name: "パスワードを忘れた方" }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("group", { name: "アカウント種別" }),
+    ).toBeHidden();
   });
 
   test("opens legal documents from the auth screen", async ({ page }) => {

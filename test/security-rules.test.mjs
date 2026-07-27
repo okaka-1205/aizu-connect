@@ -61,12 +61,32 @@ const eventDoc = (overrides = {}) => ({
   location: "Aizuwakamatsu",
   startAtLabel: "1/1",
   startAt: timestamp,
+  endAtLabel: "2:00",
+  endAt: firebase.firestore.Timestamp.fromDate(
+    new Date("2026-01-01T02:00:00.000Z"),
+  ),
+  feeType: "無料",
+  feeAmount: 0,
+  eventFormat: "現地",
+  meetingPoint: "会津大学正門前",
+  accessInfo: "",
+  bringItems: "学生証",
+  cancellationPolicy: "前日までにキャンセルしてください。",
+  weatherPolicy: "中止時はチャットで連絡します。",
+  accessibility: "必要な配慮を申請時にお知らせください。",
+  contactMethod: "個別チャット",
   organizationName: "Aizu Org",
   status: "published",
   capacity: 20,
   applicantCount: 0,
   imageUrl: "https://example.com/event.png",
   tags: ["地域活動", "学生歓迎"],
+  templateKey: "交流会",
+  beginnerLevel: "初参加歓迎",
+  takeaways: ["地域とつながる"],
+  atmosphere: "少人数で話しやすい雰囲気です。",
+  organizerDescription: "地域交流を企画する団体です。",
+  organizerExperience: "地域イベントを10回開催",
   organizationId: "org-1",
   organizationVerified: true,
   createdBy: "org-1",
@@ -171,6 +191,41 @@ const savedEventDoc = (userId = "student-1", overrides = {}) => ({
   ...overrides,
 });
 
+const savedSearchDoc = (userId = "student-1", overrides = {}) => ({
+  userId,
+  searchText: "地域",
+  category: "すべて",
+  dateFilter: "今月",
+  dayFilter: "すべて",
+  timeFilter: "すべて",
+  feeFilter: "無料",
+  formatFilter: "現地",
+  onlyAvailable: true,
+  onlyBeginner: false,
+  updatedAt: timestamp,
+  ...overrides,
+});
+
+const chatPreferenceDoc = (userId = "student-1", overrides = {}) => ({
+  userId,
+  roomId: "room-1",
+  muted: false,
+  updatedAt: timestamp,
+  ...overrides,
+});
+
+const auditLogDoc = (overrides = {}) => ({
+  actorId: "admin-1",
+  actorName: "Admin",
+  action: "event_publish",
+  targetType: "event",
+  targetId: "event-published",
+  targetTitle: "Aizu Event",
+  reason: "公開基準を満たしていることを確認",
+  createdAt: timestamp,
+  ...overrides,
+});
+
 const contexts = () => ({
   anon: testEnv.unauthenticatedContext(),
   student: testEnv.authenticatedContext("student-1", {
@@ -188,6 +243,10 @@ const contexts = () => ({
   organization: testEnv.authenticatedContext("org-1", {
     email: "org@example.com",
     email_verified: true,
+  }),
+  unverifiedOrganization: testEnv.authenticatedContext("org-1", {
+    email: "org@example.com",
+    email_verified: false,
   }),
   otherOrganization: testEnv.authenticatedContext("org-2", {
     email: "org-2@example.com",
@@ -294,6 +353,13 @@ const seedData = async () => {
           status: "confirmed",
         }),
       ),
+      db.doc("eventApplications/app-waitlisted").set(
+        applicationDoc({
+          id: "app-waitlisted",
+          status: "waitlisted",
+          waitlistPosition: 1,
+        }),
+      ),
       db.doc("eventApplications/app-other-student").set(
         applicationDoc({
           id: "app-other-student",
@@ -314,6 +380,27 @@ const seedData = async () => {
       db.doc("notificationPreferences/student-1").set(preferencesDoc()),
       db.doc("reports/report-1").set(reportDoc()),
       db.doc("savedEvents/student-1_event-published").set(savedEventDoc()),
+      db.doc("savedSearches/student-1_default").set(savedSearchDoc()),
+      db
+        .doc("chatPreferences/room-1_student-1")
+        .set(chatPreferenceDoc()),
+      db.doc("publicOrganizerProfiles/org-1").set({
+        userId: "org-1",
+        displayName: "Aizu Org",
+        description: "Local activities",
+        experience: "10 events",
+        publishedEventCount: 1,
+        verified: true,
+        updatedAt: timestamp,
+      }),
+      db.doc("auditLogs/audit-1").set(auditLogDoc()),
+      db.doc("eventCheckIns/event-published").set({
+        eventId: "event-published",
+        organizerId: "org-1",
+        code: "123456",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
     ]);
 
     await context
@@ -324,6 +411,10 @@ const seedData = async () => {
       .storage()
       .ref("event-images/org-1/event-published/cover.png")
       .putString("image", "raw", { contentType: "image/png" });
+    await context
+      .storage()
+      .ref("chat-attachments/room-1/student-1/guide.txt")
+      .putString("guide", "raw", { contentType: "text/plain" });
   });
 };
 
@@ -434,6 +525,25 @@ describe("users and profiles", () => {
           }),
         ),
     );
+    const mismatchedStudent = testEnv.authenticatedContext(
+      "student-email-mismatch",
+      {
+        email: "actual@example.com",
+        email_verified: true,
+      },
+    );
+    await assertFails(
+      mismatchedStudent
+        .firestore()
+        .doc("users/student-email-mismatch")
+        .set(
+          userDoc({
+            uid: "student-email-mismatch",
+            email: "claimed@example.com",
+            status: "pending_approval",
+          }),
+        ),
+    );
 
     const unverifiedAizuStudent = testEnv.authenticatedContext(
       "student-unverified",
@@ -536,6 +646,7 @@ describe("organizations", () => {
             id: "org-new",
             status: "pending_approval",
             createdBy: "org-new",
+            contactEmail: "org-new@example.com",
           }),
         ),
     );
@@ -596,9 +707,9 @@ describe("events", () => {
     await assertSucceeds(admin.firestore().doc("events/event-pending").get());
   });
 
-  it("allows active organizations to create valid review events only", async () => {
+  it("denies direct event creation because the callable owns writes", async () => {
     const { organization, student } = contexts();
-    await assertSucceeds(
+    await assertFails(
       organization
         .firestore()
         .doc("events/event-new")
@@ -610,39 +721,6 @@ describe("events", () => {
         ),
     );
     await assertFails(
-      organization
-        .firestore()
-        .doc("events/event-invalid")
-        .set(
-          eventDoc({
-            title: "",
-            status: "pending_review",
-          }),
-        ),
-    );
-    await assertFails(
-      organization
-        .firestore()
-        .doc("events/event-invalid-tags")
-        .set(
-          eventDoc({
-            status: "pending_review",
-            tags: ["地域活動", { polluted: true }],
-          }),
-        ),
-    );
-    await assertFails(
-      organization
-        .firestore()
-        .doc("events/event-invalid-time")
-        .set(
-          eventDoc({
-            status: "pending_review",
-            createdAt: "not-a-timestamp",
-          }),
-        ),
-    );
-    await assertFails(
       student
         .firestore()
         .doc("events/event-student")
@@ -650,12 +728,15 @@ describe("events", () => {
           eventDoc({
             createdBy: "student-1",
             organizationId: "student-1",
+            organizationName: "Student One",
+            organizationVerified: false,
+            status: "pending_review",
           }),
         ),
     );
   });
 
-  it("allows only valid admin review and organization revision transitions", async () => {
+  it("allows admin review and creator cancellation only", async () => {
     const { organization, admin } = contexts();
     await assertSucceeds(
       admin.firestore().doc("events/event-pending").update({
@@ -668,17 +749,6 @@ describe("events", () => {
         title: "Admin rewrite",
       }),
     );
-    await assertSucceeds(
-      organization.firestore().doc("events/event-revision").update({
-        title: "Revised Event",
-        summary: "A student-friendly event in Aizu.",
-        location: "Aizuwakamatsu",
-        startAtLabel: "1/1",
-        startAt: timestamp,
-        capacity: 30,
-        updatedAt: timestamp,
-      }),
-    );
     await assertFails(
       organization.firestore().doc("events/event-revision").update({
         title: "",
@@ -687,6 +757,35 @@ describe("events", () => {
         startAtLabel: "1/1",
         startAt: timestamp,
         capacity: 30,
+        status: "pending_review",
+        updatedAt: timestamp,
+      }),
+    );
+    await assertFails(
+      organization.firestore().doc("events/event-revision").update({
+        title: "Revised Event",
+        summary: "A student-friendly event in Aizu.",
+        location: "Aizuwakamatsu",
+        startAtLabel: "1/1",
+        startAt: timestamp,
+        capacity: 30,
+        status: "pending_review",
+        updatedAt: timestamp,
+      }),
+    );
+    await assertSucceeds(
+      organization.firestore().doc("events/event-published").update({
+        status: "cancelled",
+        cancellationReason: "主催者都合により中止します。",
+        cancelledAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+    await assertFails(
+      organization.firestore().doc("events/event-pending").update({
+        status: "cancelled",
+        cancellationReason: "",
+        cancelledAt: timestamp,
         updatedAt: timestamp,
       }),
     );
@@ -735,6 +834,16 @@ describe("event applications and activities", () => {
     await assertSucceeds(
       organization.firestore().doc("eventApplications/app-1").update({
         status: "confirmed",
+      }),
+    );
+    await assertFails(
+      organization.firestore().doc("eventApplications/app-waitlisted").update({
+        status: "confirmed",
+      }),
+    );
+    await assertSucceeds(
+      organization.firestore().doc("eventApplications/app-waitlisted").update({
+        status: "rejected",
       }),
     );
     await assertSucceeds(
@@ -862,8 +971,14 @@ describe("notifications, preferences, reports, and saved events", () => {
         isRead: "yes",
       }),
     );
-    await assertFails(
+    await assertSucceeds(
       admin.firestore().doc("notifications/new").set(notificationDoc()),
+    );
+    await assertFails(
+      admin
+        .firestore()
+        .doc("notifications/invalid")
+        .set(notificationDoc({ recipientId: "", isRead: true })),
     );
   });
 
@@ -990,6 +1105,91 @@ describe("notifications, preferences, reports, and saved events", () => {
   });
 });
 
+describe("saved searches and operational records", () => {
+  it("allows students to manage only their own valid saved search", async () => {
+    const { student, otherStudent, organization } = contexts();
+    await assertSucceeds(
+      student.firestore().doc("savedSearches/student-1_default").get(),
+    );
+    await assertFails(
+      otherStudent.firestore().doc("savedSearches/student-1_default").get(),
+    );
+    await assertSucceeds(
+      student.firestore().doc("savedSearches/student-1_default").update({
+        searchText: "ボランティア",
+        updatedAt: timestamp,
+      }),
+    );
+    await assertFails(
+      student.firestore().doc("savedSearches/student-1_default").update({
+        dateFilter: "来年",
+        updatedAt: timestamp,
+      }),
+    );
+    await assertFails(
+      organization
+        .firestore()
+        .doc("savedSearches/org-1_default")
+        .set(savedSearchDoc("org-1")),
+    );
+  });
+
+  it("limits chat preferences to active room participants", async () => {
+    const { student, otherStudent, organization } = contexts();
+    await assertSucceeds(
+      student.firestore().doc("chatPreferences/room-1_student-1").get(),
+    );
+    await assertSucceeds(
+      organization
+        .firestore()
+        .doc("chatPreferences/room-1_org-1")
+        .set(chatPreferenceDoc("org-1")),
+    );
+    await assertFails(
+      otherStudent
+        .firestore()
+        .doc("chatPreferences/room-1_student-2")
+        .set(chatPreferenceDoc("student-2")),
+    );
+  });
+
+  it("exposes public organizer profiles but protects audits and check-in codes", async () => {
+    const { anon, student, organization, otherOrganization, admin } =
+      contexts();
+    await assertSucceeds(
+      student.firestore().doc("publicOrganizerProfiles/org-1").get(),
+    );
+    await assertFails(
+      anon.firestore().doc("publicOrganizerProfiles/org-1").get(),
+    );
+    await assertFails(student.firestore().doc("auditLogs/audit-1").get());
+    await assertSucceeds(admin.firestore().doc("auditLogs/audit-1").get());
+    await assertSucceeds(
+      admin.firestore().doc("auditLogs/audit-new").set(auditLogDoc()),
+    );
+    await assertFails(
+      admin.firestore().doc("auditLogs/audit-1").update({ reason: "edited" }),
+    );
+    await assertSucceeds(
+      organization.firestore().doc("eventCheckIns/event-published").get(),
+    );
+    await assertFails(
+      otherOrganization
+        .firestore()
+        .doc("eventCheckIns/event-published")
+        .get(),
+    );
+    await assertFails(
+      student.firestore().doc("eventCheckIns/event-published").get(),
+    );
+    await assertFails(
+      organization.firestore().doc("eventCheckIns/event-published").update({
+        code: "000000",
+      }),
+    );
+  });
+});
+
 describe("storage rules", () => {
   it("allows signed-in reads but blocks public reads", async () => {
     const { anon, student, organization } = contexts();
@@ -1011,8 +1211,13 @@ describe("storage rules", () => {
   });
 
   it("allows only active owners to upload valid images in scoped folders", async () => {
-    const { student, pendingStudent, organization, otherOrganization } =
-      contexts();
+    const {
+      student,
+      pendingStudent,
+      organization,
+      unverifiedOrganization,
+      otherOrganization,
+    } = contexts();
     await assertSucceeds(
       student
         .storage()
@@ -1038,6 +1243,18 @@ describe("storage rules", () => {
         .putString("image", "raw", { contentType: "image/webp" }),
     );
     await assertFails(
+      unverifiedOrganization
+        .storage()
+        .ref("event-images/org-1/event-new/unverified.webp")
+        .putString("image", "raw", { contentType: "image/webp" }),
+    );
+    await assertSucceeds(
+      student
+        .storage()
+        .ref("event-images/student-1/event-new/cover.webp")
+        .putString("image", "raw", { contentType: "image/webp" }),
+    );
+    await assertFails(
       otherOrganization
         .storage()
         .ref("event-images/org-1/event-new/cover.webp")
@@ -1048,6 +1265,52 @@ describe("storage rules", () => {
         .storage()
         .ref("event-images/org-1/event-new/cover.gif")
         .putString("image", "raw", { contentType: "image/gif" }),
+    );
+  });
+
+  it("limits chat attachments to active participants and writable rooms", async () => {
+    const { student, otherStudent, organization } = contexts();
+    await assertSucceeds(
+      student
+        .storage()
+        .ref("chat-attachments/room-1/student-1/guide.txt")
+        .getMetadata(),
+    );
+    await assertSucceeds(
+      organization
+        .storage()
+        .ref("chat-attachments/room-1/student-1/guide.txt")
+        .getMetadata(),
+    );
+    await assertFails(
+      otherStudent
+        .storage()
+        .ref("chat-attachments/room-1/student-1/guide.txt")
+        .getMetadata(),
+    );
+    await assertSucceeds(
+      student
+        .storage()
+        .ref("chat-attachments/room-1/student-1/notes.pdf")
+        .putString("notes", "raw", { contentType: "application/pdf" }),
+    );
+    await assertFails(
+      student
+        .storage()
+        .ref("chat-attachments/room-1/student-2/spoof.txt")
+        .putString("spoof", "raw", { contentType: "text/plain" }),
+    );
+    await assertFails(
+      student
+        .storage()
+        .ref("chat-attachments/room-readonly/student-1/late.txt")
+        .putString("late", "raw", { contentType: "text/plain" }),
+    );
+    await assertFails(
+      student
+        .storage()
+        .ref("chat-attachments/room-1/student-1/archive.zip")
+        .putString("zip", "raw", { contentType: "application/zip" }),
     );
   });
 });

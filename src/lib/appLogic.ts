@@ -15,6 +15,15 @@ export type ImageLike = {
   size: number;
 };
 
+export type CalendarEventLike = {
+  id: string;
+  title: string;
+  summary: string;
+  location: string;
+  startAt: Date;
+  endAt?: Date;
+};
+
 export const categories: Filter[] = [
   "すべて",
   "交流・コミュニティ",
@@ -25,7 +34,14 @@ export const categories: Filter[] = [
 ];
 
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+export const MAX_CHAT_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 export const acceptedImageTypes = ["image/jpeg", "image/png", "image/webp"];
+export const acceptedChatAttachmentTypes = [
+  ...acceptedImageTypes,
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+];
 
 export const validateImageFile = (file: ImageLike, label: string) => {
   if (!acceptedImageTypes.includes(file.type)) {
@@ -34,6 +50,49 @@ export const validateImageFile = (file: ImageLike, label: string) => {
   if (file.size >= MAX_IMAGE_SIZE) {
     throw new Error(`${label}は5MB未満の画像を選択してください。`);
   }
+};
+
+export const validateChatAttachment = (file: ImageLike) => {
+  if (!acceptedChatAttachmentTypes.includes(file.type)) {
+    throw new Error(
+      "添付できるのはJPEG、PNG、WebP、PDF、テキスト、CSVです。",
+    );
+  }
+  if (file.size >= MAX_CHAT_ATTACHMENT_SIZE) {
+    throw new Error("添付ファイルは10MB未満にしてください。");
+  }
+};
+
+const escapeCalendarText = (value: string) =>
+  value
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
+
+const toCalendarTimestamp = (date: Date) =>
+  date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+
+export const toCalendarFile = (event: CalendarEventLike) => {
+  const endAt =
+    event.endAt ??
+    new Date(event.startAt.getTime() + 2 * 60 * 60 * 1000);
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Aizu Connect//Event//JA",
+    "CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:${escapeCalendarText(event.id)}@aizu-connect`,
+    `DTSTAMP:${toCalendarTimestamp(new Date())}`,
+    `DTSTART:${toCalendarTimestamp(event.startAt)}`,
+    `DTEND:${toCalendarTimestamp(endAt)}`,
+    `SUMMARY:${escapeCalendarText(event.title)}`,
+    `DESCRIPTION:${escapeCalendarText(event.summary)}`,
+    `LOCATION:${escapeCalendarText(event.location)}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
 };
 
 const categoryAliases: Record<Exclude<Filter, "すべて">, string[]> = {
@@ -50,19 +109,17 @@ export const matchesCategoryFilter = (category: string, filter: Filter) =>
 export const isAizuUniversityEmail = (email: string) =>
   email.trim().toLowerCase().endsWith("@u-aizu.ac.jp");
 
-export const DEV_ADMIN_EMAIL = "admin@aizu-connect.local";
-export const DEV_ADMIN_PASSWORD = "admin123";
-
-export const normalizeLoginEmail = (email: string, isDev = false) => {
+export const normalizeLoginEmail = (email: string, devAdminEmail = "") => {
   const normalizedEmail = email.trim().toLowerCase();
-  return isDev && normalizedEmail === "admin"
-    ? DEV_ADMIN_EMAIL
+  return devAdminEmail && normalizedEmail === "admin"
+    ? devAdminEmail
     : normalizedEmail;
 };
 
 export const formatEventStart = (value: string) => {
   const date = new Date(value);
   return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
     month: "numeric",
     day: "numeric",
     weekday: "short",
@@ -92,6 +149,23 @@ export const getFirebaseErrorMessage = (error: unknown) => {
       ? String(error.code)
       : "";
   if (error instanceof Error) {
+    if (
+      code === "functions/permission-denied" &&
+      error.message.includes("管理者")
+    )
+      return "管理者権限を確認できませんでした。管理者アカウントで再ログインしてください。";
+    if (
+      code === "functions/failed-precondition" &&
+      error.message.includes("管理者")
+    )
+      return "この管理操作は実行できません。対象の状態を更新してから、もう一度お試しください。";
+    if (
+      code === "functions/not-found" &&
+      (error.message.includes("通報") ||
+        error.message.includes("ユーザー") ||
+        error.message.includes("イベント"))
+    )
+      return "対象データはすでに削除されたか、更新されています。画面を再読み込みしてください。";
     if (code === "functions/already-exists")
       return "このイベントにはすでに参加申請済みです。";
     if (code === "functions/resource-exhausted")

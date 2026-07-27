@@ -116,15 +116,16 @@ npm --prefix functions run build
 
 ## Hostingへの公開
 
-本番用`.env.local`を設定し、Emulatorを使わないことを確認してからビルド・デプロイします。
+本番用設定は`.env.production`で管理し、`VITE_USE_FIREBASE_EMULATORS=false`を必須にします。`npm run build`は設定値と生成物を検査し、テストアカウント・Emulator接続先・仮画像サービスが混ざっている場合は失敗します。
 
 ```bash
-VITE_USE_FIREBASE_EMULATORS=false npm run build
-firebase use aizu-connect-prod
-firebase deploy --only hosting,firestore,functions
+npm run release:check
+npx -y firebase-tools@latest deploy \
+  --project aizu-connect-prod \
+  --only hosting,functions,firestore:rules,firestore:indexes,storage
 ```
 
-デプロイ前に、Firebase ConsoleでAuthentication、Firestore、Storage、必要なBlazeプラン、承認済みドメインを確認してください。
+`aizu-connect-prod`は実際に公開するFirebaseプロジェクトIDへ置き換えます。デプロイ前に、Firebase ConsoleでAuthentication、Firestore、Storage、必要なBlazeプラン、承認済みドメインを確認してください。
 
 ## リリース前チェック
 

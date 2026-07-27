@@ -16,19 +16,38 @@ service firebase.storage {
       return signedIn()
         && request.auth.uid == uid
         && userRef(uid).data.role == 'student'
-        && userRef(uid).data.status == 'active';
+        && userRef(uid).data.status == 'active'
+        && request.auth.token.email_verified == true;
     }
 
     function activeOrganization(uid) {
       return signedIn()
         && request.auth.uid == uid
         && userRef(uid).data.role == 'organization'
-        && userRef(uid).data.status == 'active';
+        && userRef(uid).data.status == 'active'
+        && request.auth.token.email_verified == true;
+    }
+
+    function activeCreator(uid) {
+      return activeStudent(uid) || activeOrganization(uid);
     }
 
     function validImage() {
       return request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    function roomRef(roomId) {
+      return firestore.get(
+        /databases/(default)/documents/chatRooms/$(roomId)
+      );
+    }
+
+    function validChatAttachment() {
+      return request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches(
+          'image/(jpeg|png|webp)|application/pdf|text/plain|text/csv'
+        );
     }
 
     match /profile-images/{userId}/{fileName} {
@@ -38,7 +57,17 @@ service firebase.storage {
 
     match /event-images/{organizationId}/{eventId}/{fileName} {
       allow read: if signedIn();
-      allow write: if activeOrganization(organizationId) && validImage();
+      allow write: if activeCreator(organizationId) && validImage();
+    }
+
+    match /chat-attachments/{roomId}/{userId}/{fileName} {
+      allow read: if activeCreator(request.auth.uid)
+        && request.auth.uid in roomRef(roomId).data.participantIds;
+      allow write: if activeCreator(userId)
+        && request.auth.uid == userId
+        && request.auth.uid in roomRef(roomId).data.participantIds
+        && roomRef(roomId).data.status == 'active'
+        && validChatAttachment();
     }
   }
 }

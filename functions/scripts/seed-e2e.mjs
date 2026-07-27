@@ -26,13 +26,36 @@ const eventStartDate = new Date(now);
 eventStartDate.setDate(eventStartDate.getDate() + 14);
 eventStartDate.setHours(18, 0, 0, 0);
 const eventStartTimestamp = Timestamp.fromDate(eventStartDate);
+const eventEndDate = new Date(eventStartDate.getTime() + 2 * 60 * 60 * 1000);
+const eventEndTimestamp = Timestamp.fromDate(eventEndDate);
 const eventStartLabel = new Intl.DateTimeFormat("ja-JP", {
+  year: "numeric",
   month: "numeric",
   day: "numeric",
   weekday: "short",
   hour: "numeric",
   minute: "2-digit",
 }).format(eventStartDate);
+const eventEndLabel = new Intl.DateTimeFormat("ja-JP", {
+  hour: "numeric",
+  minute: "2-digit",
+}).format(eventEndDate);
+const checkInStartDate = new Date(now.getTime() - 30 * 60 * 1000);
+const checkInEndDate = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+const checkInStartTimestamp = Timestamp.fromDate(checkInStartDate);
+const checkInEndTimestamp = Timestamp.fromDate(checkInEndDate);
+const checkInStartLabel = new Intl.DateTimeFormat("ja-JP", {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  weekday: "short",
+  hour: "numeric",
+  minute: "2-digit",
+}).format(checkInStartDate);
+const checkInEndLabel = new Intl.DateTimeFormat("ja-JP", {
+  hour: "numeric",
+  minute: "2-digit",
+}).format(checkInEndDate);
 const activityDate = new Date(now);
 activityDate.setDate(activityDate.getDate() - 30);
 const activityTimestamp = Timestamp.fromDate(activityDate);
@@ -93,12 +116,32 @@ const eventDoc = (overrides = {}) => ({
   location: "会津若松市",
   startAtLabel: eventStartLabel,
   startAt: eventStartTimestamp,
+  endAtLabel: eventEndLabel,
+  endAt: eventEndTimestamp,
+  feeType: "無料",
+  feeAmount: 0,
+  eventFormat: "現地",
+  meetingPoint: "会津大学 正門前",
+  accessInfo: "会津大学前駅から徒歩約5分。駐車場は主催者へご相談ください。",
+  bringItems: "学生証、飲み物",
+  cancellationPolicy:
+    "参加できなくなった場合は、開催前日までに活動ページからキャンセルしてください。",
+  weatherPolicy: "変更・中止の場合は通知と全体チャットで案内します。",
+  accessibility: "必要な配慮は参加申請時にお知らせください。",
+  contactMethod: "申請後の個別チャットでお問い合わせください。",
   organizationName: "E2E主催団体",
   status: "published",
   capacity: 20,
   applicantCount: 1,
   imageUrl: "https://placehold.co/1200x675/png?text=Aizu+Connect+E2E",
-  tags: ["地域活動", "学生歓迎"],
+  tags: ["地域活動", "学生歓迎", "初心者歓迎"],
+  templateKey: "交流会",
+  beginnerLevel: "初参加歓迎",
+  takeaways: ["地域の人とつながる", "話すきっかけを作る", "活動実績として残す"],
+  atmosphere: "少人数で話しやすく、初参加の学生にも主催者が声をかけます。",
+  organizerDescription:
+    "学生と地域が安心して交流できる場を継続的に運営しています。",
+  organizerExperience: "地域交流イベントを10回以上開催",
   organizationId: "org-e2e",
   organizationVerified: true,
   createdBy: "org-e2e",
@@ -129,7 +172,32 @@ await Promise.all([
     email: "pending-e2e@example.com",
     displayName: "E2E 承認待ち",
   }),
+  ensureUser({
+    uid: "student-late-desktop",
+    email: "student-late-desktop@u-aizu.ac.jp",
+    displayName: "E2E 後参加 Desktop",
+  }),
+  ensureUser({
+    uid: "student-late-mobile",
+    email: "student-late-mobile@u-aizu.ac.jp",
+    displayName: "E2E 後参加 Mobile",
+  }),
+  ensureUser({
+    uid: "student-late-tablet",
+    email: "student-late-tablet@u-aizu.ac.jp",
+    displayName: "E2E 後参加 Tablet",
+  }),
 ]);
+
+await Promise.all(
+  ["desktop", "mobile", "tablet"].map((variant) =>
+    ensureUser({
+      uid: `admin-delete-user-${variant}`,
+      email: `admin-delete-${variant}@u-aizu.ac.jp`,
+      displayName: `E2E 削除対象 ${variant}`,
+    }),
+  ),
+);
 
 const batch = db.batch();
 
@@ -197,8 +265,92 @@ batch.set(
     displayName: "E2E 承認待ち",
   }),
 );
+batch.set(
+  db.doc("users/student-late-desktop"),
+  userDoc({
+    uid: "student-late-desktop",
+    email: "student-late-desktop@u-aizu.ac.jp",
+    displayName: "E2E 後参加 Desktop",
+  }),
+);
+batch.set(
+  db.doc("studentProfiles/student-late-desktop"),
+  {
+    ...userDoc({
+      uid: "student-late-desktop",
+      email: "student-late-desktop@u-aizu.ac.jp",
+      displayName: "E2E 後参加 Desktop",
+    }),
+    verificationMethod: "university_email",
+    profileCompletionRate: 80,
+    activityCount: 0,
+  },
+);
+batch.set(
+  db.doc("users/student-late-mobile"),
+  userDoc({
+    uid: "student-late-mobile",
+    email: "student-late-mobile@u-aizu.ac.jp",
+    displayName: "E2E 後参加 Mobile",
+  }),
+);
+batch.set(
+  db.doc("studentProfiles/student-late-mobile"),
+  {
+    ...userDoc({
+      uid: "student-late-mobile",
+      email: "student-late-mobile@u-aizu.ac.jp",
+      displayName: "E2E 後参加 Mobile",
+    }),
+    verificationMethod: "university_email",
+    profileCompletionRate: 80,
+    activityCount: 0,
+  },
+);
+batch.set(
+  db.doc("users/student-late-tablet"),
+  userDoc({
+    uid: "student-late-tablet",
+    email: "student-late-tablet@u-aizu.ac.jp",
+    displayName: "E2E 後参加 Tablet",
+  }),
+);
+batch.set(
+  db.doc("studentProfiles/student-late-tablet"),
+  {
+    ...userDoc({
+      uid: "student-late-tablet",
+      email: "student-late-tablet@u-aizu.ac.jp",
+      displayName: "E2E 後参加 Tablet",
+    }),
+    verificationMethod: "university_email",
+    profileCompletionRate: 80,
+    activityCount: 0,
+  },
+);
 
 batch.set(db.doc("events/event-e2e-published"), eventDoc());
+batch.set(
+  db.doc("events/event-e2e-open-chromium"),
+  eventDoc({
+    title: "E2E 追加募集イベント Desktop",
+    applicantCount: 0,
+  }),
+);
+batch.set(
+  db.doc("events/event-e2e-open-mobile"),
+  eventDoc({
+    title: "E2E 追加募集イベント Mobile",
+    applicantCount: 0,
+  }),
+);
+batch.set(
+  db.doc("events/event-e2e-open-tablet"),
+  eventDoc({
+    title: "E2E 追加募集イベント Tablet",
+    applicantCount: 0,
+  }),
+);
 batch.set(
   db.doc("events/event-e2e-pending"),
   eventDoc({
@@ -207,6 +359,194 @@ batch.set(
     applicantCount: 0,
   }),
 );
+for (const variant of ["desktop", "mobile", "tablet"]) {
+  const displayVariant =
+    variant === "desktop"
+      ? "Desktop"
+      : variant === "mobile"
+        ? "Mobile"
+        : "Tablet";
+  const userId = `admin-delete-user-${variant}`;
+  const eventId = `admin-delete-event-${variant}`;
+  batch.set(
+    db.doc(`users/${userId}`),
+    userDoc({
+      uid: userId,
+      email: `admin-delete-${variant}@u-aizu.ac.jp`,
+      displayName: `E2E 削除対象 ${displayVariant}`,
+    }),
+  );
+  batch.set(db.doc(`studentProfiles/${userId}`), {
+    ...userDoc({
+      uid: userId,
+      email: `admin-delete-${variant}@u-aizu.ac.jp`,
+      displayName: `E2E 削除対象 ${displayVariant}`,
+    }),
+    verificationMethod: "university_email",
+    profileCompletionRate: 80,
+    activityCount: 0,
+  });
+  batch.set(
+    db.doc(`events/${eventId}`),
+    eventDoc({
+      title: `E2E 管理削除イベント ${displayVariant}`,
+      applicantCount: 1,
+    }),
+  );
+  batch.set(
+    db.doc(`events/admin-direct-event-${variant}`),
+    eventDoc({
+      title: `E2E 直接削除イベント ${displayVariant}`,
+      applicantCount: 0,
+    }),
+  );
+  batch.set(db.doc(`eventApplications/${eventId}_${userId}`), {
+    id: `${eventId}_${userId}`,
+    eventId,
+    eventTitle: `E2E 管理削除イベント ${displayVariant}`,
+    studentId: userId,
+    studentName: `E2E 削除対象 ${displayVariant}`,
+    organizationName: "E2E主催団体",
+    organizationId: "org-e2e",
+    status: "pending",
+    participantMessage: "管理者削除の関連データ確認用です。",
+    accessibilityNeeds: "",
+    emergencyContact: "",
+    consentAccepted: true,
+    createdAt: timestamp,
+  });
+  batch.set(db.doc(`chatRooms/${eventId}_${userId}`), {
+    id: `${eventId}_${userId}`,
+    roomType: "application",
+    applicationId: `${eventId}_${userId}`,
+    eventId,
+    eventTitle: `E2E 管理削除イベント ${displayVariant}`,
+    studentId: userId,
+    studentName: `E2E 削除対象 ${displayVariant}`,
+    organizationName: "E2E主催団体",
+    organizationId: "org-e2e",
+    participantIds: [userId, "org-e2e"],
+    status: "active",
+    lastMessageText: "削除確認用",
+    lastMessageAt: timestamp,
+    createdAt: timestamp,
+  });
+  batch.set(db.doc(`reports/admin-delete-report-${variant}`), {
+    reporterId: "student-e2e",
+    targetType: "event",
+    targetId: eventId,
+    targetTitle: `E2E 管理削除イベント ${displayVariant}`,
+    reason: "不適切な内容",
+    description: `E2E管理削除通報 ${displayVariant}`,
+    status: "submitted",
+    createdAt: timestamp,
+  });
+  batch.set(db.doc(`savedEvents/${userId}_${eventId}`), {
+    userId,
+    eventId,
+    createdAt: timestamp,
+  });
+  batch.set(db.doc(`eventCheckIns/${eventId}`), {
+    eventId,
+    organizerId: "org-e2e",
+    code: "999999",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+}
+batch.set(
+  db.doc("events/event-e2e-chat-history-desktop"),
+  eventDoc({
+    title: "E2E 全体チャットイベント Desktop",
+    applicantCount: 0,
+  }),
+);
+batch.set(
+  db.doc("events/event-e2e-chat-history-mobile"),
+  eventDoc({
+    title: "E2E 全体チャットイベント Mobile",
+    applicantCount: 0,
+  }),
+);
+batch.set(
+  db.doc("events/event-e2e-chat-history-tablet"),
+  eventDoc({
+    title: "E2E 全体チャットイベント Tablet",
+    applicantCount: 0,
+  }),
+);
+for (const variant of ["desktop", "mobile", "tablet"]) {
+  const displayVariant =
+    variant === "desktop"
+      ? "Desktop"
+      : variant === "mobile"
+        ? "Mobile"
+        : "Tablet";
+  batch.set(
+    db.doc(`events/event-e2e-waitlist-${variant}`),
+    eventDoc({
+      title: `E2E 満員イベント ${displayVariant}`,
+      capacity: 1,
+      applicantCount: 1,
+    }),
+  );
+  const waitlistOccupantId = `student-late-${variant}`;
+  const waitlistOccupantApplicationId =
+    `event-e2e-waitlist-${variant}_${waitlistOccupantId}`;
+  batch.set(
+    db.doc(`eventApplications/${waitlistOccupantApplicationId}`),
+    {
+      id: waitlistOccupantApplicationId,
+      eventId: `event-e2e-waitlist-${variant}`,
+      eventTitle: `E2E 満員イベント ${displayVariant}`,
+      studentId: waitlistOccupantId,
+      studentName: `E2E 後参加 ${displayVariant}`,
+      organizationName: "E2E主催団体",
+      organizationId: "org-e2e",
+      status: "confirmed",
+      participantMessage: "満員状態を作るための参加者です。",
+      accessibilityNeeds: "",
+      emergencyContact: "",
+      consentAccepted: true,
+      createdAt: timestamp,
+    },
+  );
+  batch.set(
+    db.doc(`events/event-e2e-checkin-${variant}`),
+    eventDoc({
+      title: `E2E 当日受付 ${displayVariant}`,
+      startAtLabel: checkInStartLabel,
+      startAt: checkInStartTimestamp,
+      endAtLabel: checkInEndLabel,
+      endAt: checkInEndTimestamp,
+      applicantCount: 1,
+    }),
+  );
+  const studentId = `student-late-${variant}`;
+  const applicationId = `event-e2e-checkin-${variant}_${studentId}`;
+  batch.set(db.doc(`eventApplications/${applicationId}`), {
+    id: applicationId,
+    eventId: `event-e2e-checkin-${variant}`,
+    eventTitle: `E2E 当日受付 ${displayVariant}`,
+    studentId,
+    studentName: `E2E 後参加 ${displayVariant}`,
+    organizationName: "E2E主催団体",
+    organizationId: "org-e2e",
+    status: "confirmed",
+    participantMessage: "当日の受付動線を確認します。",
+    accessibilityNeeds: "",
+    emergencyContact: "",
+    consentAccepted: true,
+    createdAt: timestamp,
+  });
+  batch.set(db.doc(`eventCheckIns/event-e2e-checkin-${variant}`), {
+    eventId: `event-e2e-checkin-${variant}`,
+    organizerId: "org-e2e",
+    code: "654321",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+}
 batch.set(db.doc("eventApplications/app-e2e"), {
   id: "app-e2e",
   eventId: "event-e2e-published",
@@ -216,16 +556,22 @@ batch.set(db.doc("eventApplications/app-e2e"), {
   organizationName: "E2E主催団体",
   organizationId: "org-e2e",
   status: "pending",
+  participantMessage: "地域の方と交流したいです。",
+  accessibilityNeeds: "",
+  emergencyContact: "",
+  consentAccepted: true,
   createdAt: timestamp,
 });
 batch.set(db.doc("chatRooms/app-e2e"), {
   id: "app-e2e",
+  roomType: "application",
   applicationId: "app-e2e",
   eventId: "event-e2e-published",
   eventTitle: "E2E 地域交流会",
   studentId: "student-e2e",
   studentName: "E2E 学生",
   organizationName: "E2E主催団体",
+  organizationId: "org-e2e",
   participantIds: ["student-e2e", "org-e2e"],
   status: "active",
   lastMessageText: "E2E 初期メッセージ",
@@ -240,6 +586,63 @@ batch.set(db.doc("chatRooms/app-e2e/messages/seed-message"), {
   text: "E2E 初期メッセージ",
   createdAt: timestamp,
 });
+batch.set(db.doc("chatRooms/event_event-e2e-published"), {
+  id: "event_event-e2e-published",
+  roomType: "event",
+  applicationId: "event_event-e2e-published",
+  eventId: "event-e2e-published",
+  eventTitle: "E2E 地域交流会",
+  studentId: "",
+  studentName: "",
+  organizationName: "E2E主催団体",
+  organizationId: "org-e2e",
+  participantIds: ["org-e2e", "student-e2e"],
+  status: "active",
+  lastMessageText: "イベント全体チャットを作成しました。",
+  pinnedMessage: "集合場所は大学正門前です。",
+  organizerNotice: "当日は学生証を持参してください。",
+  lastMessageAt: timestamp,
+  createdAt: timestamp,
+});
+batch.set(db.doc("chatRooms/event_event-e2e-published/messages/welcome"), {
+  roomId: "event_event-e2e-published",
+  senderId: "system",
+  senderName: "Aizu Connect",
+  type: "system",
+  text: "イベント全体チャットです。参加者は参加前のやり取りも確認できます。",
+  createdAt: timestamp,
+});
+for (const [eventId, title] of [
+  ["event-e2e-chat-history-desktop", "E2E 全体チャットイベント Desktop"],
+  ["event-e2e-chat-history-mobile", "E2E 全体チャットイベント Mobile"],
+  ["event-e2e-chat-history-tablet", "E2E 全体チャットイベント Tablet"],
+]) {
+  const roomId = `event_${eventId}`;
+  batch.set(db.doc(`chatRooms/${roomId}`), {
+    id: roomId,
+    roomType: "event",
+    applicationId: roomId,
+    eventId,
+    eventTitle: title,
+    studentId: "",
+    studentName: "",
+    organizationName: "E2E主催団体",
+    organizationId: "org-e2e",
+    participantIds: ["org-e2e", "student-e2e"],
+    status: "active",
+    lastMessageText: "参加前からある全体チャットログ",
+    lastMessageAt: timestamp,
+    createdAt: timestamp,
+  });
+  batch.set(db.doc(`chatRooms/${roomId}/messages/history-message`), {
+    roomId,
+    senderId: "student-e2e",
+    senderName: "E2E 学生",
+    type: "text",
+    text: "参加前からある全体チャットログ",
+    createdAt: timestamp,
+  });
+}
 batch.set(db.doc("activities/app-e2e"), {
   id: "app-e2e",
   userId: "student-e2e",
@@ -247,6 +650,9 @@ batch.set(db.doc("activities/app-e2e"), {
   title: "E2E 地域交流会",
   organizationId: "org-e2e",
   organizationName: "E2E主催団体",
+  certificateId: "AC-app-e2e",
+  participantRole: "参加者",
+  takeaways: ["地域の人とつながる", "話すきっかけを作る", "活動実績として残す"],
   verificationStatus: "verified",
   verifiedBy: "org-e2e",
   occurredAt: activityTimestamp,
@@ -286,6 +692,13 @@ batch.set(db.doc("savedEvents/student-e2e_event-e2e-published"), {
   userId: "student-e2e",
   eventId: "event-e2e-published",
   createdAt: timestamp,
+});
+batch.set(db.doc("eventCheckIns/event-e2e-published"), {
+  eventId: "event-e2e-published",
+  organizerId: "org-e2e",
+  code: "123456",
+  createdAt: timestamp,
+  updatedAt: timestamp,
 });
 
 await batch.commit();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  DEV_ADMIN_EMAIL,
+  MAX_CHAT_ATTACHMENT_SIZE,
   MAX_IMAGE_SIZE,
   formatEventStart,
   getFirebaseErrorMessage,
@@ -9,8 +9,10 @@ import {
   isFutureEventStart,
   matchesCategoryFilter,
   normalizeLoginEmail,
+  toCalendarFile,
   toDateTimeInput,
   toDateTimeLocalValue,
+  validateChatAttachment,
   validateImageFile,
 } from "./appLogic";
 
@@ -22,8 +24,10 @@ describe("auth helpers", () => {
   });
 
   it("maps the dev admin shortcut only in dev mode", () => {
-    expect(normalizeLoginEmail(" admin ", true)).toBe(DEV_ADMIN_EMAIL);
-    expect(normalizeLoginEmail(" admin ", false)).toBe("admin");
+    expect(
+      normalizeLoginEmail(" admin ", "admin@aizu-connect.local"),
+    ).toBe("admin@aizu-connect.local");
+    expect(normalizeLoginEmail(" admin ")).toBe("admin");
   });
 
   it("recognizes Aizu University addresses case-insensitively", () => {
@@ -61,6 +65,21 @@ describe("event helpers", () => {
     expect(isFutureEventStart(now, now)).toBe(false);
     expect(isFutureEventStart(undefined, now)).toBe(false);
   });
+
+  it("builds an importable calendar entry with escaped event text", () => {
+    const calendar = toCalendarFile({
+      id: "event-1",
+      title: "会津交流会, 夏",
+      summary: "1行目\n2行目",
+      location: "会津若松市",
+      startAt: new Date("2026-08-01T09:00:00.000Z"),
+      endAt: new Date("2026-08-01T11:00:00.000Z"),
+    });
+    expect(calendar).toContain("BEGIN:VEVENT");
+    expect(calendar).toContain("SUMMARY:会津交流会\\, 夏");
+    expect(calendar).toContain("DESCRIPTION:1行目\\n2行目");
+    expect(calendar).toContain("DTEND:20260801T110000Z");
+  });
 });
 
 describe("image validation", () => {
@@ -80,6 +99,29 @@ describe("image validation", () => {
     expect(() =>
       validateImageFile({ type: "image/png", size: MAX_IMAGE_SIZE }, "画像"),
     ).toThrow("画像は5MB未満の画像を選択してください。");
+  });
+});
+
+describe("chat attachment validation", () => {
+  it("accepts supported documents below 10MB", () => {
+    expect(() =>
+      validateChatAttachment({
+        type: "application/pdf",
+        size: MAX_CHAT_ATTACHMENT_SIZE - 1,
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects unsupported or oversized files", () => {
+    expect(() =>
+      validateChatAttachment({ type: "application/zip", size: 1024 }),
+    ).toThrow("添付できるのは");
+    expect(() =>
+      validateChatAttachment({
+        type: "image/png",
+        size: MAX_CHAT_ATTACHMENT_SIZE,
+      }),
+    ).toThrow("10MB未満");
   });
 });
 
