@@ -2,7 +2,6 @@ import {
   addDoc,
   collection,
   deleteDoc,
-  documentId,
   doc,
   getDoc,
   getDocs,
@@ -7497,6 +7496,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [deletionRequests, setDeletionRequests] = useState<
     AccountDeletionRequest[]
   >([]);
+  const [deletionRequestUsers, setDeletionRequestUsers] = useState<
+    Record<string, AppUser>
+  >({});
   const [managedUsers, setManagedUsers] = useState<AppUser[]>([]);
   const [managedEvents, setManagedEvents] = useState<AizuEvent[]>([]);
   const [managedUserQueryLimit, setManagedUserQueryLimit] = useState(50);
@@ -7542,7 +7544,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     )
     .sort(
       (left, right) =>
-        timestampMillis(left.createdAt) - timestampMillis(right.createdAt),
+        timestampMillis(right.createdAt) - timestampMillis(left.createdAt),
     );
   const visiblePendingUsers = [...pendingUsers]
     .filter((user) =>
@@ -7550,7 +7552,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     )
     .sort(
       (left, right) =>
-        timestampMillis(left.createdAt) - timestampMillis(right.createdAt),
+        timestampMillis(right.createdAt) - timestampMillis(left.createdAt),
     );
   const visiblePendingReports = [...pendingReports]
     .filter((report) =>
@@ -7558,11 +7560,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     )
     .sort(
       (left, right) =>
-        timestampMillis(left.createdAt) - timestampMillis(right.createdAt),
+        timestampMillis(right.createdAt) - timestampMillis(left.createdAt),
     );
   const visibleDeletionRequests = [...deletionRequests]
     .filter((request) => {
-      const user = managedUsers.find((item) => item.uid === request.userId);
+      const user =
+        deletionRequestUsers[request.userId] ??
+        managedUsers.find((item) => item.uid === request.userId);
       return matchesAdminSearch(
         request.userId,
         request.reason,
@@ -7572,16 +7576,25 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     })
     .sort(
       (left, right) =>
-        timestampMillis(left.requestedAt) - timestampMillis(right.requestedAt),
+        timestampMillis(right.requestedAt) - timestampMillis(left.requestedAt),
     );
-  const visibleManagedUsers = managedUsers
+  const visibleManagedUsers = [...managedUsers]
     .filter((user) => user.status === managedUserStatus)
     .filter((user) =>
       matchesAdminSearch(user.displayName, user.email, user.university),
+    )
+    .sort(
+      (left, right) =>
+        timestampMillis(right.createdAt) - timestampMillis(left.createdAt),
     );
-  const visibleManagedEvents = managedEvents.filter((event) =>
-    matchesAdminSearch(event.title, event.organizationName, event.location),
-  );
+  const visibleManagedEvents = [...managedEvents]
+    .filter((event) =>
+      matchesAdminSearch(event.title, event.organizationName, event.location),
+    )
+    .sort(
+      (left, right) =>
+        timestampMillis(right.createdAt) - timestampMillis(left.createdAt),
+    );
   const pendingCreatedTimes = [
     ...pendingEvents.map((event) => timestampMillis(event.createdAt)),
     ...pendingUsers.map((user) => timestampMillis(user.createdAt)),
@@ -7614,6 +7627,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           query(
             collection(db, "events"),
             where("status", "==", "pending_review"),
+            orderBy("createdAt", "desc"),
             limit(50),
           ),
         ),
@@ -7621,6 +7635,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           query(
             collection(db, "reports"),
             where("status", "==", "submitted"),
+            orderBy("createdAt", "desc"),
             limit(50),
           ),
         ),
@@ -7628,6 +7643,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           query(
             collection(db, "users"),
             where("status", "in", ["pending_approval", "pending"]),
+            orderBy("createdAt", "desc"),
             limit(100),
           ),
         ),
@@ -7662,6 +7678,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       query(
         collection(db, "events"),
         where("status", "==", "pending_review"),
+        orderBy("createdAt", "desc"),
         limit(50),
       ),
       (snapshot) =>
@@ -7677,6 +7694,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       query(
         collection(db, "users"),
         where("status", "in", ["pending_approval", "pending"]),
+        orderBy("createdAt", "desc"),
         limit(100),
       ),
       (snapshot) =>
@@ -7694,6 +7712,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       query(
         collection(db, "reports"),
         where("status", "==", "submitted"),
+        orderBy("createdAt", "desc"),
         limit(50),
       ),
       (snapshot) =>
@@ -7709,14 +7728,39 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       query(
         collection(db, "accountDeletionRequests"),
         where("status", "==", "submitted"),
+        orderBy("requestedAt", "desc"),
         limit(100),
       ),
-      (snapshot) =>
-        setDeletionRequests(
-          snapshot.docs.map(
-            (requestDoc) => requestDoc.data() as AccountDeletionRequest,
-          ),
-        ),
+      (snapshot) => {
+        const requests = snapshot.docs.map(
+          (requestDoc) => requestDoc.data() as AccountDeletionRequest,
+        );
+        setDeletionRequests(requests);
+        void Promise.all(
+          requests.map(async (request) => {
+            const userSnapshot = await getDoc(
+              doc(db, "users", request.userId),
+            );
+            if (!userSnapshot.exists()) return null;
+            return {
+              uid: userSnapshot.id,
+              ...(userSnapshot.data() as Omit<AppUser, "uid">),
+            } as AppUser;
+          }),
+        )
+          .then((users) =>
+            setDeletionRequestUsers(
+              Object.fromEntries(
+                users
+                  .filter((user): user is AppUser => Boolean(user))
+                  .map((user) => [user.uid, user]),
+              ),
+            ),
+          )
+          .catch(() =>
+            setNotice("退会申請者のアカウント情報を取得できませんでした。"),
+          );
+      },
       () => setNotice("退会申請を取得できませんでした。"),
     );
     return () => {
@@ -7731,7 +7775,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     const usersUnsubscribe = onSnapshot(
       query(
         collection(db, "users"),
-        orderBy(documentId()),
+        orderBy("createdAt", "desc"),
         limit(managedUserQueryLimit),
       ),
       (snapshot) => {
@@ -7750,7 +7794,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     const eventsUnsubscribe = onSnapshot(
       query(
         collection(db, "events"),
-        orderBy(documentId()),
+        where("status", "in", ["published", "unpublished"]),
+        orderBy("createdAt", "desc"),
         limit(managedEventQueryLimit),
       ),
       (snapshot) => {
@@ -7975,7 +8020,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </div>
         <span>
           <FilterIcon size={14} />
-          古い申請から表示
+          新しい項目から表示
         </span>
       </div>
       <div className="role-metrics">
@@ -8013,7 +8058,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
             <CalendarDays size={20} />
           </div>
-          <div className="role-list">
+          <div
+            className={`role-list admin-scroll-list ${
+              visiblePendingEvents.length > 10 ? "is-scrollable" : ""
+            }`}
+            role={visiblePendingEvents.length > 10 ? "region" : undefined}
+            aria-label={
+              visiblePendingEvents.length > 10
+                ? "イベント審査一覧"
+                : undefined
+            }
+            tabIndex={visiblePendingEvents.length > 10 ? 0 : undefined}
+          >
             {visiblePendingEvents.length === 0 ? (
               <EmptyRoleState text="審査待ちのイベントはありません。" />
             ) : (
@@ -8146,7 +8202,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               <RefreshCw size={17} className={isLoading ? "spin" : ""} />
             </button>
           </div>
-          <div className="role-list">
+          <div
+            className={`role-list admin-scroll-list ${
+              visiblePendingUsers.length > 10 ? "is-scrollable" : ""
+            }`}
+            role={visiblePendingUsers.length > 10 ? "region" : undefined}
+            aria-label={
+              visiblePendingUsers.length > 10
+                ? "アカウント審査一覧"
+                : undefined
+            }
+            tabIndex={visiblePendingUsers.length > 10 ? 0 : undefined}
+          >
             {visiblePendingUsers.length === 0 ? (
               <EmptyRoleState text="審査待ちはありません。会津大学メールの学生は自動承認されます。" />
             ) : (
@@ -8219,11 +8286,22 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         {visibleDeletionRequests.length === 0 ? (
           <EmptyRoleState text="対応待ちの退会申請はありません。" />
         ) : (
-          <div className="role-list">
+          <div
+            className={`role-list admin-scroll-list ${
+              visibleDeletionRequests.length > 10 ? "is-scrollable" : ""
+            }`}
+            role={visibleDeletionRequests.length > 10 ? "region" : undefined}
+            aria-label={
+              visibleDeletionRequests.length > 10
+                ? "退会・データ削除申請一覧"
+                : undefined
+            }
+            tabIndex={visibleDeletionRequests.length > 10 ? 0 : undefined}
+          >
             {visibleDeletionRequests.map((request) => {
-              const user = managedUsers.find(
-                (item) => item.uid === request.userId,
-              );
+              const user =
+                deletionRequestUsers[request.userId] ??
+                managedUsers.find((item) => item.uid === request.userId);
               const deletionTarget =
                 user ??
                 ({
@@ -8284,7 +8362,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         {visiblePendingReports.length === 0 ? (
           <EmptyRoleState text="確認が必要な通報はありません。" />
         ) : (
-          <div className="role-list">
+          <div
+            className={`role-list admin-scroll-list ${
+              visiblePendingReports.length > 10 ? "is-scrollable" : ""
+            }`}
+            role={visiblePendingReports.length > 10 ? "region" : undefined}
+            aria-label={
+              visiblePendingReports.length > 10
+                ? "通報・安全確認一覧"
+                : undefined
+            }
+            tabIndex={visiblePendingReports.length > 10 ? 0 : undefined}
+          >
             {visiblePendingReports.map((report) => (
               <div className="review-row" key={report.id}>
                 <div>
@@ -8396,7 +8485,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </button>
             ))}
           </div>
-          <div className="role-list admin-compact-list">
+          <div
+            className={`role-list admin-compact-list admin-scroll-list ${
+              visibleManagedUsers.length > 10 ? "is-scrollable" : ""
+            }`}
+            role={visibleManagedUsers.length > 10 ? "region" : undefined}
+            aria-label={
+              visibleManagedUsers.length > 10 ? "ユーザー管理一覧" : undefined
+            }
+            tabIndex={visibleManagedUsers.length > 10 ? 0 : undefined}
+          >
             {visibleManagedUsers.length === 0 ? (
               <EmptyRoleState text="条件に合うユーザーはいません。" />
             ) : (
@@ -8506,7 +8604,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
             <CalendarDays size={20} />
           </div>
-          <div className="role-list admin-compact-list">
+          <div
+            className={`role-list admin-compact-list admin-scroll-list ${
+              visibleManagedEvents.length > 10 ? "is-scrollable" : ""
+            }`}
+            role={visibleManagedEvents.length > 10 ? "region" : undefined}
+            aria-label={
+              visibleManagedEvents.length > 10
+                ? "公開イベント管理一覧"
+                : undefined
+            }
+            tabIndex={visibleManagedEvents.length > 10 ? 0 : undefined}
+          >
             {visibleManagedEvents.length === 0 ? (
               <EmptyRoleState text="管理対象のイベントはありません。" />
             ) : (
@@ -8610,7 +8719,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         {auditLogs.length === 0 ? (
           <EmptyRoleState text="管理操作を行うと、理由と日時がここに残ります。" />
         ) : (
-          <div className="audit-log-list">
+          <div
+            className={`audit-log-list admin-scroll-list ${
+              auditLogs.length > 10 ? "is-scrollable" : ""
+            }`}
+            role={auditLogs.length > 10 ? "region" : undefined}
+            aria-label={auditLogs.length > 10 ? "操作履歴一覧" : undefined}
+            tabIndex={auditLogs.length > 10 ? 0 : undefined}
+          >
             {auditLogs.slice(0, 50).map((audit) => (
               <div key={audit.id}>
                 <span>

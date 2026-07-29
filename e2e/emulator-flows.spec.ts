@@ -840,6 +840,23 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("heading", { name: "イベント審査" }),
     ).toBeVisible();
+    const managedUserScrollRegion = page.getByRole("region", {
+      name: "ユーザー管理一覧",
+    });
+    await expect(managedUserScrollRegion).toBeVisible();
+    const managedUserScrollState = await managedUserScrollRegion.evaluate(
+      (element) => ({
+        itemCount: element.children.length,
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+        overflowY: window.getComputedStyle(element).overflowY,
+      }),
+    );
+    expect(managedUserScrollState.itemCount).toBeGreaterThan(10);
+    expect(managedUserScrollState.scrollHeight).toBeGreaterThan(
+      managedUserScrollState.clientHeight,
+    );
+    expect(managedUserScrollState.overflowY).toBe("auto");
     await expect(page.getByText("E2E 審査待ちイベント")).toBeVisible();
     const eventReviewItem = page
       .locator(".admin-review-item")

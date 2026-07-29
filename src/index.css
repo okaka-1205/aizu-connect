@@ -4235,9 +4235,32 @@ kbd {
 .admin-status-tabs button {
   padding: 0 10px;
 }
-.admin-compact-list {
-  max-height: 520px;
+.admin-scroll-list.is-scrollable {
+  max-height: 680px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+.admin-scroll-list.is-scrollable:focus-visible {
+  outline: 2px solid #155eef;
+  outline-offset: 4px;
+}
+.admin-scroll-list.is-scrollable::-webkit-scrollbar {
+  width: 8px;
+}
+.admin-scroll-list.is-scrollable::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: #b9c8d8;
+  background-clip: padding-box;
+}
+.admin-compact-list.admin-scroll-list.is-scrollable {
+  max-height: 620px;
+}
+.audit-log-list.admin-scroll-list.is-scrollable {
+  max-height: 520px;
 }
 .audit-log-card {
   margin-top: 16px;
