@@ -532,6 +532,10 @@ const uploadImage = async (file: File, path: string) => {
   return getDownloadURL(snapshot.ref);
 };
 
+const revokeObjectUrl = (url: string | null | undefined) => {
+  if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+};
+
 function App() {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
@@ -3918,6 +3922,7 @@ function ProfileTab({
     .join(" · ");
 
   const startEditing = () => {
+    revokeObjectUrl(profileImagePreview);
     setDisplayName(appUser.displayName);
     setDepartment(appUser.department);
     setGrade(appUser.grade);
@@ -3950,6 +3955,9 @@ function ProfileTab({
         wantToTry: wantToTry.trim().slice(0, 240),
         profileImageFile,
       });
+      revokeObjectUrl(profileImagePreview);
+      setProfileImageFile(null);
+      setProfileImagePreview(null);
       setIsEditing(false);
       setProfileMessage("プロフィールを更新しました。");
     } catch (error) {
@@ -4018,7 +4026,13 @@ function ProfileTab({
               className="icon-button"
               title="閉じる"
               type="button"
-              onClick={() => setIsEditing(false)}
+              onClick={() => {
+                revokeObjectUrl(profileImagePreview);
+                setProfileImageFile(null);
+                setProfileImagePreview(appUser.profileImageUrl ?? null);
+                setIsProfileImageReviewOpen(false);
+                setIsEditing(false);
+              }}
             >
               <X size={17} />
             </button>
@@ -4044,6 +4058,7 @@ function ProfileTab({
                   if (!file) return;
                   try {
                     validateImageFile(file, "プロフィール画像");
+                    revokeObjectUrl(profileImagePreview);
                     setProfileImageFile(file);
                     setProfileImagePreview(URL.createObjectURL(file));
                     setProfileMessage("");
@@ -4125,12 +4140,14 @@ function ProfileTab({
           circular
           maxOutputWidth={1024}
           onCancel={() => {
+            revokeObjectUrl(profileImagePreview);
             setIsProfileImageReviewOpen(false);
             setProfileImageFile(null);
             setProfileImagePreview(appUser.profileImageUrl ?? null);
             setProfileImageInputKey((current) => current + 1);
           }}
           onConfirm={(file, previewUrl) => {
+            revokeObjectUrl(profileImagePreview);
             setProfileImageFile(file);
             setProfileImagePreview(previewUrl);
             setIsProfileImageReviewOpen(false);
@@ -5634,6 +5651,7 @@ function OrganizationDashboard({
   };
 
   const beginEditEvent = (event: AizuEvent) => {
+    revokeObjectUrl(eventImagePreview);
     setOpenEventFormSections({ basic: true, schedule: true });
     setEditingEventId(event.id);
     setTitle(event.title);
@@ -5688,6 +5706,7 @@ function OrganizationDashboard({
   };
 
   const clearEventForm = () => {
+    revokeObjectUrl(eventImagePreview);
     setOpenEventFormSections({
       basic: true,
       schedule:
@@ -5728,12 +5747,19 @@ function OrganizationDashboard({
 
   const duplicateEvent = (event: AizuEvent) => {
     beginEditEvent(event);
+    const duplicateTemplate =
+      eventTemplates.find((template) => template.key === event.templateKey) ??
+      eventTemplates[0];
     setEditingEventId(null);
     setSelectedEventId(null);
     setTitle(`${event.title}（複製）`.slice(0, 80));
     setStartAtInput("");
     setEndAtInput("");
-    setNotice("イベントを複製しました。開催日時を設定して申請してください。");
+    setEventImageFile(null);
+    setEventImagePreview(duplicateTemplate.imageUrl);
+    setNotice(
+      "イベントを複製しました。写真と開催日時を確認して申請してください。",
+    );
   };
 
   useEffect(() => {
@@ -6219,6 +6245,7 @@ function OrganizationDashboard({
   };
 
   const applyTemplate = (template: (typeof eventTemplates)[number]) => {
+    revokeObjectUrl(eventImagePreview);
     setTemplateKey(template.key);
     setCategory(template.category);
     setBeginnerLevel(template.beginnerLevel);
@@ -6700,6 +6727,7 @@ function OrganizationDashboard({
                         if (!file) return;
                         try {
                           validateImageFile(file, "イベント画像");
+                          revokeObjectUrl(eventImagePreview);
                           setEventImageFile(file);
                           setEventImagePreview(URL.createObjectURL(file));
                           setNotice("");
@@ -7132,17 +7160,19 @@ function OrganizationDashboard({
           aspect={16 / 9}
           maxOutputWidth={1920}
           onCancel={() => {
+            revokeObjectUrl(eventImagePreview);
             setIsEventImageReviewOpen(false);
             setEventImageFile(null);
             setEventImagePreview(
               editingEventId
                 ? (events.find((item) => item.id === editingEventId)
                     ?.imageUrl ?? null)
-                : null,
+                : selectedTemplate.imageUrl,
             );
             setEventImageInputKey((current) => current + 1);
           }}
           onConfirm={(file, previewUrl) => {
+            revokeObjectUrl(eventImagePreview);
             setEventImageFile(file);
             setEventImagePreview(previewUrl);
             setIsEventImageReviewOpen(false);

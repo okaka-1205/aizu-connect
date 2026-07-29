@@ -395,6 +395,15 @@ test.describe("emulator-backed role flows", () => {
       name: "イベント写真の範囲を調整",
     });
     await expect(cropDialog).toBeVisible();
+    await cropDialog.getByRole("button", { name: "選び直す" }).click();
+    await expect(cropDialog).toBeHidden();
+    const eventImagePreview = page.locator(
+      ".event-form-card .event-image-preview img",
+    );
+    await expect(eventImagePreview).toHaveAttribute("src", /event-learning/);
+
+    await page.getByLabel("イベント写真").setInputFiles(fixtureImage);
+    await expect(cropDialog).toBeVisible();
     await cropDialog.getByLabel("画像の拡大率").fill("1.2");
     await cropDialog.getByRole("button", { name: "この範囲を使う" }).click();
     await expect(cropDialog).toBeHidden();
@@ -414,6 +423,12 @@ test.describe("emulator-backed role flows", () => {
       .locator(".managed-event-row")
       .filter({ hasText: eventTitle });
     await expect(submittedEvent.getByText("審査中")).toBeVisible();
+    await submittedEvent.getByRole("button", { name: "複製" }).click();
+    await expect(page.getByLabel("活動名")).toHaveValue(
+      `${eventTitle}（複製）`,
+    );
+    await expect(page.getByLabel("開始日時")).toHaveValue("");
+    await expect(eventImagePreview).toHaveAttribute("src", /event-learning/);
     await submittedEvent.getByRole("button", { name: "編集" }).click();
     await expect(
       page.getByRole("heading", { name: "企画を修正する" }),

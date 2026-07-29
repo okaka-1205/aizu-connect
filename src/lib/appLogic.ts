@@ -239,6 +239,22 @@ export const getFirebaseErrorMessage = (error: unknown) => {
     )
       return "この操作を行う権限がありません。アカウントの承認状態を確認してください。";
     if (
+      code === "storage/unauthorized" ||
+      error.message.includes("storage/unauthorized")
+    )
+      return "画像やファイルを保存する権限を確認できませんでした。メール認証とアカウントの承認状態を確認して、もう一度お試しください。";
+    if (
+      code === "storage/retry-limit-exceeded" ||
+      code === "storage/unknown" ||
+      error.message.includes("storage/retry-limit-exceeded")
+    )
+      return "ファイルの送信を完了できませんでした。通信状態を確認して、もう一度お試しください。";
+    if (
+      code === "storage/quota-exceeded" ||
+      error.message.includes("storage/quota-exceeded")
+    )
+      return "現在ファイルを保存できません。運営へお問い合わせください。";
+    if (
       code === "failed-precondition" ||
       error.message.includes("failed-precondition")
     )

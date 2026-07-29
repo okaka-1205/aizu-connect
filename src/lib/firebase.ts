@@ -5,6 +5,7 @@ import {
 } from "firebase/app-check";
 import {
   browserLocalPersistence,
+  browserSessionPersistence,
   connectAuthEmulator,
   getAuth,
   setPersistence,
@@ -73,4 +74,4 @@ if (
 export const authPersistenceReady = setPersistence(
   auth,
   browserLocalPersistence,
-);
+).catch(() => setPersistence(auth, browserSessionPersistence));

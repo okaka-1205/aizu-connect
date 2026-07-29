@@ -210,6 +210,23 @@ describe("firebase error messages", () => {
     ).toBe("パスワードは6文字以上にしてください。");
   });
 
+  it("maps storage failures without exposing Firebase internals", () => {
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(new Error("Firebase Storage: storage/unauthorized"), {
+          code: "storage/unauthorized",
+        }),
+      ),
+    ).toContain("メール認証とアカウントの承認状態");
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(new Error("storage/retry-limit-exceeded"), {
+          code: "storage/retry-limit-exceeded",
+        }),
+      ),
+    ).toContain("通信状態");
+  });
+
   it("falls back for unknown non-error values", () => {
     expect(getFirebaseErrorMessage(null)).toBe(
       "問題が発生しました。もう一度試してください。",
