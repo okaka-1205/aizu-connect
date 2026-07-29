@@ -566,7 +566,7 @@ textarea:focus-visible {
 .app-content {
   width: min(1160px, calc(100% - 40px));
   margin: 0 auto;
-  padding: 30px 0 42px;
+  padding: 30px 0 calc(96px + env(safe-area-inset-bottom));
 }
 .welcome-row {
   display: flex;
@@ -1810,6 +1810,25 @@ kbd {
   padding: 18px;
   background: #f8fbff;
 }
+.chat-load-older {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  border: 1px solid #d8e4ef;
+  border-radius: 7px;
+  padding: 0 12px;
+  background: #fff;
+  color: #49647f;
+  font-size: 10px;
+  font-weight: 850;
+}
+.chat-load-older:hover {
+  border-color: #abc8ea;
+  background: #f3f8ff;
+}
 .chat-message {
   align-self: flex-start;
   max-width: 78%;
@@ -2148,6 +2167,74 @@ kbd {
   background: #eef6ff;
   color: #155eef;
 }
+.event-form-section {
+  min-width: 0;
+  margin: 0;
+  padding: 18px 0 2px;
+  border: 0;
+  border-top: 1px solid #e4ebf3;
+}
+.event-form-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.event-form-section legend,
+.event-form-advanced > summary {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+  padding: 0 0 13px;
+  color: #304963;
+}
+.event-form-advanced > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.event-form-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+.event-form-step {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: #eaf2ff;
+  color: #155eef;
+  font-size: 12px;
+  font-weight: 900;
+}
+.event-form-section-title {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.event-form-section-title strong {
+  font-size: 13px;
+}
+.event-form-section-title small {
+  color: #8192a5;
+  font-size: 9px;
+  font-weight: 750;
+}
+.event-form-section-body {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+.event-form-section-body > .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.event-form-section-chevron {
+  margin-left: auto;
+  color: #7f91a5;
+  transition: transform 0.18s ease;
+}
+.event-form-advanced[open] .event-form-section-chevron {
+  transform: rotate(90deg);
+}
 .role-list {
   display: grid;
   gap: 8px;
@@ -2384,6 +2471,21 @@ kbd {
   font-size: 10px;
   font-style: normal;
   font-weight: 800;
+}
+.admin-load-more {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid #cbd8e6;
+  border-radius: 7px;
+  padding: 10px 12px;
+  background: #f7f9fc;
+  color: #40536a;
+  font-size: 11px;
+  font-weight: 800;
+}
+.admin-load-more:hover {
+  background: #edf3f9;
 }
 .empty-role-state {
   display: grid;
@@ -2845,6 +2947,54 @@ kbd {
   color: #334a66;
   font-size: 12px;
 }
+.account-deletion-panel {
+  display: grid;
+  gap: 11px;
+  margin-top: 16px;
+  border: 1px solid #ead7dc;
+  border-radius: 8px;
+  padding: 15px;
+  background: #fffafb;
+}
+.account-deletion-copy {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.account-deletion-copy .settings-icon {
+  flex: 0 0 32px;
+  background: #fff0f2;
+  color: #b63b52;
+}
+.account-deletion-copy > span {
+  display: grid;
+  gap: 3px;
+}
+.account-deletion-copy strong {
+  color: #593944;
+  font-size: 12px;
+}
+.account-deletion-copy small,
+.account-deletion-reason {
+  color: #80646d;
+  font-size: 10px;
+  line-height: 1.55;
+}
+.account-deletion-reason {
+  margin: 0;
+}
+.account-deletion-panel .row-actions {
+  justify-content: flex-end;
+}
+.admin-deletion-card {
+  margin-bottom: 16px;
+}
+.admin-deletion-card .review-row p {
+  margin: 5px 0 0;
+  color: #65798f;
+  font-size: 10px;
+  line-height: 1.55;
+}
 .activity-history {
   display: grid;
   gap: 9px;
@@ -3108,6 +3258,45 @@ kbd {
   width: 100%;
   margin-top: 8px;
 }
+.auth-legal-consent {
+  display: grid;
+  gap: 7px;
+  margin-top: 4px;
+  padding: 11px 12px;
+  border: 1px solid #dce6f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.auth-legal-consent label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #304760;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.6;
+}
+.auth-legal-consent input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  accent-color: #155eef;
+}
+.auth-legal-consent p {
+  margin: 0 0 0 22px;
+  color: #718398;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.auth-legal-consent button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #155eef;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .form-message {
   margin-top: 14px;
   padding: 11px;
@@ -3238,6 +3427,64 @@ kbd {
 .pending-card .secondary-action {
   margin-top: 14px;
 }
+.approval-pending-card {
+  width: min(460px, calc(100% - 32px));
+}
+.approval-progress {
+  display: grid;
+  gap: 0;
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.approval-progress li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 58px;
+  color: #7b8ca0;
+}
+.approval-progress li:not(:last-child)::after {
+  position: absolute;
+  top: 24px;
+  bottom: 4px;
+  left: 9px;
+  width: 2px;
+  background: #dce7f0;
+  content: "";
+}
+.approval-progress li.is-complete {
+  color: #327755;
+}
+.approval-progress li.is-complete:not(:last-child)::after {
+  background: #b9dfca;
+}
+.approval-progress li.is-current {
+  color: #155eef;
+}
+.approval-progress svg {
+  position: relative;
+  z-index: 1;
+  margin-top: 1px;
+  background: #fff;
+}
+.approval-progress span {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.approval-progress strong {
+  color: #304760;
+  font-size: 13px;
+}
+.approval-progress small {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 900;
+}
 .legal-links {
   margin: 16px 0 0;
   color: #8593a5;
@@ -3265,11 +3512,11 @@ kbd {
   background: rgba(19, 34, 56, 0.42);
 }
 .legal-dialog {
-  width: min(680px, 100%);
+  width: min(760px, 100%);
   max-height: min(760px, 90vh);
   overflow: hidden;
   border: 1px solid #dfe8f2;
-  border-radius: 18px;
+  border-radius: 8px;
   background: #fff;
   box-shadow: 0 24px 70px rgba(19, 34, 56, 0.24);
 }
@@ -3290,26 +3537,72 @@ kbd {
 }
 .legal-dialog-body {
   display: grid;
-  gap: 20px;
+  gap: 24px;
   max-height: calc(min(760px, 90vh) - 88px);
   overflow: auto;
   padding: 22px 24px 28px;
 }
 .legal-dialog-body section {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 .legal-dialog-body h3 {
   margin: 0;
-  color: #304760;
-  font-size: 13px;
+  color: #243b53;
+  font-size: 14px;
   font-weight: 900;
 }
-.legal-dialog-body p {
+.legal-dialog-body p,
+.legal-dialog-body li {
   margin: 0;
-  color: #718398;
+  color: #526b84;
   font-size: 12px;
-  line-height: 1.9;
+  line-height: 1.85;
+}
+.legal-dialog-body ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 20px;
+}
+.legal-document-intro {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #dfe8f2;
+}
+.legal-document-intro > p {
+  color: #304760;
+  font-size: 13px;
+}
+.legal-document-intro dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid #e4ebf2;
+  border-left: 1px solid #e4ebf2;
+}
+.legal-document-intro dl > div {
+  min-width: 0;
+  padding: 9px 10px;
+  border-right: 1px solid #e4ebf2;
+  border-bottom: 1px solid #e4ebf2;
+}
+.legal-document-intro dt {
+  color: #718398;
+  font-size: 10px;
+  font-weight: 800;
+}
+.legal-document-intro dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  color: #304760;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.6;
+}
+.legal-document-intro a {
+  color: #155eef;
 }
 .spin {
   animation: spin 1s linear infinite;
@@ -3327,7 +3620,7 @@ kbd {
   margin-bottom: 12px;
 }
 .role-metrics {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 .applicant-metrics {
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -4146,10 +4439,60 @@ kbd {
     font-size: 18px;
   }
   .template-picker {
+    grid-template-columns: repeat(3, minmax(108px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 3px;
+    scrollbar-width: thin;
+  }
+  .role-form > .form-grid,
+  .event-form-section-body > .form-grid {
     grid-template-columns: 1fr;
   }
-  .role-form > .form-grid {
-    grid-template-columns: 1fr;
+  .event-form-section {
+    padding-top: 16px;
+  }
+  .event-form-section legend,
+  .event-form-advanced > summary {
+    position: sticky;
+    top: 76px;
+    z-index: 2;
+    margin: 0 -2px;
+    padding: 8px 2px 11px;
+    background: rgba(255, 255, 255, 0.96);
+  }
+  .event-plan-form input,
+  .event-plan-form select,
+  .event-plan-form textarea,
+  .chat-composer input,
+  .conversation-search input {
+    font-size: 16px;
+  }
+  .event-plan-form input,
+  .event-plan-form select {
+    min-height: 44px;
+  }
+  .event-plan-form textarea {
+    min-height: 104px;
+    line-height: 1.6;
+  }
+  .event-image-picker {
+    border-radius: 8px;
+  }
+  .event-form-foot .row-actions,
+  .event-form-foot .row-actions button {
+    width: 100%;
+  }
+  .detail-secondary-actions {
+    width: 100%;
+  }
+  .detail-secondary-actions > a,
+  .detail-secondary-actions > button {
+    flex: 1 1 calc(50% - 4px);
+    min-height: 44px;
+  }
+  .account-deletion-panel .row-actions,
+  .account-deletion-panel .row-actions button {
+    width: 100%;
   }
   .portfolio-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4190,6 +4533,7 @@ kbd {
   }
   .role-card {
     padding: 15px;
+    border-radius: 8px;
   }
   .app-content,
   .header-inner {
@@ -4381,6 +4725,12 @@ kbd {
   .application-copy small,
   .conversation-item small {
     display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .legal-document-intro dl {
+    grid-template-columns: 1fr;
   }
 }
 

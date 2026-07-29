@@ -6,6 +6,8 @@
 
 ## 開発環境
 
+Node.js 24を使用します（`.nvmrc`対応環境では`nvm use`で切り替え）。
+
 ```bash
 npm install
 npm run dev
@@ -27,12 +29,12 @@ npm run dev:local
 
 確認用アカウント：
 
-| ロール | メールアドレス | パスワード |
-| --- | --- | --- |
-| 学生 | `student-e2e@u-aizu.ac.jp` | `password123` |
-| 主催者・団体 | `org-e2e@example.com` | `password123` |
-| 管理者 | `admin@aizu-connect.local` | `admin123` |
-| 承認待ち | `pending-e2e@example.com` | `password123` |
+| ロール       | メールアドレス             | パスワード    |
+| ------------ | -------------------------- | ------------- |
+| 学生         | `student-e2e@u-aizu.ac.jp` | `password123` |
+| 主催者・団体 | `org-e2e@example.com`      | `password123` |
+| 管理者       | `admin@aizu-connect.local` | `admin123`    |
+| 承認待ち     | `pending-e2e@example.com`  | `password123` |
 
 ## Firebase設定
 
@@ -45,6 +47,11 @@ VITE_FIREBASE_PROJECT_ID=...
 VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
+VITE_FIREBASE_APP_CHECK_SITE_KEY=...
+VITE_LEGAL_OPERATOR_NAME=...
+VITE_LEGAL_OPERATOR_ADDRESS=...
+VITE_LEGAL_REPRESENTATIVE=...
+VITE_LEGAL_CONTACT_EMAIL=...
 ```
 
 本番Firebaseへ接続して確認する場合だけ、次を設定します。
@@ -65,14 +72,17 @@ VITE_USE_FIREBASE_EMULATORS=false
 
 ### 管理者の初期設定
 
-対象ユーザーを先に通常のメールアドレスで登録した後、Firebase Admin SDKが利用できる環境で実行します。サービスアカウント鍵をリポジトリへ置かず、`GOOGLE_APPLICATION_CREDENTIALS`またはApplication Default Credentialsを使用してください。
+対象ユーザーを先に通常のメールアドレスで登録し、メール確認を完了した後、Firebase Admin SDKが利用できる環境で実行します。サービスアカウント鍵をリポジトリへ置かず、`GOOGLE_APPLICATION_CREDENTIALS`またはApplication Default Credentialsを使用してください。
 
 ```bash
 gcloud auth application-default login
-GCLOUD_PROJECT=aizu-connect-prod npm --prefix functions run admin:create -- admin@example.com
+GCLOUD_PROJECT=aizu-connect-dev npm --prefix functions run admin:create -- admin@example.com
 ```
 
-本番環境では、作業後に認証情報を端末から削除し、管理者アカウントへ強いパスワードと多要素認証を設定してください。
+コマンドが成功したら、Authenticationの対象UIDとFirestoreの
+`users/{uid}`が一致し、`role: "admin"`、`status: "active"`になっていることを
+確認します。本番環境では、作業後に認証情報を端末から削除し、管理者アカウントへ
+強い固有パスワードと多要素認証を設定してください。
 
 ### Emulatorでの管理者ログイン
 
@@ -116,24 +126,43 @@ npm --prefix functions run build
 
 ## Hostingへの公開
 
+Firebaseプロジェクト`aizu-connect-dev`を正式な本番環境として使用します。
+プロジェクトIDに`dev`を含みますが、別の本番プロジェクトへ切り替えません。
+通常の開発と自動テストには`npm run dev:local`とEmulatorを使用し、本番データへ
+テストデータを投入しないでください。
+
 本番用設定は`.env.production`で管理し、`VITE_USE_FIREBASE_EMULATORS=false`を必須にします。`npm run build`は設定値と生成物を検査し、テストアカウント・Emulator接続先・仮画像サービスが混ざっている場合は失敗します。
+
+利用規約とプライバシーポリシーには、公開可能な正式情報として
+`VITE_LEGAL_OPERATOR_NAME`、`VITE_LEGAL_OPERATOR_ADDRESS`、
+`VITE_LEGAL_REPRESENTATIVE`、`VITE_LEGAL_CONTACT_EMAIL`を設定します。
+未入力、仮メールアドレス、プレースホルダーを含む場合、本番ビルドは失敗します。
+登録時には規約同意が必須で、同意日時と規約版がFirestoreへ保存されます。
+
+管理者Callable FunctionsでApp Checkを強制する場合は、Firebase Consoleで
+reCAPTCHA Enterpriseを登録し、`.env.production`へ
+`VITE_FIREBASE_APP_CHECK_SITE_KEY`を設定します。Functions側には
+`ENFORCE_ADMIN_APP_CHECK=true`を設定してください。クライアント設定前に
+Functions側だけを有効化すると管理者操作が拒否されるため、同じリリースで
+反映します。
 
 ```bash
 npm run release:check
 npx -y firebase-tools@latest deploy \
-  --project aizu-connect-prod \
+  --project aizu-connect-dev \
   --only hosting,functions,firestore:rules,firestore:indexes,storage
 ```
 
-`aizu-connect-prod`は実際に公開するFirebaseプロジェクトIDへ置き換えます。デプロイ前に、Firebase ConsoleでAuthentication、Firestore、Storage、必要なBlazeプラン、承認済みドメインを確認してください。
+デプロイ前に、Firebase ConsoleでAuthentication、Firestore、Storage、必要なBlazeプラン、承認済みドメインを確認してください。
 
 ## リリース前チェック
 
-- 本番プロジェクトと開発プロジェクトを分離する
+- 開発・E2EテストはEmulatorだけで行い、`aizu-connect-dev`へテストデータを投入しない
+- 本番Authenticationに初期管理者を作成し、メール確認とMFAを完了する
 - `.env.local`をGitへ追加しない
 - Firestore Rulesを本番データで検証する
 - Authenticationのメール認証とパスワード再設定を確認する
 - Storageを使う場合はStorage Rulesを追加する
-- 主催者・学生の個人情報、チャット保存期間、通報対応を利用規約へ明記する
+- 運営者名、住所、代表者、問い合わせ先を本番環境変数へ設定する
 - Emulatorではなく本番Firebaseで学生・主催者・管理者の3導線をE2E確認する
 - アプリ内の利用規約・プライバシーポリシーを運営者情報付きの正式版へ差し替える

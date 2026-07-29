@@ -13,13 +13,18 @@ test.describe("auth entry", () => {
     await expect(
       page.getByRole("button", { name: "登録して始める" }),
     ).toBeVisible();
+    const legalConsent = page.getByRole("checkbox", {
+      name: "利用規約とプライバシーポリシーに同意します",
+    });
+    await expect(legalConsent).toBeVisible();
+    await expect(legalConsent).toHaveAttribute("required", "");
     await expect(page.getByLabel("メールアドレス")).toHaveAttribute(
       "required",
       "",
     );
-    await expect(page.getByPlaceholder("6文字以上")).toHaveAttribute(
+    await expect(page.getByPlaceholder("10文字以上")).toHaveAttribute(
       "minlength",
-      "6",
+      "10",
     );
     const accountType = page.getByRole("group", {
       name: "アカウント種別",
@@ -47,6 +52,7 @@ test.describe("auth entry", () => {
     await expect(
       page.getByRole("group", { name: "アカウント種別" }),
     ).toBeHidden();
+    await expect(legalConsent).toBeHidden();
   });
 
   test("opens legal documents from the auth screen", async ({ page }) => {
@@ -55,8 +61,9 @@ test.describe("auth entry", () => {
     await page.getByRole("button", { name: "利用規約" }).click();
     await expect(page.getByRole("dialog", { name: "利用規約" })).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "1. サービスの目的" }),
+      page.getByRole("heading", { name: "第1条 適用とアカウント" }),
     ).toBeVisible();
+    await expect(page.getByText("2026年7月28日")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "利用規約" })).toBeHidden();
 

@@ -14,6 +14,11 @@ const PROJECT_ID = "demo-aizu-connect-rules";
 const timestamp = firebase.firestore.Timestamp.fromDate(
   new Date("2026-01-01T00:00:00.000Z"),
 );
+const legalConsent = {
+  termsVersion: "2026-07-28",
+  privacyVersion: "2026-07-28",
+  legalAcceptedAt: timestamp,
+};
 
 let testEnv;
 
@@ -181,6 +186,15 @@ const reportDoc = (overrides = {}) => ({
   description: "Please review.",
   status: "submitted",
   createdAt: timestamp,
+  ...overrides,
+});
+
+const deletionRequestDoc = (userId = "student-1", overrides = {}) => ({
+  userId,
+  status: "submitted",
+  reason: "サービス利用を終了するため削除を希望します。",
+  requestedAt: firebase.firestore.FieldValue.serverTimestamp(),
+  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
   ...overrides,
 });
 
@@ -381,9 +395,7 @@ const seedData = async () => {
       db.doc("reports/report-1").set(reportDoc()),
       db.doc("savedEvents/student-1_event-published").set(savedEventDoc()),
       db.doc("savedSearches/student-1_default").set(savedSearchDoc()),
-      db
-        .doc("chatPreferences/room-1_student-1")
-        .set(chatPreferenceDoc()),
+      db.doc("chatPreferences/room-1_student-1").set(chatPreferenceDoc()),
       db.doc("publicOrganizerProfiles/org-1").set({
         userId: "org-1",
         displayName: "Aizu Org",
@@ -468,6 +480,31 @@ describe("users and profiles", () => {
           userDoc({
             uid: "student-new",
             email: "student-new@u-aizu.ac.jp",
+            ...legalConsent,
+          }),
+        ),
+    );
+    await assertFails(
+      newStudent
+        .firestore()
+        .doc("users/student-new-without-consent")
+        .set(
+          userDoc({
+            uid: "student-new-without-consent",
+            email: "student-new@u-aizu.ac.jp",
+          }),
+        ),
+    );
+    await assertFails(
+      newStudent
+        .firestore()
+        .doc("users/student-new-old-terms")
+        .set(
+          userDoc({
+            uid: "student-new-old-terms",
+            email: "student-new@u-aizu.ac.jp",
+            ...legalConsent,
+            termsVersion: "draft",
           }),
         ),
     );
@@ -480,6 +517,7 @@ describe("users and profiles", () => {
             uid: "student-new-admin",
             role: "admin",
             email: "student-new@u-aizu.ac.jp",
+            ...legalConsent,
           }),
         ),
     );
@@ -493,6 +531,7 @@ describe("users and profiles", () => {
             email: "student-new@u-aizu.ac.jp",
             organizationId: "org-1",
             organizationName: "Injected organization",
+            ...legalConsent,
           }),
         ),
     );
@@ -505,6 +544,7 @@ describe("users and profiles", () => {
             uid: "student-new-invalid-time",
             email: "student-new@u-aizu.ac.jp",
             createdAt: "not-a-timestamp",
+            ...legalConsent,
           }),
         ),
     );
@@ -522,6 +562,7 @@ describe("users and profiles", () => {
             uid: "student-external",
             email: "student@example.com",
             status: "active",
+            ...legalConsent,
           }),
         ),
     );
@@ -541,6 +582,7 @@ describe("users and profiles", () => {
             uid: "student-email-mismatch",
             email: "claimed@example.com",
             status: "pending_approval",
+            ...legalConsent,
           }),
         ),
     );
@@ -561,6 +603,7 @@ describe("users and profiles", () => {
             uid: "student-unverified",
             email: "student-unverified@u-aizu.ac.jp",
             status: "active",
+            ...legalConsent,
           }),
         ),
     );
@@ -580,6 +623,12 @@ describe("users and profiles", () => {
     await assertFails(
       student.firestore().doc("users/student-1").update({
         role: "admin",
+      }),
+    );
+    await assertFails(
+      student.firestore().doc("users/student-1").update({
+        termsVersion: "tampered",
+        legalAcceptedAt: timestamp,
       }),
     );
     await assertSucceeds(
@@ -676,6 +725,69 @@ describe("organizations", () => {
       admin.firestore().doc("organizations/org-1").update({
         contactEmail: "takeover@example.com",
       }),
+    );
+  });
+});
+
+describe("account deletion requests", () => {
+  it("allows active users to submit and cancel only their own request", async () => {
+    const { student, otherStudent, pendingStudent } = contexts();
+    const requestRef = student
+      .firestore()
+      .doc("accountDeletionRequests/student-1");
+    await assertSucceeds(requestRef.set(deletionRequestDoc()));
+    await assertSucceeds(requestRef.get());
+    await assertFails(
+      otherStudent.firestore().doc("accountDeletionRequests/student-1").get(),
+    );
+    await assertFails(
+      otherStudent
+        .firestore()
+        .doc("accountDeletionRequests/student-1")
+        .set(deletionRequestDoc("student-1")),
+    );
+    await assertFails(
+      pendingStudent
+        .firestore()
+        .doc("accountDeletionRequests/student-pending")
+        .set(deletionRequestDoc("student-pending")),
+    );
+    await assertSucceeds(
+      requestRef.update({
+        status: "cancelled",
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }),
+    );
+  });
+
+  it("blocks malformed transitions while allowing admins to list requests", async () => {
+    const { student, admin } = contexts();
+    const requestRef = student
+      .firestore()
+      .doc("accountDeletionRequests/student-1");
+    await assertFails(
+      requestRef.set(
+        deletionRequestDoc("student-1", {
+          reason: "短い",
+          unexpected: true,
+        }),
+      ),
+    );
+    await assertSucceeds(requestRef.set(deletionRequestDoc()));
+    await assertFails(
+      requestRef.update({
+        reason: "申請後に理由だけを書き換えることはできません。",
+        status: "cancelled",
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }),
+    );
+    await assertFails(requestRef.delete());
+    await assertSucceeds(
+      admin
+        .firestore()
+        .collection("accountDeletionRequests")
+        .where("status", "==", "submitted")
+        .get(),
     );
   });
 });
@@ -1174,10 +1286,7 @@ describe("saved searches and operational records", () => {
       organization.firestore().doc("eventCheckIns/event-published").get(),
     );
     await assertFails(
-      otherOrganization
-        .firestore()
-        .doc("eventCheckIns/event-published")
-        .get(),
+      otherOrganization.firestore().doc("eventCheckIns/event-published").get(),
     );
     await assertFails(
       student.firestore().doc("eventCheckIns/event-published").get(),

@@ -92,12 +92,22 @@ service cloud.firestore {
         && data.email.matches('^[^@]+@u-aizu\\.ac\\.jp$');
     }
 
+    function validLegalConsent(data) {
+      return data.keys().hasAll([
+        'termsVersion', 'privacyVersion', 'legalAcceptedAt'
+      ])
+      && data.termsVersion == '2026-07-28'
+      && data.privacyVersion == '2026-07-28'
+      && data.legalAcceptedAt is timestamp;
+    }
+
     function validUser(data, uid) {
       return data.keys().hasOnly([
         'uid', 'role', 'status', 'email', 'displayName', 'university',
         'department', 'grade', 'interests', 'organizationId',
         'organizationName', 'profileImageUrl', 'currentActivities',
-        'wantToTry', 'reviewReason', 'moderationReason', 'createdAt', 'updatedAt'
+        'wantToTry', 'reviewReason', 'moderationReason', 'termsVersion',
+        'privacyVersion', 'legalAcceptedAt', 'createdAt', 'updatedAt'
       ])
       && data.uid == uid
       && data.role in ['student', 'organization']
@@ -200,7 +210,8 @@ service cloud.firestore {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
       allow create: if signedIn()
         && request.auth.uid == userId
-        && validUser(request.resource.data, userId);
+        && validUser(request.resource.data, userId)
+        && validLegalConsent(request.resource.data);
       allow update: if isAdmin()
         && request.resource.data.role == resource.data.role
         && request.resource.data.uid == resource.data.uid
@@ -262,6 +273,49 @@ service cloud.firestore {
           && validOrganization(request.resource.data, organizationId)
           && request.resource.data.status == resource.data.status
           && request.resource.data.updatedAt is timestamp);
+      allow delete: if false;
+    }
+
+    match /accountDeletionRequests/{userId} {
+      function validDeletionRequest(data) {
+        return data.keys().hasOnly([
+          'userId', 'status', 'reason', 'requestedAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'userId', 'status', 'reason', 'requestedAt', 'updatedAt'
+        ])
+        && data.userId == userId
+        && data.status in ['submitted', 'cancelled']
+        && validString(data.reason, 5, 500)
+        && data.requestedAt is timestamp
+        && data.updatedAt is timestamp;
+      }
+
+      allow read: if isAdmin()
+        || (signedIn() && request.auth.uid == userId);
+      allow create: if isActiveCreator()
+        && request.auth.uid == userId
+        && validDeletionRequest(request.resource.data)
+        && request.resource.data.status == 'submitted'
+        && request.resource.data.requestedAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isActiveCreator()
+        && request.auth.uid == userId
+        && validDeletionRequest(request.resource.data)
+        && request.resource.data.updatedAt == request.time
+        && (
+          (
+            resource.data.status == 'submitted'
+            && request.resource.data.status == 'cancelled'
+            && request.resource.data.reason == resource.data.reason
+            && request.resource.data.requestedAt == resource.data.requestedAt
+          )
+          || (
+            resource.data.status == 'cancelled'
+            && request.resource.data.status == 'submitted'
+            && request.resource.data.requestedAt == request.time
+          )
+        );
       allow delete: if false;
     }
 

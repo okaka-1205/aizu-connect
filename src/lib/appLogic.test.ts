@@ -9,6 +9,7 @@ import {
   isFutureEventStart,
   matchesCategoryFilter,
   normalizeLoginEmail,
+  resolveAccountAccessGate,
   toCalendarFile,
   toDateTimeInput,
   toDateTimeLocalValue,
@@ -24,15 +25,56 @@ describe("auth helpers", () => {
   });
 
   it("maps the dev admin shortcut only in dev mode", () => {
-    expect(
-      normalizeLoginEmail(" admin ", "admin@aizu-connect.local"),
-    ).toBe("admin@aizu-connect.local");
+    expect(normalizeLoginEmail(" admin ", "admin@aizu-connect.local")).toBe(
+      "admin@aizu-connect.local",
+    );
     expect(normalizeLoginEmail(" admin ")).toBe("admin");
   });
 
   it("recognizes Aizu University addresses case-insensitively", () => {
     expect(isAizuUniversityEmail(" Student@U-AIZU.AC.JP ")).toBe(true);
     expect(isAizuUniversityEmail("student@example.com")).toBe(false);
+  });
+
+  it("shows email verification before an admin approval wait", () => {
+    expect(
+      resolveAccountAccessGate({
+        isProduction: true,
+        emailVerified: false,
+        status: "pending_approval",
+      }),
+    ).toBe("email_verification");
+    expect(
+      resolveAccountAccessGate({
+        isProduction: true,
+        emailVerified: true,
+        status: "pending_approval",
+      }),
+    ).toBe("admin_approval");
+  });
+
+  it("only grants access to active accounts", () => {
+    expect(
+      resolveAccountAccessGate({
+        isProduction: true,
+        emailVerified: true,
+        status: "active",
+      }),
+    ).toBe("active");
+    expect(
+      resolveAccountAccessGate({
+        isProduction: true,
+        emailVerified: true,
+        status: "suspended",
+      }),
+    ).toBe("account_rejected");
+    expect(
+      resolveAccountAccessGate({
+        isProduction: true,
+        emailVerified: true,
+        status: "profile_incomplete",
+      }),
+    ).toBe("account_setup");
   });
 });
 
@@ -134,6 +176,28 @@ describe("firebase error messages", () => {
         }),
       ),
     ).toBe("このイベントにはすでに参加申請済みです。");
+  });
+
+  it("explains when only administrator approval remains", () => {
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(new Error("管理者の承認待ちです。"), {
+          code: "functions/permission-denied",
+        }),
+      ),
+    ).toBe("メール認証は完了しています。現在は管理者の承認待ちです。");
+  });
+
+  it("keeps email verification errors distinct from event state errors", () => {
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(new Error("Email verification is required."), {
+          code: "functions/failed-precondition",
+        }),
+      ),
+    ).toBe(
+      "メールアドレスの確認が必要です。確認メールのリンクを開いてから、もう一度お試しください。",
+    );
   });
 
   it("maps auth failures to user-friendly Japanese copy", () => {

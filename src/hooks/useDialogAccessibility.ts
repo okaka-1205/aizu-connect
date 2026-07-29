@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 const focusableSelector = [
   "[data-dialog-initial-focus]",
@@ -16,11 +16,11 @@ export function useDialogAccessibility<T extends HTMLElement>(
   const dialogRef = useRef<T>(null);
   const onCloseRef = useRef(onClose);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previouslyFocused =
       document.activeElement instanceof HTMLElement
         ? document.activeElement

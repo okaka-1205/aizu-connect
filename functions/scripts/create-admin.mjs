@@ -15,15 +15,34 @@ initializeApp({
 });
 
 const user = await getAuth().getUserByEmail(email);
-const userRef = getFirestore().doc(`users/${user.uid}`);
+if (user.disabled) {
+  throw new Error("The target Authentication user is disabled.");
+}
+if (!user.emailVerified) {
+  throw new Error(
+    "Verify the target email address before granting administrator access.",
+  );
+}
 
-await userRef.set(
-  {
-    role: "admin",
-    status: "active",
-    updatedAt: new Date(),
-  },
-  { merge: true },
-);
+const userRef = getFirestore().doc(`users/${user.uid}`);
+const userSnapshot = await userRef.get();
+
+if (!userSnapshot.exists) {
+  throw new Error(
+    "The target user has no Firestore profile. Register through the app first.",
+  );
+}
+if (userSnapshot.get("uid") !== user.uid) {
+  throw new Error(
+    "The Authentication UID does not match the Firestore profile.",
+  );
+}
+
+await userRef.update({
+  role: "admin",
+  status: "active",
+  email: user.email ?? null,
+  updatedAt: new Date(),
+});
 
 console.log(`Admin role granted to ${email} (${user.uid}).`);

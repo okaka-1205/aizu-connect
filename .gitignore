@@ -12,6 +12,8 @@ dist
 dist-ssr
 *.local
 .env.production
+functions/.env.*
+!functions/.env.example
 .firebase/
 coverage/
 playwright-report/

@@ -1,4 +1,8 @@
 import { initializeApp } from "firebase/app";
+import {
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+} from "firebase/app-check";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
@@ -14,7 +18,19 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+const appCheckSiteKey = import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY;
+if (
+  import.meta.env.PROD &&
+  typeof appCheckSiteKey === "string" &&
+  appCheckSiteKey.length > 0
+) {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+    isTokenAutoRefreshEnabled: true,
+  });
+}
 export const auth = getAuth(app);
+auth.languageCode = "ja";
 export const db = getFirestore(app);
 export const functions = getFunctions(app, "asia-northeast1");
 export const storage = getStorage(app);
