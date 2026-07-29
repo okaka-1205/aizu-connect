@@ -1348,6 +1348,18 @@ describe("storage rules", () => {
     await assertSucceeds(
       organization
         .storage()
+        .ref("profile-images/org-1/new.webp")
+        .putString("image", "raw", { contentType: "image/webp" }),
+    );
+    await assertFails(
+      unverifiedOrganization
+        .storage()
+        .ref("profile-images/org-1/unverified.webp")
+        .putString("image", "raw", { contentType: "image/webp" }),
+    );
+    await assertSucceeds(
+      organization
+        .storage()
         .ref("event-images/org-1/event-new/cover.webp")
         .putString("image", "raw", { contentType: "image/webp" }),
     );

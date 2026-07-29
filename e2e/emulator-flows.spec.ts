@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
+import path from "node:path";
 
 const password = "password123";
+const fixtureImage = path.resolve("src/assets/event-community.jpg");
 
 function projectVariant(projectName: string) {
   if (projectName === "mobile") return "Mobile";
@@ -144,6 +146,14 @@ test.describe("emulator-backed role flows", () => {
       page.getByRole("heading", { name: "あなたへのおすすめ" }),
     ).toBeVisible();
     await expect(page.getByText("E2E 地域交流会").first()).toBeVisible();
+
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { name: "あなたへのおすすめ" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "ログインする" }),
+    ).toBeHidden();
 
     await expect(nav.getByRole("button", { name: "ホーム" })).toHaveAttribute(
       "aria-current",
@@ -372,10 +382,22 @@ test.describe("emulator-backed role flows", () => {
         titleField.evaluate((element) => element.matches(":placeholder-shown")),
       )
       .toBe(false);
+    if (testInfo.project.name === "mobile") {
+      await page.getByRole("button", { name: "開催情報へ" }).click();
+    }
+    await expect(page.getByLabel("開始日時")).toBeVisible();
     await expect(page.getByLabel("アクセス方法")).toBeHidden();
     await page.getByText("詳細設定", { exact: true }).click();
     await expect(page.getByLabel("アクセス方法")).toBeVisible();
     await expect(page.getByLabel("初心者歓迎度")).toHaveValue("誰でも歓迎");
+    await page.getByLabel("イベント写真").setInputFiles(fixtureImage);
+    const cropDialog = page.getByRole("dialog", {
+      name: "イベント写真の範囲を調整",
+    });
+    await expect(cropDialog).toBeVisible();
+    await cropDialog.getByLabel("画像の拡大率").fill("1.2");
+    await cropDialog.getByRole("button", { name: "この範囲を使う" }).click();
+    await expect(cropDialog).toBeHidden();
     const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     nextWeek.setHours(18, 0, 0, 0);
     await page.getByLabel("開始日時").fill(nextWeek.toISOString().slice(0, 16));
@@ -407,6 +429,32 @@ test.describe("emulator-backed role flows", () => {
         name: new RegExp(`^${escapeRegExp(updatedTitle)}\\s`),
       }),
     ).toBeVisible();
+  });
+
+  test("student can crop and save a profile image", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    await login(page, `student-late-${suffix}@u-aizu.ac.jp`);
+
+    await page
+      .getByRole("navigation", { name: "メインナビゲーション" })
+      .getByRole("button", { name: "プロフィール" })
+      .click();
+    await page.locator(".profile-edit-button").click();
+    await page.getByLabel("プロフィール画像").setInputFiles(fixtureImage);
+
+    const cropDialog = page.getByRole("dialog", {
+      name: "プロフィール画像の範囲を調整",
+    });
+    await expect(cropDialog).toBeVisible();
+    await cropDialog.getByLabel("画像の拡大率").fill("1.3");
+    await cropDialog.getByRole("button", { name: "この範囲を使う" }).click();
+    await expect(cropDialog).toBeHidden();
+    await page.getByRole("button", { name: "保存する" }).click();
+    await expect(page.getByText("プロフィールを更新しました。")).toBeVisible();
+    await expect(page.locator(".profile-avatar img")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
   });
 
   test("application creates individual and event-wide chats with history", async ({

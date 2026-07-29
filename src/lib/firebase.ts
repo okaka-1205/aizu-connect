@@ -3,7 +3,12 @@ import {
   initializeAppCheck,
   ReCaptchaEnterpriseProvider,
 } from "firebase/app-check";
-import { connectAuthEmulator, getAuth } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  connectAuthEmulator,
+  getAuth,
+  setPersistence,
+} from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
@@ -56,8 +61,7 @@ if (
 ) {
   connectAuthEmulator(
     auth,
-    import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_URL ??
-      "http://127.0.0.1:9099",
+    import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_URL ?? "http://127.0.0.1:9099",
     { disableWarnings: true },
   );
   connectFirestoreEmulator(db, "127.0.0.1", firestoreEmulatorPort);
@@ -65,3 +69,8 @@ if (
   connectStorageEmulator(storage, "127.0.0.1", storageEmulatorPort);
   emulatorState.__AIZU_CONNECT_EMULATORS_CONNECTED__ = true;
 }
+
+export const authPersistenceReady = setPersistence(
+  auth,
+  browserLocalPersistence,
+);

@@ -2178,20 +2178,17 @@ kbd {
   padding-top: 0;
   border-top: 0;
 }
-.event-form-section legend,
-.event-form-advanced > summary {
+.event-form-section > summary {
   display: flex;
   align-items: center;
   width: 100%;
   gap: 10px;
   padding: 0 0 13px;
   color: #304963;
-}
-.event-form-advanced > summary {
   cursor: pointer;
   list-style: none;
 }
-.event-form-advanced > summary::-webkit-details-marker {
+.event-form-section > summary::-webkit-details-marker {
   display: none;
 }
 .event-form-step {
@@ -2232,8 +2229,11 @@ kbd {
   color: #7f91a5;
   transition: transform 0.18s ease;
 }
-.event-form-advanced[open] .event-form-section-chevron {
+.event-form-section[open] .event-form-section-chevron {
   transform: rotate(90deg);
+}
+.event-form-next {
+  display: none;
 }
 .role-list {
   display: grid;
@@ -2619,6 +2619,9 @@ kbd {
   background: #fff;
   box-shadow: 0 24px 70px rgba(15, 39, 70, 0.25);
 }
+.image-crop-dialog {
+  width: min(100%, 560px);
+}
 .image-review-head {
   display: flex;
   align-items: start;
@@ -2657,6 +2660,30 @@ kbd {
   height: 100%;
   max-height: none;
   object-fit: cover;
+}
+.image-crop-workspace {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  min-height: 280px;
+  margin-top: 18px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #17283d;
+}
+.image-crop-zoom {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  color: #4d647e;
+  font-size: 12px;
+  font-weight: 800;
+}
+.image-crop-zoom input {
+  width: 100%;
+  accent-color: #155eef;
 }
 .image-review-help {
   margin: 12px 0 0;
@@ -4474,8 +4501,7 @@ kbd {
   .event-form-section {
     padding-top: 16px;
   }
-  .event-form-section legend,
-  .event-form-advanced > summary {
+  .event-form-section > summary {
     position: sticky;
     top: 76px;
     z-index: 2;
@@ -4495,11 +4521,35 @@ kbd {
     min-height: 44px;
   }
   .event-plan-form textarea {
-    min-height: 104px;
-    line-height: 1.6;
+    min-height: 82px;
+    line-height: 1.5;
   }
   .event-image-picker {
     border-radius: 8px;
+  }
+  .event-form-next {
+    display: inline-flex;
+    width: 100%;
+  }
+  .image-review-backdrop {
+    padding: 10px;
+  }
+  .image-review-dialog {
+    max-height: calc(100dvh - 20px);
+    padding: 16px;
+    border-radius: 12px;
+  }
+  .image-crop-workspace {
+    min-height: 220px;
+    margin-top: 14px;
+  }
+  .image-review-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .image-review-actions .primary-action,
+  .image-review-actions .secondary-action {
+    width: 100%;
   }
   .event-form-foot .row-actions,
   .event-form-foot .row-actions button {

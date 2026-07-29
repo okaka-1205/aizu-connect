@@ -87,6 +87,7 @@ import {
 import { createPortal } from "react-dom";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { Field } from "./components/Field";
+import { ImageCropDialog } from "./components/ImageCropDialog";
 import { LegalDialog } from "./components/LegalDialog";
 import {
   PRIVACY_VERSION,
@@ -97,7 +98,13 @@ import { useDialogAccessibility } from "./hooks/useDialogAccessibility";
 import communityEventImage from "./assets/event-community.jpg";
 import learningEventImage from "./assets/event-learning.jpg";
 import volunteerEventImage from "./assets/event-volunteer.jpg";
-import { auth, db, functions, storage } from "./lib/firebase";
+import {
+  auth,
+  authPersistenceReady,
+  db,
+  functions,
+  storage,
+} from "./lib/firebase";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import {
   categories,
@@ -511,6 +518,12 @@ const defaultNotificationPreferences = (
 });
 
 const uploadImage = async (file: File, path: string) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error("ログイン状態を確認できません。再ログインしてください。");
+  }
+  await reload(currentUser);
+  await getIdToken(currentUser, true);
   const imageRef = ref(storage, path);
   const snapshot = await uploadBytes(imageRef, file, {
     contentType: file.type,
@@ -792,74 +805,87 @@ function App() {
   );
 
   useEffect(() => {
+    let disposed = false;
     let unsubscribeProfile: (() => void) | null = null;
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      unsubscribeProfile?.();
-      unsubscribeProfile = null;
-      if (authenticatedUidRef.current !== (user?.uid ?? null)) {
-        authenticatedUidRef.current = user?.uid ?? null;
-        setActiveTab("home");
-        setSelectedEventId(null);
-        setActiveRoomId(null);
-        setMessageDraft("");
-        setSearchText("");
-        setFilter("すべて");
-        setSearchDateFilter("すべて");
-        setSearchDayFilter("すべて");
-        setSearchTimeFilter("すべて");
-        setSearchFeeFilter("すべて");
-        setSearchFormatFilter("すべて");
-        setSearchSort("開催が近い順");
-        setSearchView("list");
-        setOnlyAvailableEvents(false);
-        setOnlyBeginnerEvents(false);
-        setIsNotificationOpen(false);
-        setIsCreatorDashboardOpen(false);
-        setApplicationEvent(null);
-        setApplicationToCancel(null);
-        setReportTarget(null);
-        setEvents([]);
-        setApplications([]);
-        setChatRooms([]);
-        setChatMessages([]);
-        setChatMessageLimit(100);
-        setHasOlderChatMessages(false);
-        setChatReadReceipts([]);
-        setChatPreferences([]);
-        setNotifications([]);
-        setActivities([]);
-        setSavedEventIds([]);
-        setSavedSearch(null);
-      }
-      setFirebaseUser(user);
-      setAppUser(null);
-      if (!user) {
-        setIsAuthLoading(false);
-        return;
-      }
-      unsubscribeProfile = onSnapshot(
-        doc(db, "users", user.uid),
-        (snapshot) => {
-          if (snapshot.exists()) {
-            setAppUser(snapshot.data() as AppUser);
-          } else {
-            setMessage(
-              "認証は完了しましたが、プロフィール情報が見つかりません。もう一度登録してください。",
-            );
-            void signOut(auth);
+    let unsubscribeAuth: () => void = () => {};
+    void authPersistenceReady
+      .then(() => {
+        if (disposed) return;
+        unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+          unsubscribeProfile?.();
+          unsubscribeProfile = null;
+          if (authenticatedUidRef.current !== (user?.uid ?? null)) {
+            authenticatedUidRef.current = user?.uid ?? null;
+            setActiveTab("home");
+            setSelectedEventId(null);
+            setActiveRoomId(null);
+            setMessageDraft("");
+            setSearchText("");
+            setFilter("すべて");
+            setSearchDateFilter("すべて");
+            setSearchDayFilter("すべて");
+            setSearchTimeFilter("すべて");
+            setSearchFeeFilter("すべて");
+            setSearchFormatFilter("すべて");
+            setSearchSort("開催が近い順");
+            setSearchView("list");
+            setOnlyAvailableEvents(false);
+            setOnlyBeginnerEvents(false);
+            setIsNotificationOpen(false);
+            setIsCreatorDashboardOpen(false);
+            setApplicationEvent(null);
+            setApplicationToCancel(null);
+            setReportTarget(null);
+            setEvents([]);
+            setApplications([]);
+            setChatRooms([]);
+            setChatMessages([]);
+            setChatMessageLimit(100);
+            setHasOlderChatMessages(false);
+            setChatReadReceipts([]);
+            setChatPreferences([]);
+            setNotifications([]);
+            setActivities([]);
+            setSavedEventIds([]);
+            setSavedSearch(null);
           }
-          setIsAuthLoading(false);
-        },
-        (error) => {
-          setMessage(
-            `アカウント情報を読み込めませんでした。再ログインしてください。${getFirebaseErrorMessage(error)}`,
+          setFirebaseUser(user);
+          setAppUser(null);
+          if (!user) {
+            setIsAuthLoading(false);
+            return;
+          }
+          unsubscribeProfile = onSnapshot(
+            doc(db, "users", user.uid),
+            (snapshot) => {
+              if (snapshot.exists()) {
+                setAppUser(snapshot.data() as AppUser);
+              } else {
+                setMessage(
+                  "認証は完了しましたが、プロフィール情報が見つかりません。もう一度登録してください。",
+                );
+                void signOut(auth);
+              }
+              setIsAuthLoading(false);
+            },
+            (error) => {
+              setMessage(
+                `アカウント情報を読み込めませんでした。再ログインしてください。${getFirebaseErrorMessage(error)}`,
+              );
+              setIsAuthLoading(false);
+              void signOut(auth);
+            },
           );
-          setIsAuthLoading(false);
-          void signOut(auth);
-        },
-      );
-    });
+        });
+      })
+      .catch((error: unknown) => {
+        setMessage(
+          `ログイン状態を保存できませんでした。${getFirebaseErrorMessage(error)}`,
+        );
+        setIsAuthLoading(false);
+      });
     return () => {
+      disposed = true;
       unsubscribeProfile?.();
       unsubscribeAuth();
     };
@@ -3696,70 +3722,6 @@ function CertificateDialog({
   );
 }
 
-function ImageReviewDialog({
-  title,
-  imageUrl,
-  alt,
-  circular = false,
-  onCancel,
-  onConfirm,
-}: {
-  title: string;
-  imageUrl: string;
-  alt: string;
-  circular?: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const dialogRef = useDialogAccessibility<HTMLElement>(onCancel);
-
-  return createPortal(
-    <div className="image-review-backdrop" role="presentation">
-      <section
-        ref={dialogRef}
-        className="image-review-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="image-review-title"
-        tabIndex={-1}
-      >
-        <div className="image-review-head">
-          <div>
-            <p className="eyebrow">PHOTO REVIEW</p>
-            <h2 id="image-review-title">{title}</h2>
-          </div>
-          <button
-            className="icon-button"
-            type="button"
-            title="閉じる"
-            aria-label="写真レビューを閉じる"
-            data-dialog-initial-focus
-            onClick={onCancel}
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <div className={`image-review-frame${circular ? " circular" : ""}`}>
-          <img src={imageUrl} alt={alt} />
-        </div>
-        <p className="image-review-help">
-          この写真でよければ確定してください。保存するまで公開されません。
-        </p>
-        <div className="image-review-actions">
-          <button className="secondary-action" type="button" onClick={onCancel}>
-            選び直す
-          </button>
-          <button className="primary-action" type="button" onClick={onConfirm}>
-            <Check size={17} />
-            この写真を使う
-          </button>
-        </div>
-      </section>
-    </div>,
-    document.body,
-  );
-}
-
 function AccountDeletionPanel({
   request,
   onRequest,
@@ -4153,19 +4115,26 @@ function ProfileTab({
           </button>
         </form>
       )}
-      {isProfileImageReviewOpen && profileImagePreview && (
-        <ImageReviewDialog
-          title="プロフィール画像を確認"
+      {isProfileImageReviewOpen && profileImagePreview && profileImageFile && (
+        <ImageCropDialog
+          title="プロフィール画像の範囲を調整"
           imageUrl={profileImagePreview}
+          imageFile={profileImageFile}
           alt="プロフィール画像の確認用プレビュー"
+          aspect={1}
           circular
+          maxOutputWidth={1024}
           onCancel={() => {
             setIsProfileImageReviewOpen(false);
             setProfileImageFile(null);
             setProfileImagePreview(appUser.profileImageUrl ?? null);
             setProfileImageInputKey((current) => current + 1);
           }}
-          onConfirm={() => setIsProfileImageReviewOpen(false)}
+          onConfirm={(file, previewUrl) => {
+            setProfileImageFile(file);
+            setProfileImagePreview(previewUrl);
+            setIsProfileImageReviewOpen(false);
+          }}
         />
       )}
       <div className="profile-stats">
@@ -5540,6 +5509,12 @@ function OrganizationDashboard({
   const [isEventImageReviewOpen, setIsEventImageReviewOpen] = useState(false);
   const [isEventPreviewOpen, setIsEventPreviewOpen] = useState(false);
   const [eventImageInputKey, setEventImageInputKey] = useState(0);
+  const [openEventFormSections, setOpenEventFormSections] = useState(() => ({
+    basic: true,
+    schedule:
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 621px)").matches,
+  }));
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
@@ -5659,6 +5634,7 @@ function OrganizationDashboard({
   };
 
   const beginEditEvent = (event: AizuEvent) => {
+    setOpenEventFormSections({ basic: true, schedule: true });
     setEditingEventId(event.id);
     setTitle(event.title);
     setSummary(event.summary);
@@ -5712,6 +5688,12 @@ function OrganizationDashboard({
   };
 
   const clearEventForm = () => {
+    setOpenEventFormSections({
+      basic: true,
+      schedule:
+        typeof window !== "undefined" &&
+        window.matchMedia("(min-width: 621px)").matches,
+    });
     setEditingEventId(null);
     setTitle("");
     setSummary("");
@@ -6606,15 +6588,42 @@ function OrganizationDashboard({
           <form
             className="role-form event-plan-form"
             onSubmit={(event) => void createEvent(event)}
+            onInvalid={(event) => {
+              const section = (
+                event.target as HTMLElement
+              ).closest<HTMLElement>("[data-event-form-section]");
+              const sectionName = section?.dataset.eventFormSection;
+              if (sectionName === "basic" || sectionName === "schedule") {
+                setOpenEventFormSections((current) => ({
+                  ...current,
+                  [sectionName]: true,
+                }));
+              }
+            }}
           >
-            <fieldset className="event-form-section">
-              <legend>
+            <details
+              className="event-form-section event-form-collapsible"
+              data-event-form-section="basic"
+              open={openEventFormSections.basic}
+              onToggle={(event) => {
+                const isOpen = event.currentTarget.open;
+                setOpenEventFormSections((current) => ({
+                  ...current,
+                  basic: isOpen,
+                }));
+              }}
+            >
+              <summary>
                 <span className="event-form-step">1</span>
                 <span className="event-form-section-title">
                   <strong>基本情報</strong>
                   <small>活動の内容と魅力を入力</small>
                 </span>
-              </legend>
+                <ChevronRight
+                  className="event-form-section-chevron"
+                  size={18}
+                />
+              </summary>
               <div className="event-form-section-body">
                 <div className="template-picker" aria-label="企画テンプレート">
                   {eventTemplates.map((template) => (
@@ -6704,16 +6713,44 @@ function OrganizationDashboard({
                     <small>JPEG・PNG・WebP / 5MB未満</small>
                   </div>
                 </Field>
+                <button
+                  className="secondary-action event-form-next"
+                  type="button"
+                  onClick={() =>
+                    setOpenEventFormSections({
+                      basic: false,
+                      schedule: true,
+                    })
+                  }
+                >
+                  開催情報へ
+                  <ChevronRight size={16} />
+                </button>
               </div>
-            </fieldset>
-            <fieldset className="event-form-section">
-              <legend>
+            </details>
+            <details
+              className="event-form-section event-form-collapsible"
+              data-event-form-section="schedule"
+              open={openEventFormSections.schedule}
+              onToggle={(event) => {
+                const isOpen = event.currentTarget.open;
+                setOpenEventFormSections((current) => ({
+                  ...current,
+                  schedule: isOpen,
+                }));
+              }}
+            >
+              <summary>
                 <span className="event-form-step">2</span>
                 <span className="event-form-section-title">
                   <strong>開催情報</strong>
                   <small>日時・場所・参加条件を入力</small>
                 </span>
-              </legend>
+                <ChevronRight
+                  className="event-form-section-chevron"
+                  size={18}
+                />
+              </summary>
               <div className="event-form-section-body">
                 <div className="form-grid">
                   <Field label="カテゴリ">
@@ -6846,7 +6883,7 @@ function OrganizationDashboard({
                   </Field>
                 </div>
               </div>
-            </fieldset>
+            </details>
             <details
               className="event-form-section event-form-advanced"
               key={editingEventId ?? "new-event"}
@@ -7086,11 +7123,14 @@ function OrganizationDashboard({
           </div>
         </section>
       </div>
-      {isEventImageReviewOpen && eventImagePreview && (
-        <ImageReviewDialog
-          title="イベント写真を確認"
+      {isEventImageReviewOpen && eventImagePreview && eventImageFile && (
+        <ImageCropDialog
+          title="イベント写真の範囲を調整"
           imageUrl={eventImagePreview}
+          imageFile={eventImageFile}
           alt="イベント写真の確認用プレビュー"
+          aspect={16 / 9}
+          maxOutputWidth={1920}
           onCancel={() => {
             setIsEventImageReviewOpen(false);
             setEventImageFile(null);
@@ -7102,7 +7142,11 @@ function OrganizationDashboard({
             );
             setEventImageInputKey((current) => current + 1);
           }}
-          onConfirm={() => setIsEventImageReviewOpen(false)}
+          onConfirm={(file, previewUrl) => {
+            setEventImageFile(file);
+            setEventImagePreview(previewUrl);
+            setIsEventImageReviewOpen(false);
+          }}
         />
       )}
       {isEventPreviewOpen && (
@@ -7738,9 +7782,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         setDeletionRequests(requests);
         void Promise.all(
           requests.map(async (request) => {
-            const userSnapshot = await getDoc(
-              doc(db, "users", request.userId),
-            );
+            const userSnapshot = await getDoc(doc(db, "users", request.userId));
             if (!userSnapshot.exists()) return null;
             return {
               uid: userSnapshot.id,
@@ -8064,9 +8106,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             }`}
             role={visiblePendingEvents.length > 10 ? "region" : undefined}
             aria-label={
-              visiblePendingEvents.length > 10
-                ? "イベント審査一覧"
-                : undefined
+              visiblePendingEvents.length > 10 ? "イベント審査一覧" : undefined
             }
             tabIndex={visiblePendingEvents.length > 10 ? 0 : undefined}
           >
@@ -8208,9 +8248,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             }`}
             role={visiblePendingUsers.length > 10 ? "region" : undefined}
             aria-label={
-              visiblePendingUsers.length > 10
-                ? "アカウント審査一覧"
-                : undefined
+              visiblePendingUsers.length > 10 ? "アカウント審査一覧" : undefined
             }
             tabIndex={visiblePendingUsers.length > 10 ? 0 : undefined}
           >

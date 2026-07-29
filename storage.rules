@@ -52,7 +52,7 @@ service firebase.storage {
 
     match /profile-images/{userId}/{fileName} {
       allow read: if signedIn();
-      allow write: if activeStudent(userId) && validImage();
+      allow write: if activeCreator(userId) && validImage();
     }
 
     match /event-images/{organizationId}/{eventId}/{fileName} {
