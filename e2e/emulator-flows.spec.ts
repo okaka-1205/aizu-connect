@@ -190,6 +190,10 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("dialog", { name: "E2E 地域交流会" }),
     ).toBeHidden();
+    await page.getByRole("button", { name: "ホームへ戻る" }).first().click();
+    await expect(
+      page.getByRole("heading", { name: "あなたへのおすすめ" }),
+    ).toBeVisible();
 
     await nav.getByRole("button", { name: /^活動/ }).click();
     await expect(
@@ -272,6 +276,36 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByText("ログインしました。活動を探しにいきましょう。"),
     ).toBeHidden();
+  });
+
+  test("login persistence survives reopening the site", async ({ page }) => {
+    await login(page, "student-e2e@u-aizu.ac.jp");
+    const reopenedPage = await page.context().newPage();
+    await page.close();
+    await reopenedPage.goto("/");
+
+    await expect(
+      reopenedPage.getByRole("heading", { name: "あなたへのおすすめ" }),
+    ).toBeVisible();
+    await expect(
+      reopenedPage.getByRole("button", { name: "ログインする" }),
+    ).toBeHidden();
+    await expectNoHorizontalOverflow(reopenedPage);
+  });
+
+  test("verified Aizu student is approved without admin review", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    await login(page, `student-auto-approve-${suffix}@u-aizu.ac.jp`);
+
+    await expect(
+      page.getByRole("heading", { name: "あなたへのおすすめ" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "承認待ちです" }),
+    ).toBeHidden();
+    await expectNoHorizontalOverflow(page);
   });
 
   test("student can submit a new application through functions", async ({
@@ -753,6 +787,7 @@ test.describe("emulator-backed role flows", () => {
     const eventChatTitle = `E2E 全体チャットイベント ${projectVariant(testInfo.project.name)}`;
     await login(page, "org-e2e@example.com");
 
+    await page.getByRole("button", { name: "ホームへ戻る" }).first().click();
     await expect(
       page.getByRole("heading", { name: "企画したイベント" }),
     ).toBeVisible();
@@ -903,6 +938,10 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("heading", { name: "イベント審査" }),
     ).toBeVisible();
+    const adminSearch = page.getByLabel("管理対象を検索");
+    await adminSearch.fill("E2E");
+    await page.getByRole("button", { name: "ホームへ戻る" }).first().click();
+    await expect(adminSearch).toHaveValue("");
     const managedUserScrollRegion = page.getByRole("region", {
       name: "ユーザー管理一覧",
     });

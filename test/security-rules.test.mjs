@@ -480,6 +480,27 @@ describe("users and profiles", () => {
           userDoc({
             uid: "student-new",
             email: "student-new@u-aizu.ac.jp",
+            status: "pending_approval",
+            ...legalConsent,
+          }),
+        ),
+    );
+    const directActiveStudent = testEnv.authenticatedContext(
+      "student-new-active",
+      {
+        email: "student-new-active@u-aizu.ac.jp",
+        email_verified: true,
+      },
+    );
+    await assertFails(
+      directActiveStudent
+        .firestore()
+        .doc("users/student-new-active")
+        .set(
+          userDoc({
+            uid: "student-new-active",
+            email: "student-new-active@u-aizu.ac.jp",
+            status: "active",
             ...legalConsent,
           }),
         ),
@@ -594,7 +615,7 @@ describe("users and profiles", () => {
         email_verified: false,
       },
     );
-    await assertSucceeds(
+    await assertFails(
       unverifiedAizuStudent
         .firestore()
         .doc("users/student-unverified")
@@ -607,8 +628,118 @@ describe("users and profiles", () => {
           }),
         ),
     );
+    await assertSucceeds(
+      unverifiedAizuStudent
+        .firestore()
+        .doc("users/student-unverified")
+        .set(
+          userDoc({
+            uid: "student-unverified",
+            email: "student-unverified@u-aizu.ac.jp",
+            status: "pending_approval",
+            ...legalConsent,
+          }),
+        ),
+    );
     await assertFails(
       unverifiedAizuStudent.firestore().doc("events/event-published").get(),
+    );
+  });
+
+  it("allows only a verified Aizu student to self-approve from pending", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await Promise.all([
+        db.doc("users/student-auto-approve").set(
+          userDoc({
+            uid: "student-auto-approve",
+            email: "student-auto-approve@u-aizu.ac.jp",
+            status: "pending_approval",
+          }),
+        ),
+        db.doc("studentProfiles/student-auto-approve").set(
+          studentProfile({
+            uid: "student-auto-approve",
+            email: "student-auto-approve@u-aizu.ac.jp",
+            status: "pending_approval",
+          }),
+        ),
+        db.doc("users/student-auto-unverified").set(
+          userDoc({
+            uid: "student-auto-unverified",
+            email: "student-auto-unverified@u-aizu.ac.jp",
+            status: "pending_approval",
+          }),
+        ),
+        db.doc("users/student-auto-external").set(
+          userDoc({
+            uid: "student-auto-external",
+            email: "student-auto-external@example.com",
+            status: "pending_approval",
+          }),
+        ),
+      ]);
+    });
+
+    const verifiedAizu = testEnv.authenticatedContext("student-auto-approve", {
+      email: "student-auto-approve@u-aizu.ac.jp",
+      email_verified: true,
+    });
+    await assertFails(
+      verifiedAizu.firestore().doc("users/student-auto-approve").update({
+        status: "active",
+        displayName: "Changed during approval",
+        updatedAt: timestamp,
+      }),
+    );
+    await assertSucceeds(
+      verifiedAizu.firestore().doc("users/student-auto-approve").update({
+        status: "active",
+        updatedAt: timestamp,
+      }),
+    );
+    await assertSucceeds(
+      verifiedAizu
+        .firestore()
+        .doc("studentProfiles/student-auto-approve")
+        .update({
+          status: "active",
+          updatedAt: timestamp,
+        }),
+    );
+
+    const unverifiedAizu = testEnv.authenticatedContext(
+      "student-auto-unverified",
+      {
+        email: "student-auto-unverified@u-aizu.ac.jp",
+        email_verified: false,
+      },
+    );
+    await assertFails(
+      unverifiedAizu
+        .firestore()
+        .doc("users/student-auto-unverified")
+        .update({
+          status: "active",
+          updatedAt: timestamp,
+        }),
+    );
+
+    const verifiedExternal = testEnv.authenticatedContext(
+      "student-auto-external",
+      {
+        email: "student-auto-external@example.com",
+        email_verified: true,
+      },
+    );
+    await assertFails(
+      verifiedExternal
+        .firestore()
+        .doc("users/student-auto-external")
+        .update({
+          status: "active",
+          updatedAt: timestamp,
+        }),
     );
   });
 

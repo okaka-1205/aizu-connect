@@ -115,6 +115,7 @@ import {
   matchesCategoryFilter,
   normalizeLoginEmail,
   resolveAccountAccessGate,
+  shouldAutoApproveAizuStudent,
   toCalendarFile,
   toDateTimeInput,
   toDateTimeLocalValue,
@@ -583,6 +584,9 @@ function App() {
   const [savedSearch, setSavedSearch] = useState<SavedSearch | null>(null);
   const [savedEventIds, setSavedEventIds] = useState<string[]>([]);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [isAutoApprovingAizuStudent, setIsAutoApprovingAizuStudent] =
+    useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [accountDeletionRequest, setAccountDeletionRequest] =
@@ -604,6 +608,7 @@ function App() {
     useState<NotificationPreferences>(() => defaultNotificationPreferences(""));
   const [isCreatorDashboardOpen, setIsCreatorDashboardOpen] = useState(false);
   const authenticatedUidRef = useRef<string | null>(null);
+  const verificationRefreshUidRef = useRef<string | null>(null);
 
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === selectedEventId),
@@ -820,6 +825,8 @@ function App() {
           unsubscribeProfile = null;
           if (authenticatedUidRef.current !== (user?.uid ?? null)) {
             authenticatedUidRef.current = user?.uid ?? null;
+            verificationRefreshUidRef.current = null;
+            setIsAutoApprovingAizuStudent(false);
             setActiveTab("home");
             setSelectedEventId(null);
             setActiveRoomId(null);
@@ -854,6 +861,7 @@ function App() {
             setSavedSearch(null);
           }
           setFirebaseUser(user);
+          setIsEmailVerified(Boolean(user?.emailVerified));
           setAppUser(null);
           if (!user) {
             setIsAuthLoading(false);
@@ -894,6 +902,88 @@ function App() {
       unsubscribeAuth();
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      !firebaseUser ||
+      !appUser ||
+      isEmailVerified ||
+      verificationRefreshUidRef.current === firebaseUser.uid ||
+      appUser.role !== "student" ||
+      appUser.status !== "pending_approval" ||
+      !isAizuUniversityEmail(firebaseUser.email ?? appUser.email ?? "")
+    ) {
+      return;
+    }
+
+    verificationRefreshUidRef.current = firebaseUser.uid;
+    void reload(firebaseUser)
+      .then(async () => {
+        if (firebaseUser.emailVerified) {
+          await getIdToken(firebaseUser, true);
+        }
+        setIsEmailVerified(firebaseUser.emailVerified);
+      })
+      .catch(() => {
+        verificationRefreshUidRef.current = null;
+      });
+  }, [appUser, firebaseUser, isEmailVerified]);
+
+  useEffect(() => {
+    if (
+      !firebaseUser ||
+      !appUser ||
+      !shouldAutoApproveAizuStudent({
+        role: appUser.role,
+        status: appUser.status,
+        email: firebaseUser.email ?? appUser.email,
+        emailVerified: isEmailVerified,
+      })
+    ) {
+      return;
+    }
+
+    let disposed = false;
+    setIsAutoApprovingAizuStudent(true);
+    void (async () => {
+      try {
+        await getIdToken(firebaseUser, true);
+        const profileRef = doc(db, "studentProfiles", firebaseUser.uid);
+        const profileSnapshot = await getDoc(profileRef);
+        const batch = writeBatch(db);
+        batch.update(doc(db, "users", firebaseUser.uid), {
+          status: "active",
+          updatedAt: serverTimestamp(),
+        });
+        if (profileSnapshot.exists()) {
+          batch.update(profileRef, {
+            status: "active",
+            updatedAt: serverTimestamp(),
+          });
+        }
+        await batch.commit();
+        if (!disposed) {
+          setMessage(
+            "メール認証が完了しました。会津大学アカウントを承認しました。",
+          );
+        }
+      } catch (error) {
+        if (!disposed) {
+          setMessage(
+            `会津大学アカウントの承認を完了できませんでした。${getFirebaseErrorMessage(error)}`,
+          );
+          setIsEmailVerified(false);
+          verificationRefreshUidRef.current = null;
+        }
+      } finally {
+        setIsAutoApprovingAizuStudent(false);
+      }
+    })();
+
+    return () => {
+      disposed = true;
+    };
+  }, [appUser, firebaseUser, isEmailVerified]);
 
   useEffect(() => {
     if (!appUser || appUser.status !== "active" || appUser.role !== "student") {
@@ -1217,9 +1307,7 @@ function App() {
       const normalizedWantToTry = wantToTry.trim().slice(0, 240);
       const isStudent = accountType === "student";
       const isAizuStudent = isStudent && isAizuUniversityEmail(normalizedEmail);
-      const status: AccountStatus = isAizuStudent
-        ? "active"
-        : "pending_approval";
+      const status: AccountStatus = "pending_approval";
       const normalizedOrganizationName = organizationName.trim().slice(0, 100);
       const normalizedDisplayName = isStudent
         ? displayName.trim().slice(0, 80)
@@ -1281,10 +1369,9 @@ function App() {
         });
       }
       await batch.commit();
-      let registrationMessage =
-        status === "active"
-          ? "登録完了。会津で参加できる活動を見つけよう。"
-          : "登録しました。管理者の承認後に利用できます。";
+      let registrationMessage = isAizuStudent
+        ? "登録しました。メール認証が完了すると、すぐに利用できます。"
+        : "登録しました。メール認証と管理者の承認後に利用できます。";
       try {
         await sendEmailVerification(credential.user);
       } catch (verificationError) {
@@ -1551,6 +1638,8 @@ function App() {
     setOnlyAvailableEvents(false);
     setOnlyBeginnerEvents(false);
     setMessageDraft("");
+    setIsEmailVerified(false);
+    verificationRefreshUidRef.current = null;
     await signOut(auth);
   };
 
@@ -1591,9 +1680,18 @@ function App() {
         }}
       />
     );
+  const shouldAutoApproveCurrentUser = shouldAutoApproveAizuStudent({
+    role: appUser.role,
+    status: appUser.status,
+    email: firebaseUser.email ?? appUser.email,
+    emailVerified: isEmailVerified,
+  });
+  if (shouldAutoApproveCurrentUser || isAutoApprovingAizuStudent) {
+    return <LoadingScreen />;
+  }
   const accountAccessGate = resolveAccountAccessGate({
     isProduction: import.meta.env.PROD,
-    emailVerified: firebaseUser.emailVerified,
+    emailVerified: isEmailVerified,
     status: appUser.status,
   });
   if (accountAccessGate === "email_verification")
@@ -1605,7 +1703,7 @@ function App() {
           if (firebaseUser.emailVerified) {
             await getIdToken(firebaseUser, true);
           }
-          setFirebaseUser(auth.currentUser);
+          setIsEmailVerified(firebaseUser.emailVerified);
         }}
         onLogout={() => void handleLogout()}
       />
@@ -1715,6 +1813,13 @@ function App() {
     });
   };
 
+  const goToStudentHome = () => {
+    setActiveTab("home");
+    setSelectedEventId(null);
+    setActiveRoomId(null);
+    setIsNotificationOpen(false);
+  };
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -1722,7 +1827,7 @@ function App() {
           <button
             className="brand-lockup"
             type="button"
-            onClick={() => setActiveTab("home")}
+            onClick={goToStudentHome}
             aria-label="ホームへ戻る"
           >
             <span className="brand-mark">A</span>
@@ -2072,7 +2177,7 @@ function App() {
           active={activeTab === "home"}
           icon={<Home size={19} />}
           label="ホーム"
-          onClick={() => setActiveTab("home")}
+          onClick={goToStudentHome}
         />
         <TabButton
           active={activeTab === "search"}
@@ -6523,11 +6628,25 @@ function OrganizationDashboard({
     createdBy: appUser.uid,
   };
 
+  const goToOrganizationHome = () => {
+    if (onClose) {
+      onClose();
+      return;
+    }
+    setSelectedEventId(null);
+    setEditingEventId(null);
+    setActiveRoomId(null);
+    setEventSearch("");
+    setApplicantSearch("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <RoleShell
       title={organizationName}
       subtitle="企画ダッシュボード"
       icon={<UsersRound size={19} />}
+      onHome={goToOrganizationHome}
       onClose={onClose}
       onLogout={onLogout}
     >
@@ -8068,11 +8187,19 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       !user.department ? "所属未設定" : null,
     ].filter(Boolean) as string[];
 
+  const goToAdminHome = () => {
+    setAdminSearch("");
+    setExpandedEventId(null);
+    setManagedUserStatus("active");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <RoleShell
       title="Aizu Connect運営"
       subtitle="管理者コンソール"
       icon={<ShieldCheck size={19} />}
+      onHome={goToAdminHome}
       onLogout={onLogout}
     >
       {notice && (
@@ -8844,6 +8971,7 @@ function RoleShell({
   title,
   subtitle,
   icon,
+  onHome,
   onClose,
   onLogout,
   children,
@@ -8851,6 +8979,7 @@ function RoleShell({
   title: string;
   subtitle: string;
   icon: ReactNode;
+  onHome: () => void;
   onClose?: () => void;
   onLogout: () => void;
   children: ReactNode;
@@ -8858,13 +8987,18 @@ function RoleShell({
   return (
     <main className="role-shell">
       <header className="role-header">
-        <div className="brand-lockup">
+        <button
+          className="brand-lockup"
+          type="button"
+          onClick={onHome}
+          aria-label="ホームへ戻る"
+        >
           <span className="brand-mark">A</span>
           <span>
             <strong>Aizu Connect</strong>
             <small>{subtitle}</small>
           </span>
-        </div>
+        </button>
         <div className="role-header-user">
           {icon}
           <strong>{title}</strong>

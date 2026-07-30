@@ -10,6 +10,7 @@ import {
   matchesCategoryFilter,
   normalizeLoginEmail,
   resolveAccountAccessGate,
+  shouldAutoApproveAizuStudent,
   toCalendarFile,
   toDateTimeInput,
   toDateTimeLocalValue,
@@ -34,6 +35,41 @@ describe("auth helpers", () => {
   it("recognizes Aizu University addresses case-insensitively", () => {
     expect(isAizuUniversityEmail(" Student@U-AIZU.AC.JP ")).toBe(true);
     expect(isAizuUniversityEmail("student@example.com")).toBe(false);
+  });
+
+  it("auto-approves only verified pending Aizu University students", () => {
+    expect(
+      shouldAutoApproveAizuStudent({
+        role: "student",
+        status: "pending_approval",
+        email: " Student@U-AIZU.AC.JP ",
+        emailVerified: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoApproveAizuStudent({
+        role: "student",
+        status: "pending_approval",
+        email: "student@u-aizu.ac.jp",
+        emailVerified: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoApproveAizuStudent({
+        role: "organization",
+        status: "pending_approval",
+        email: "organization@u-aizu.ac.jp",
+        emailVerified: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoApproveAizuStudent({
+        role: "student",
+        status: "pending_approval",
+        email: "student@example.com",
+        emailVerified: true,
+      }),
+    ).toBe(false);
   });
 
   it("shows email verification before an admin approval wait", () => {

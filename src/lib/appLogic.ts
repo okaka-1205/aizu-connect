@@ -109,6 +109,22 @@ export const matchesCategoryFilter = (category: string, filter: Filter) =>
 export const isAizuUniversityEmail = (email: string) =>
   email.trim().toLowerCase().endsWith("@u-aizu.ac.jp");
 
+export const shouldAutoApproveAizuStudent = ({
+  role,
+  status,
+  email,
+  emailVerified,
+}: {
+  role: string;
+  status: string;
+  email: string | null | undefined;
+  emailVerified: boolean;
+}) =>
+  role === "student" &&
+  status === "pending_approval" &&
+  Boolean(email && isAizuUniversityEmail(email)) &&
+  emailVerified;
+
 export const normalizeLoginEmail = (email: string, devAdminEmail = "") => {
   const normalizedEmail = email.trim().toLowerCase();
   return devAdminEmail && normalizedEmail === "admin"
