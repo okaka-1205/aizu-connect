@@ -391,12 +391,18 @@ for (const variant of ["desktop", "mobile", "tablet"]) {
   const profileEventId = `event-e2e-open-${variant === "desktop" ? "chromium" : variant}`;
   batch.set(
     db.doc(`users/${autoApproveUserId}`),
-    userDoc({
-      uid: autoApproveUserId,
-      email: `${autoApproveUserId}@u-aizu.ac.jp`,
-      displayName: `E2E 自動承認 ${displayVariant}`,
-      status: "pending_approval",
-    }),
+    {
+      ...userDoc({
+        uid: autoApproveUserId,
+        email: `${autoApproveUserId}@u-aizu.ac.jp`,
+        displayName: `E2E 自動承認 ${displayVariant}`,
+        status: "pending_approval",
+      }),
+      termsVersion: "2026-08-01",
+      privacyVersion: "2026-08-01",
+      legalAcceptedAt: timestamp,
+      eligibilityConfirmedAt: timestamp,
+    },
   );
   batch.set(db.doc(`studentProfiles/${autoApproveUserId}`), {
     ...userDoc({
@@ -891,6 +897,51 @@ batch.set(db.doc("eventCheckIns/event-e2e-published"), {
 });
 
 await batch.commit();
+
+const paginationBatch = db.batch();
+for (let index = 0; index < 18; index += 1) {
+  const paginationStartDate = new Date(eventStartDate);
+  paginationStartDate.setDate(paginationStartDate.getDate() + 20 + index);
+  const paginationEndDate = new Date(
+    paginationStartDate.getTime() + 2 * 60 * 60 * 1000,
+  );
+  const eventId = `event-e2e-pagination-${String(index).padStart(2, "0")}`;
+  paginationBatch.set(
+    db.doc(`events/${eventId}`),
+    eventDoc({
+      title: `E2E ページングイベント ${String(index + 1).padStart(2, "0")}`,
+      startAt: Timestamp.fromDate(paginationStartDate),
+      endAt: Timestamp.fromDate(paginationEndDate),
+      startAtLabel: new Intl.DateTimeFormat("ja-JP", {
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(paginationStartDate),
+      endAtLabel: new Intl.DateTimeFormat("ja-JP", {
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(paginationEndDate),
+      applicantCount: 0,
+    }),
+  );
+}
+for (let index = 0; index < 55; index += 1) {
+  const reportNumber = String(index + 1).padStart(2, "0");
+  paginationBatch.set(db.doc(`reports/pagination-report-${reportNumber}`), {
+    reporterId: "student-e2e",
+    targetType: "message",
+    targetId: `pagination-target-${reportNumber}`,
+    targetTitle: `E2E ページング通報 ${reportNumber}`,
+    reason: "ページング確認",
+    description: `管理画面の${reportNumber}件目を確認します。`,
+    status: "submitted",
+    createdAt: Timestamp.fromMillis(now.getTime() - (index + 1) * 60_000),
+  });
+}
+await paginationBatch.commit();
 
 for (const variant of ["desktop", "mobile", "tablet"]) {
   const historyBatch = db.batch();

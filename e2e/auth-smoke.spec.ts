@@ -7,11 +7,11 @@ test.describe("auth entry", () => {
     await page.goto("/");
 
     await expect(
-      page.getByRole("heading", { name: "活動をはじめよう" }),
+      page.getByRole("heading", { name: "アカウントを作成" }),
     ).toBeVisible();
     await expect(page.getByLabel("メールアドレス")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "登録して始める" }),
+      page.getByRole("button", { name: "アカウントを作成" }),
     ).toBeVisible();
     const legalConsent = page.getByRole("checkbox", {
       name: "利用規約とプライバシーポリシーに同意します",
@@ -41,7 +41,7 @@ test.describe("auth entry", () => {
     await page.getByRole("button", { name: "ログイン" }).click();
 
     await expect(
-      page.getByRole("heading", { name: "おかえりなさい" }),
+      page.getByRole("heading", { name: "ログイン" }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "ログインする" }),
@@ -63,7 +63,7 @@ test.describe("auth entry", () => {
     await expect(
       page.getByRole("heading", { name: "第1条 適用とアカウント" }),
     ).toBeVisible();
-    await expect(page.getByText("2026年7月28日")).toBeVisible();
+    await expect(page.getByText("2026年8月1日")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "利用規約" })).toBeHidden();
 

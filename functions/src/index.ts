@@ -56,7 +56,7 @@ const createNotificationOnce = async (
   try {
     await db.doc(path).create(data);
   } catch (error) {
-    const code = (error as {code?: unknown}).code;
+    const code = (error as { code?: unknown }).code;
     if (code !== 6 && code !== "already-exists") throw error;
   }
 };
@@ -64,6 +64,28 @@ const createNotificationOnce = async (
 const eventChatRoomId = (eventId: string) => `event_${eventId}`;
 const createCheckInCode = () =>
   String(randomInt(0, 1_000_000)).padStart(6, "0");
+
+const thirdPartyRecordExpiry = () => {
+  const expiry = new Date();
+  expiry.setUTCFullYear(expiry.getUTCFullYear() + 3);
+  return Timestamp.fromDate(expiry);
+};
+
+const hasRequiredCommerceDisclosure = (
+  eventData: FirebaseFirestore.DocumentData,
+) =>
+  eventData.feeType !== "有料" ||
+  (Number(eventData.feeAmount ?? 0) > 0 &&
+    [
+      eventData.commercialSellerName,
+      eventData.commercialSellerAddress,
+      eventData.commercialSellerPhone,
+      eventData.commercialResponsiblePerson,
+      eventData.paymentMethod,
+      eventData.paymentTiming,
+      eventData.additionalFees,
+      eventData.cancellationPolicy,
+    ].every((value) => typeof value === "string" && value.trim()));
 
 type AdminActor = {
   uid: string;
@@ -78,11 +100,7 @@ const requireAdmin = async (
   }
   const snapshot = await db.doc(`users/${userId}`).get();
   const data = snapshot.data();
-  if (
-    !snapshot.exists ||
-    data?.role !== "admin" ||
-    data?.status !== "active"
-  ) {
+  if (!snapshot.exists || data?.role !== "admin" || data?.status !== "active") {
     throw new HttpsError(
       "permission-denied",
       "有効な管理者権限を確認できませんでした。",
@@ -94,11 +112,7 @@ const requireAdmin = async (
   };
 };
 
-const requiredAdminText = (
-  value: unknown,
-  label: string,
-  maxLength = 1000,
-) => {
+const requiredAdminText = (value: unknown, label: string, maxLength = 1000) => {
   const text = String(value ?? "").trim();
   if (text.length < 3 || text.length > maxLength) {
     throw new HttpsError(
@@ -110,10 +124,7 @@ const requiredAdminText = (
 };
 
 const requiredDocumentId = (value: unknown) => {
-  if (
-    typeof value !== "string" ||
-    !/^[A-Za-z0-9_-]{1,200}$/.test(value)
-  ) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,200}$/.test(value)) {
     throw new HttpsError("invalid-argument", "対象IDが不正です。");
   }
   return value;
@@ -173,7 +184,9 @@ const deleteStoragePrefixes = async (prefixes: string[]) => {
   const bucket = adminStorage.bucket();
   try {
     await Promise.all(
-      uniquePrefixes.map((prefix) => bucket.deleteFiles({prefix, force: true})),
+      uniquePrefixes.map((prefix) =>
+        bucket.deleteFiles({prefix, force: true}),
+      ),
     );
   } catch (error) {
     if (!isMissingStorageBucketError(error)) throw error;
@@ -182,6 +195,44 @@ const deleteStoragePrefixes = async (prefixes: string[]) => {
       {bucket: bucket.name},
     );
   }
+};
+
+const anonymizeEventRoomMessages = async (
+  roomRef: FirebaseFirestore.DocumentReference,
+  userId: string,
+) => {
+  let hasMessages = true;
+  while (hasMessages) {
+    const messages = await roomRef
+      .collection("messages")
+      .where("senderId", "==", userId)
+      .limit(100)
+      .get();
+    hasMessages = !messages.empty;
+    if (messages.empty) continue;
+    const batch = db.batch();
+    messages.docs.forEach((message) => {
+      const data = message.data();
+      const hasAttachment = ["image", "file"].includes(String(data.type));
+      batch.update(message.ref, {
+        senderId: "deleted_user",
+        senderName: "退会済みユーザー",
+        ...(hasAttachment ?
+          {
+            type: "text",
+            text: "添付ファイルは削除されました。",
+            attachmentUrl: FieldValue.delete(),
+            attachmentName: FieldValue.delete(),
+            attachmentType: FieldValue.delete(),
+            attachmentSize: FieldValue.delete(),
+          } :
+          {}),
+        anonymizedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    await batch.commit();
+  }
+  await db.recursiveDelete(roomRef.collection("reads").doc(userId));
 };
 
 const resolveReportsForTarget = async (
@@ -262,8 +313,7 @@ const notifyEventDeletion = async (
       }
     });
     await batch.commit();
-    lastApplicationId =
-      applications.docs[applications.docs.length - 1]?.id;
+    lastApplicationId = applications.docs[applications.docs.length - 1]?.id;
     hasApplications = applications.size === 100;
   }
   if (organizerId) {
@@ -402,6 +452,7 @@ const deleteUserData = async (
     for (const room of rooms.docs) {
       storagePrefixes.push(`chat-attachments/${room.id}/${userId}/`);
       if (room.data().roomType === "event") {
+        await anonymizeEventRoomMessages(room.ref, userId);
         await room.ref.update({
           participantIds: FieldValue.arrayRemove(userId),
           updatedAt: FieldValue.serverTimestamp(),
@@ -430,7 +481,9 @@ const deleteUserData = async (
   try {
     await adminAuth.deleteUser(userId);
   } catch (error) {
-    if ((error as {code?: string}).code !== "auth/user-not-found") throw error;
+    if ((error as { code?: string }).code !== "auth/user-not-found") {
+      throw error;
+    }
   }
   await db.recursiveDelete(db.doc(`users/${userId}`));
 };
@@ -560,8 +613,7 @@ export const adminManageResource = onCall(
           const status = action === "approve_user" ? "active" : "rejected";
           await userRef.update({
             status,
-            reviewReason:
-          status === "rejected" ? reason : FieldValue.delete(),
+            reviewReason: status === "rejected" ? reason : FieldValue.delete(),
             moderationReason: FieldValue.delete(),
             updatedAt: FieldValue.serverTimestamp(),
           });
@@ -580,15 +632,15 @@ export const adminManageResource = onCall(
             {
               recipientId: targetId,
               type:
-            status === "active" ? "account_approved" : "account_rejected",
+                status === "active" ? "account_approved" : "account_rejected",
               title:
-            status === "active" ?
-              "アカウントが承認されました" :
-              "アカウントの申請結果を確認してください",
+                status === "active" ?
+                  "アカウントが承認されました" :
+                  "アカウントの申請結果を確認してください",
               body:
-            status === "active" ?
-              "Aizu Connectのすべての機能を利用できます。" :
-              reason,
+                status === "active" ?
+                  "Aizu Connectのすべての機能を利用できます。" :
+                  reason,
               targetType: "profile",
               targetId,
               isRead: false,
@@ -610,7 +662,7 @@ export const adminManageResource = onCall(
         await userRef.update({
           status,
           moderationReason:
-        status === "suspended" ? reason : FieldValue.delete(),
+            status === "suspended" ? reason : FieldValue.delete(),
           ...(status === "active" ? {reviewReason: FieldValue.delete()} : {}),
           updatedAt: FieldValue.serverTimestamp(),
         });
@@ -681,23 +733,32 @@ export const adminManageResource = onCall(
               "このイベントはすでに審査済みです。",
             );
           }
+          if (
+            action === "approve_event" &&
+            !hasRequiredCommerceDisclosure(eventData ?? {})
+          ) {
+            throw new HttpsError(
+              "failed-precondition",
+              "有料イベントの特定商取引法に基づく表示が不足しています。",
+            );
+          }
           const status =
-        action === "approve_event" ? "published" : "revision_required";
+            action === "approve_event" ? "published" : "revision_required";
           await eventRef.update({
             status,
             reviewNote:
-          status === "published" ?
-            "公開基準を満たしていることを確認しました。" :
-            FieldValue.delete(),
+              status === "published" ?
+                "公開基準を満たしていることを確認しました。" :
+                FieldValue.delete(),
             revisionReason:
-          status === "revision_required" ? reason : FieldValue.delete(),
+              status === "revision_required" ? reason : FieldValue.delete(),
             reviewedBy: actor.uid,
             reviewedAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
           });
           if (
             status === "revision_required" &&
-        typeof eventData?.createdBy === "string"
+            typeof eventData?.createdBy === "string"
           ) {
             await createNotificationOnce(
               `notifications/event_review_${operationId}`,
@@ -726,12 +787,11 @@ export const adminManageResource = onCall(
           );
           return await completeOperation(status);
         }
-        const status = action === "unpublish_event" ?
-          "unpublished" :
-          "published";
+        const status =
+          action === "unpublish_event" ? "unpublished" : "published";
         const allowed =
-      (status === "unpublished" && eventData?.status === "published") ||
-      (status === "published" && eventData?.status === "unpublished");
+          (status === "unpublished" && eventData?.status === "published") ||
+          (status === "published" && eventData?.status === "unpublished");
         if (!allowed) {
           throw new HttpsError(
             "failed-precondition",
@@ -741,7 +801,7 @@ export const adminManageResource = onCall(
         await eventRef.update({
           status,
           moderationReason:
-        status === "unpublished" ? reason : FieldValue.delete(),
+            status === "unpublished" ? reason : FieldValue.delete(),
           reviewedBy: actor.uid,
           reviewedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
@@ -750,13 +810,11 @@ export const adminManageResource = onCall(
           await db.collection("notifications").add({
             recipientId: eventData.createdBy,
             type:
-              status === "unpublished" ?
-                "event_unpublished" :
-                "event_restored",
+              status === "unpublished" ? "event_unpublished" : "event_restored",
             title:
-          status === "unpublished" ?
-            "イベントを一時的に非公開にしました" :
-            "イベントを再公開しました",
+              status === "unpublished" ?
+                "イベントを一時的に非公開にしました" :
+                "イベントを再公開しました",
             body: reason,
             targetType: "event",
             targetId,
@@ -835,10 +893,7 @@ export const saveEventPlan = onCall(async (request) => {
       "学生または団体アカウントでイベントを企画できます。",
     );
   }
-  if (
-    !isFunctionsEmulator &&
-    request.auth?.token.email_verified !== true
-  ) {
+  if (!isFunctionsEmulator && request.auth?.token.email_verified !== true) {
     throw new HttpsError(
       "failed-precondition",
       "Email verification is required.",
@@ -934,10 +989,11 @@ export const submitApplication = onCall(async (request) => {
   const accessibilityNeeds = String(
     request.data?.accessibilityNeeds ?? "",
   ).trim();
-  const emergencyContact = String(
-    request.data?.emergencyContact ?? "",
-  ).trim();
+  const emergencyContact = String(request.data?.emergencyContact ?? "").trim();
   const consentAccepted = request.data?.consentAccepted === true;
+  const sensitiveInfoConsent = request.data?.sensitiveInfoConsent === true;
+  const emergencyContactAuthorityConfirmed =
+    request.data?.emergencyContactAuthorityConfirmed === true;
   if (!userId) throw new HttpsError("unauthenticated", "Login required.");
   if (!isFunctionsEmulator && request.auth?.token.email_verified !== true) {
     throw new HttpsError(
@@ -950,6 +1006,8 @@ export const submitApplication = onCall(async (request) => {
   }
   if (
     !consentAccepted ||
+    (accessibilityNeeds.length > 0 && !sensitiveInfoConsent) ||
+    (emergencyContact.length > 0 && !emergencyContactAuthorityConfirmed) ||
     participantMessage.length > 500 ||
     accessibilityNeeds.length > 500 ||
     emergencyContact.length > 200
@@ -967,6 +1025,7 @@ export const submitApplication = onCall(async (request) => {
   const roomRef = db.doc(`chatRooms/${applicationId}`);
   const messageRef = roomRef.collection("messages").doc();
   const eventRoomRef = db.doc(`chatRooms/${eventChatRoomId(eventId)}`);
+  const provisionLogRef = db.doc(`thirdPartyProvisionLogs/${applicationId}`);
   let applicationStatus: "pending" | "waitlisted" = "pending";
   let waitlistPosition = 0;
 
@@ -989,6 +1048,12 @@ export const submitApplication = onCall(async (request) => {
     }
 
     const eventData = eventSnapshot.data() ?? {};
+    if (!hasRequiredCommerceDisclosure(eventData)) {
+      throw new HttpsError(
+        "failed-precondition",
+        "有料イベントの法定表示を確認できないため申込みできません。",
+      );
+    }
     const startAtMillis =
       eventData.startAt instanceof Timestamp ?
         eventData.startAt.toMillis() :
@@ -1037,6 +1102,8 @@ export const submitApplication = onCall(async (request) => {
       accessibilityNeeds,
       emergencyContact,
       consentAccepted,
+      sensitiveInfoConsent,
+      emergencyContactAuthorityConfirmed,
       ...(applicationStatus === "waitlisted" ? {waitlistPosition} : {}),
       createdAt: FieldValue.serverTimestamp(),
     });
@@ -1094,6 +1161,27 @@ export const submitApplication = onCall(async (request) => {
       type: "text",
       text: "参加申請を送信しました。主催者からの連絡をお待ちください。",
       createdAt: FieldValue.serverTimestamp(),
+    });
+    transaction.create(provisionLogRef, {
+      applicationId,
+      userId,
+      userDisplayName: userSnapshot.data()?.displayName ?? "学生",
+      recipientId: organizationId,
+      recipientName: eventData.organizationName,
+      eventId,
+      legalBasis: "本人同意",
+      consentAccepted: true,
+      sensitiveInfoConsent,
+      emergencyContactAuthorityConfirmed,
+      dataCategories: [
+        "表示名",
+        ...(userSnapshot.data()?.profileImageUrl ? ["プロフィール画像"] : []),
+        "参加申請情報",
+        ...(accessibilityNeeds ? ["必要な配慮"] : []),
+        ...(emergencyContact ? ["緊急連絡先"] : []),
+      ],
+      providedAt: FieldValue.serverTimestamp(),
+      expiresAt: thirdPartyRecordExpiry(),
     });
   });
 
@@ -1232,10 +1320,10 @@ export const notifyApplicationCreated = onDocumentCreated(
           type: "application_submitted",
           title: "新しい参加申請があります",
           body:
-          `${application.studentName}さんが「${application.eventTitle}」へ` +
-          (application.status === "waitlisted" ?
-            "キャンセル待ち登録しました。" :
-            "申請しました。"),
+            `${application.studentName}さんが「${application.eventTitle}」へ` +
+            (application.status === "waitlisted" ?
+              "キャンセル待ち登録しました。" :
+              "申請しました。"),
           targetType: "application",
           targetId: event.params.applicationId,
           isRead: false,
@@ -1324,12 +1412,9 @@ export const notifyApplicationUpdated = onDocumentUpdated(
         await db.runTransaction(async (transaction) => {
           const receiptSnapshot = await transaction.get(receiptRef);
           if (receiptSnapshot.exists) return;
-          const availabilityEvent = await transaction.get(
-            availabilityEventRef,
-          );
+          const availabilityEvent = await transaction.get(availabilityEventRef);
           let nextWaitlisted:
-            | FirebaseFirestore.QueryDocumentSnapshot
-            | undefined;
+            FirebaseFirestore.QueryDocumentSnapshot | undefined;
           if (
             shouldDecrement &&
             availabilityEvent.exists &&
@@ -1399,7 +1484,11 @@ export const notifyApplicationUpdated = onDocumentUpdated(
 );
 
 export const notifyEventPublished = onDocumentUpdated(
-  "events/{eventId}",
+  {
+    document: "events/{eventId}",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
   async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
@@ -1413,14 +1502,10 @@ export const notifyEventPublished = onDocumentUpdated(
     }
 
     const isRestoration = before.status === "unpublished";
-    const notificationWrites: {
-      path: string;
-      data: Record<string, unknown>;
-    }[] = [];
     if (!isRestoration) {
-      notificationWrites.push({
-        path: `notifications/event_published_${event.params.eventId}`,
-        data: {
+      await createNotificationOnce(
+        `notifications/event_published_${event.params.eventId}`,
+        {
           recipientId: after.createdBy,
           type: "event_published",
           title: "イベントが公開されました",
@@ -1430,98 +1515,128 @@ export const notifyEventPublished = onDocumentUpdated(
           isRead: false,
           createdAt: FieldValue.serverTimestamp(),
         },
-      });
+      );
     }
 
-    const students = await db
-      .collection("users")
-      .where("role", "==", "student")
-      .where("status", "==", "active")
-      .limit(498)
-      .get();
-    const preferences = await Promise.all(
-      students.docs.map(async (student) => {
-        const [enabled, savedSearch] = await Promise.all([
-          notificationEnabled(student.id, "newEvents"),
-          db.doc(`savedSearches/${student.id}_default`).get(),
-        ]);
-        return {
-          id: student.id,
-          enabled,
-          savedSearch: savedSearch.data(),
-        };
-      }),
-    );
-    for (const preference of preferences) {
-      if (
-        isRestoration ||
-        !shouldNotifyPublishedEventStudent(
-          preference.id,
-          after.createdBy,
-          preference.enabled,
-        ) ||
-        !matchesSavedSearch(
-          preference.savedSearch,
-          {
-            ...after,
-            startAtMillis:
-              after.startAt instanceof Timestamp ?
-                after.startAt.toMillis() :
-                Number.NaN,
-          },
-          Date.now(),
-        )
-      ) {
-        continue;
+    if (!isRestoration) {
+      let lastStudent: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+      let hasStudents = true;
+      while (hasStudents) {
+        let studentsQuery = db
+          .collection("users")
+          .where("role", "==", "student")
+          .where("status", "==", "active")
+          .orderBy(FieldPath.documentId())
+          .limit(200);
+        if (lastStudent) {
+          studentsQuery = studentsQuery.startAfter(lastStudent);
+        }
+        const students = await studentsQuery.get();
+        if (students.empty) {
+          hasStudents = false;
+          continue;
+        }
+        const preferences = await Promise.all(
+          students.docs.map(async (student) => {
+            const [enabled, savedSearch] = await Promise.all([
+              notificationEnabled(student.id, "newEvents"),
+              db.doc(`savedSearches/${student.id}_default`).get(),
+            ]);
+            return {
+              id: student.id,
+              enabled,
+              savedSearch: savedSearch.data(),
+            };
+          }),
+        );
+        await Promise.all(
+          preferences.map(async (preference) => {
+            if (
+              !shouldNotifyPublishedEventStudent(
+                preference.id,
+                after.createdBy,
+                preference.enabled,
+              ) ||
+              !matchesSavedSearch(
+                preference.savedSearch,
+                {
+                  ...after,
+                  startAtMillis:
+                    after.startAt instanceof Timestamp ?
+                      after.startAt.toMillis() :
+                      Number.NaN,
+                },
+                Date.now(),
+              )
+            ) {
+              return;
+            }
+            const notificationPath = [
+              "notifications/new_event",
+              event.params.eventId,
+              preference.id,
+            ].join("_");
+            await createNotificationOnce(notificationPath, {
+              recipientId: preference.id,
+              type: "new_event",
+              title: "新しいイベントが公開されました",
+              body: `「${after.title}」をチェックしてみませんか？`,
+              targetType: "event",
+              targetId: event.params.eventId,
+              isRead: false,
+              createdAt: FieldValue.serverTimestamp(),
+            });
+          }),
+        );
+        lastStudent = students.docs[students.docs.length - 1];
+        hasStudents = students.size === 200;
       }
-      notificationWrites.push({
-        path:
-          `notifications/new_event_${event.params.eventId}_${preference.id}`,
-        data: {
-          recipientId: preference.id,
-          type: "new_event",
-          title: "新しいイベントが公開されました",
-          body: `「${after.title}」をチェックしてみませんか？`,
-          targetType: "event",
-          targetId: event.params.eventId,
-          isRead: false,
-          createdAt: FieldValue.serverTimestamp(),
-        },
-      });
     }
-    const organizerEvents = await db
-      .collection("events")
-      .where("createdBy", "==", after.createdBy)
-      .limit(500)
-      .get();
-    const publishedEventCount = organizerEvents.docs.filter(
-      (eventDocument) => eventDocument.data().status === "published",
-    ).length;
-    await Promise.all([
-      ...notificationWrites.map(({path, data}) =>
-        createNotificationOnce(path, data),
-      ),
-      db.doc(`publicOrganizerProfiles/${after.createdBy}`).set(
-        {
-          userId: after.createdBy,
-          displayName: after.organizationName,
-          description:
+
+    let publishedEventCount = 0;
+    let lastOrganizerEvent: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+    let hasOrganizerEvents = true;
+    while (hasOrganizerEvents) {
+      let organizerEventsQuery = db
+        .collection("events")
+        .where("createdBy", "==", after.createdBy)
+        .orderBy(FieldPath.documentId())
+        .limit(200);
+      if (lastOrganizerEvent) {
+        organizerEventsQuery =
+          organizerEventsQuery.startAfter(lastOrganizerEvent);
+      }
+      const organizerEvents = await organizerEventsQuery.get();
+      publishedEventCount += organizerEvents.docs.filter(
+        (eventDocument) => eventDocument.data().status === "published",
+      ).length;
+      lastOrganizerEvent =
+        organizerEvents.docs[organizerEvents.docs.length - 1];
+      hasOrganizerEvents = organizerEvents.size === 200;
+    }
+    await db.doc(`publicOrganizerProfiles/${after.createdBy}`).set(
+      {
+        userId: after.createdBy,
+        displayName: after.organizationName,
+        description:
           after.organizerDescription ??
           "参加者が安心して参加できるイベント運営を行います。",
-          experience:
-          after.organizerExperience ?? "Aizu Connectでイベントを企画",
-          publishedEventCount,
-          verified: after.organizationVerified === true,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        {merge: true},
-      ),
-    ]);
+        experience: after.organizerExperience ?? "Aizu Connectでイベントを企画",
+        publishedEventCount,
+        verified: after.organizationVerified === true,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      {merge: true},
+    );
   },
 );
 
 export const notifyEventUnavailable = onDocumentUpdated(
-  "events/{eventId}",
+  {
+    document: "events/{eventId}",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
   async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
@@ -1533,18 +1648,27 @@ export const notifyEventUnavailable = onDocumentUpdated(
     ) {
       return;
     }
-    const applications = await db
-      .collection("eventApplications")
-      .where("eventId", "==", event.params.eventId)
-      .limit(1000)
-      .get();
-    const activeApplications = applications.docs.filter((application) =>
-      ["pending", "waitlisted", "confirmed"].includes(
-        application.data().status,
-      ),
-    );
-    for (let index = 0; index < activeApplications.length; index += 150) {
-      const applicationChunk = activeApplications.slice(index, index + 150);
+    let lastApplication: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+    let hasApplications = true;
+    while (hasApplications) {
+      let applicationsQuery = db
+        .collection("eventApplications")
+        .where("eventId", "==", event.params.eventId)
+        .orderBy(FieldPath.documentId())
+        .limit(150);
+      if (lastApplication) {
+        applicationsQuery = applicationsQuery.startAfter(lastApplication);
+      }
+      const applications = await applicationsQuery.get();
+      if (applications.empty) {
+        hasApplications = false;
+        continue;
+      }
+      const applicationChunk = applications.docs.filter((application) =>
+        ["pending", "waitlisted", "confirmed"].includes(
+          application.data().status,
+        ),
+      );
       const batch = db.batch();
       const notificationWrites: Promise<void>[] = [];
       for (const application of applicationChunk) {
@@ -1591,8 +1715,12 @@ export const notifyEventUnavailable = onDocumentUpdated(
           );
         }
       }
-      if (after.status === "cancelled") await batch.commit();
+      if (after.status === "cancelled" && applicationChunk.length > 0) {
+        await batch.commit();
+      }
       await Promise.all(notificationWrites);
+      lastApplication = applications.docs[applications.docs.length - 1];
+      hasApplications = applications.size === 150;
     }
     if (after.status === "cancelled") {
       await db.doc(`chatRooms/${eventChatRoomId(event.params.eventId)}`).set(
@@ -1652,71 +1780,120 @@ export const notifyChatMessageCreated = onDocumentCreated(
   },
 );
 
-export const sendEventReminders = onSchedule("every 1 hours", async () => {
-  const now = Timestamp.now();
-  const nextDay = Timestamp.fromMillis(now.toMillis() + 24 * 60 * 60 * 1000);
-  const eventSnapshot = await db
-    .collection("events")
-    .where("status", "==", "published")
-    .where("startAt", ">=", now)
-    .where("startAt", "<=", nextDay)
-    .limit(100)
-    .get();
-  const writes: { path: string; data: Record<string, unknown> }[] = [];
-
-  for (const eventDocument of eventSnapshot.docs) {
-    const eventData = eventDocument.data();
-    const startAt = eventData.startAt as Timestamp;
-    const hoursUntil = (startAt.toMillis() - now.toMillis()) / (60 * 60 * 1000);
-    const bucket = reminderBucketForHoursUntil(hoursUntil);
-    const applications = await db
-      .collection("eventApplications")
-      .where("eventId", "==", eventDocument.id)
-      .where("status", "==", "confirmed")
-      .limit(500)
-      .get();
-    const preferences = await Promise.all(
-      applications.docs.map(async (application) => ({
-        application: application.data(),
-        enabled: await notificationEnabled(
-          application.data().studentId,
-          "eventReminders",
-        ),
-      })),
-    );
-    for (const preference of preferences) {
-      if (!preference.enabled) continue;
-      const studentId = preference.application.studentId;
-      writes.push({
-        path: reminderNotificationPath(eventDocument.id, studentId, bucket),
-        data: {
-          recipientId: studentId,
-          type: "event_reminder",
-          title:
-            bucket === "2h" ? "まもなく開催です" : "明日の予定を確認しましょう",
-          body: `「${eventData.title}」の開催が近づいています。`,
-          targetType: "event",
-          targetId: eventDocument.id,
-          isRead: false,
-          createdAt: FieldValue.serverTimestamp(),
-        },
-      });
+export const purgeExpiredLegalRecords = onSchedule(
+  {
+    schedule: "every day 03:00",
+    timeZone: "Asia/Tokyo",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+  },
+  async () => {
+    let hasExpiredRecords = true;
+    while (hasExpiredRecords) {
+      const snapshot = await db
+        .collection("thirdPartyProvisionLogs")
+        .where("expiresAt", "<=", Timestamp.now())
+        .limit(200)
+        .get();
+      hasExpiredRecords = !snapshot.empty;
+      if (snapshot.empty) continue;
+      const batch = db.batch();
+      snapshot.docs.forEach((document) => batch.delete(document.ref));
+      await batch.commit();
     }
-  }
+  },
+);
 
-  for (let index = 0; index < writes.length; index += 400) {
-    const writeChunk = writes.slice(index, index + 400);
-    await db.runTransaction(async (transaction) => {
-      const references = writeChunk.map((write) => db.doc(write.path));
-      const snapshots = await transaction.getAll(...references);
-      snapshots.forEach((snapshot, snapshotIndex) => {
-        if (!snapshot.exists) {
-          transaction.create(
-            references[snapshotIndex],
-            writeChunk[snapshotIndex].data,
+export const sendEventReminders = onSchedule(
+  {
+    schedule: "every 1 hours",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
+  async () => {
+    const now = Timestamp.now();
+    const nextDay = Timestamp.fromMillis(now.toMillis() + 24 * 60 * 60 * 1000);
+    let lastEvent: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+    let hasEvents = true;
+    while (hasEvents) {
+      let eventsQuery = db
+        .collection("events")
+        .where("status", "==", "published")
+        .where("startAt", ">=", now)
+        .where("startAt", "<=", nextDay)
+        .orderBy("startAt", "asc")
+        .limit(100);
+      if (lastEvent) eventsQuery = eventsQuery.startAfter(lastEvent);
+      const eventSnapshot = await eventsQuery.get();
+      if (eventSnapshot.empty) {
+        hasEvents = false;
+        continue;
+      }
+
+      for (const eventDocument of eventSnapshot.docs) {
+        const eventData = eventDocument.data();
+        const startAt = eventData.startAt as Timestamp;
+        const hoursUntil =
+          (startAt.toMillis() - now.toMillis()) / (60 * 60 * 1000);
+        const bucket = reminderBucketForHoursUntil(hoursUntil);
+        let lastConfirmedApplication:
+          FirebaseFirestore.QueryDocumentSnapshot | undefined;
+        let hasConfirmedApplications = true;
+        while (hasConfirmedApplications) {
+          let applicationsQuery = db
+            .collection("eventApplications")
+            .where("eventId", "==", eventDocument.id)
+            .where("status", "==", "confirmed")
+            .orderBy(FieldPath.documentId())
+            .limit(200);
+          if (lastConfirmedApplication) {
+            applicationsQuery = applicationsQuery.startAfter(
+              lastConfirmedApplication,
+            );
+          }
+          const applications = await applicationsQuery.get();
+          if (applications.empty) {
+            hasConfirmedApplications = false;
+            continue;
+          }
+          const preferences = await Promise.all(
+            applications.docs.map(async (application) => ({
+              application: application.data(),
+              enabled: await notificationEnabled(
+                application.data().studentId,
+                "eventReminders",
+              ),
+            })),
           );
+          await Promise.all(
+            preferences.map(async (preference) => {
+              if (!preference.enabled) return;
+              const studentId = preference.application.studentId;
+              await createNotificationOnce(
+                reminderNotificationPath(eventDocument.id, studentId, bucket),
+                {
+                  recipientId: studentId,
+                  type: "event_reminder",
+                  title:
+                    bucket === "2h" ?
+                      "まもなく開催です" :
+                      "明日の予定を確認しましょう",
+                  body: `「${eventData.title}」の開催が近づいています。`,
+                  targetType: "event",
+                  targetId: eventDocument.id,
+                  isRead: false,
+                  createdAt: FieldValue.serverTimestamp(),
+                },
+              );
+            }),
+          );
+          lastConfirmedApplication =
+            applications.docs[applications.docs.length - 1];
+          hasConfirmedApplications = applications.size === 200;
         }
-      });
-    });
-  }
-});
+      }
+      lastEvent = eventSnapshot.docs[eventSnapshot.docs.length - 1];
+      hasEvents = eventSnapshot.size === 100;
+    }
+  },
+);

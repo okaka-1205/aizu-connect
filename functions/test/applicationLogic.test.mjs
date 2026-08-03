@@ -238,6 +238,34 @@ describe("event plan validation", () => {
       "http://127.0.0.1:9199/event.png",
     );
   });
+
+  it("requires the statutory commerce disclosure for paid events", () => {
+    const now = Date.parse("2026-07-01T00:00:00.000Z");
+    assert.equal(
+      normalizeEventPlanInput(
+        { ...validPlan, feeType: "有料", feeAmount: 3000 },
+        now,
+      ),
+      null,
+    );
+    const paidPlan = normalizeEventPlanInput(
+      {
+        ...validPlan,
+        feeType: "有料",
+        feeAmount: 3000,
+        commercialSellerName: "会津イベント実行委員会",
+        commercialSellerAddress: "福島県会津若松市1-1",
+        commercialSellerPhone: "0242-00-0000",
+        commercialResponsiblePerson: "会津 太郎",
+        paymentMethod: "当日現金",
+        paymentTiming: "イベント当日の受付時",
+        additionalFees: "なし",
+      },
+      now,
+    );
+    assert.equal(paidPlan?.feeAmount, 3000);
+    assert.equal(paidPlan?.paymentMethod, "当日現金");
+  });
 });
 
 describe("event check-in window logic", () => {

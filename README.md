@@ -137,7 +137,10 @@ Firebaseプロジェクト`aizu-connect-dev`を正式な本番環境として使
 `VITE_LEGAL_OPERATOR_NAME`、`VITE_LEGAL_OPERATOR_ADDRESS`、
 `VITE_LEGAL_REPRESENTATIVE`、`VITE_LEGAL_CONTACT_EMAIL`を設定します。
 未入力、仮メールアドレス、プレースホルダーを含む場合、本番ビルドは失敗します。
-登録時には規約同意が必須で、同意日時と規約版がFirestoreへ保存されます。
+登録時と重要改定後の再ログイン時には規約同意が必須で、同意日時、規約版、
+年齢・法定代理人同意の確認をFirestoreの変更不可な同意記録へ保存します。
+参加申請時の主催者への第三者提供記録は原則3年間保存し、期限後は
+`purgeExpiredLegalRecords`が削除します。
 
 管理者Callable FunctionsでApp Checkを強制する場合は、Firebase Consoleで
 reCAPTCHA Enterpriseを登録し、`.env.production`へ
@@ -164,5 +167,8 @@ npx -y firebase-tools@latest deploy \
 - Authenticationのメール認証とパスワード再設定を確認する
 - Storageを使う場合はStorage Rulesを追加する
 - 運営者名、住所、代表者、問い合わせ先を本番環境変数へ設定する
+- 主催者契約・審査手順に、参加者情報の目的外利用禁止と事故・漏えい時の連絡義務を定める
+- 有料イベントの販売主体、住所、電話番号、責任者、支払・返金条件を実在情報で確認する
+- Cloud Schedulerで`purgeExpiredLegalRecords`が有効であることを確認する
 - Emulatorではなく本番Firebaseで学生・主催者・管理者の3導線をE2E確認する
-- アプリ内の利用規約・プライバシーポリシーを運営者情報付きの正式版へ差し替える
+- 個人情報の開示等請求、漏えい等報告、委託先管理の社内手順を整備する

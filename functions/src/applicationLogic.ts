@@ -97,6 +97,13 @@ export type EventPlanInput = {
   endAtMillis: number;
   feeType: "無料" | "有料";
   feeAmount: number;
+  commercialSellerName: string;
+  commercialSellerAddress: string;
+  commercialSellerPhone: string;
+  commercialResponsiblePerson: string;
+  paymentMethod: string;
+  paymentTiming: string;
+  additionalFees: string;
   eventFormat: "現地" | "オンライン" | "ハイブリッド";
   meetingPoint: string;
   accessInfo: string;
@@ -154,6 +161,7 @@ export const normalizeEventPlanInput = (
   const eventFormats = ["現地", "オンライン", "ハイブリッド"];
   const beginnerLevels = ["初参加歓迎", "少し経験者向け", "誰でも歓迎"];
   const takeaways = data.takeaways;
+  const isPaidEvent = data.feeType === "有料";
   if (
     !validText(data.title, 1, 80) ||
     !validText(data.summary, 1, 220) ||
@@ -171,6 +179,14 @@ export const normalizeEventPlanInput = (
     !Number.isFinite(data.feeAmount) ||
     data.feeAmount < 0 ||
     data.feeAmount > 1_000_000 ||
+    (isPaidEvent && data.feeAmount < 1) ||
+    (isPaidEvent && !validText(data.commercialSellerName, 1, 120)) ||
+    (isPaidEvent && !validText(data.commercialSellerAddress, 1, 240)) ||
+    (isPaidEvent && !validText(data.commercialSellerPhone, 1, 40)) ||
+    (isPaidEvent && !validText(data.commercialResponsiblePerson, 1, 80)) ||
+    (isPaidEvent && !validText(data.paymentMethod, 1, 200)) ||
+    (isPaidEvent && !validText(data.paymentTiming, 1, 200)) ||
+    (isPaidEvent && !validText(data.additionalFees, 1, 200)) ||
     !eventFormats.includes(String(data.eventFormat)) ||
     !validText(data.meetingPoint, 1, 160) ||
     !validText(data.accessInfo, 0, 300) ||
@@ -205,6 +221,24 @@ export const normalizeEventPlanInput = (
     endAtMillis: data.endAtMillis,
     feeType: data.feeType as EventPlanInput["feeType"],
     feeAmount: data.feeType === "無料" ? 0 : data.feeAmount,
+    commercialSellerName:
+      data.feeType === "有料" ? String(data.commercialSellerName).trim() : "",
+    commercialSellerAddress:
+      data.feeType === "有料" ?
+        String(data.commercialSellerAddress).trim() :
+        "",
+    commercialSellerPhone:
+      data.feeType === "有料" ? String(data.commercialSellerPhone).trim() : "",
+    commercialResponsiblePerson:
+      data.feeType === "有料" ?
+        String(data.commercialResponsiblePerson).trim() :
+        "",
+    paymentMethod:
+      data.feeType === "有料" ? String(data.paymentMethod).trim() : "",
+    paymentTiming:
+      data.feeType === "有料" ? String(data.paymentTiming).trim() : "",
+    additionalFees:
+      data.feeType === "有料" ? String(data.additionalFees).trim() : "なし",
     eventFormat: data.eventFormat as EventPlanInput["eventFormat"],
     meetingPoint: String(data.meetingPoint).trim(),
     accessInfo: String(data.accessInfo).trim(),

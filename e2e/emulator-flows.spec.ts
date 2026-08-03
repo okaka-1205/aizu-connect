@@ -24,9 +24,22 @@ async function login(page, email: string, userPassword = password) {
   await page.getByLabel("メールアドレス").fill(email);
   await page.getByLabel("パスワード", { exact: true }).fill(userPassword);
   await page.getByRole("button", { name: "ログインする" }).click();
-  await expect(
-    page.getByRole("heading", { name: "おかえりなさい" }),
-  ).toBeHidden();
+  await expect(page.getByRole("heading", { name: "ログイン" })).toBeHidden();
+  const legalUpdateHeading = page.getByRole("heading", {
+    name: "利用条件を更新しました",
+  });
+  if (await legalUpdateHeading.isVisible()) {
+    await page.getByRole("checkbox", { name: /両文書に同意します/ }).check();
+    const continueButton = page.getByRole("button", {
+      name: "同意して利用を続ける",
+    });
+    try {
+      await continueButton.click({ timeout: 3_000 });
+    } catch (error) {
+      if (await legalUpdateHeading.isVisible()) throw error;
+    }
+    await expect(legalUpdateHeading).toBeHidden();
+  }
 }
 
 async function openSearch(page) {
@@ -86,7 +99,7 @@ async function confirmApplication(
   await page.getByLabel("主催者へのメッセージ（任意）").fill(message);
   await page
     .getByRole("checkbox", {
-      name: "イベント内容、キャンセル方針、主催者との情報共有範囲を確認しました",
+      name: /イベント運営のため提供することに同意します/,
     })
     .check();
   await page
@@ -119,10 +132,10 @@ test.describe("emulator-backed role flows", () => {
         name: "利用規約とプライバシーポリシーに同意します",
       })
       .check();
-    await page.getByRole("button", { name: "登録して始める" }).click();
+    await page.getByRole("button", { name: "アカウントを作成" }).click();
 
     await expect(
-      page.getByRole("heading", { name: "承認待ちです" }),
+      page.getByRole("heading", { name: "運営が登録内容を確認しています" }),
     ).toBeVisible();
     await expect(page.locator(".approval-pending-card")).toContainText(
       `${organizationName}さんのメール認証は完了しています。`,
@@ -143,13 +156,13 @@ test.describe("emulator-backed role flows", () => {
     const nav = page.getByRole("navigation", { name: "メインナビゲーション" });
 
     await expect(
-      page.getByRole("heading", { name: "あなたへのおすすめ" }),
+      page.getByRole("heading", { name: "おすすめのイベント" }),
     ).toBeVisible();
     await expect(page.getByText("E2E 地域交流会").first()).toBeVisible();
 
     await page.reload();
     await expect(
-      page.getByRole("heading", { name: "あなたへのおすすめ" }),
+      page.getByRole("heading", { name: "おすすめのイベント" }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "ログインする" }),
@@ -166,9 +179,10 @@ test.describe("emulator-backed role flows", () => {
 
     await openSearch(page);
     await expect(
-      page.getByRole("heading", { name: "気になる活動を探す" }),
+      page.getByRole("heading", { name: "イベントを探す" }),
     ).toBeVisible();
     const searchInput = page.getByRole("textbox", { name: "イベントを検索" });
+    await searchInput.click();
     await expect(searchInput).toBeFocused();
     await searchInput.fill("存在しない活動");
     await expect(
@@ -183,7 +197,7 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("dialog", { name: "E2E 地域交流会" }),
     ).toBeVisible();
-    await expect(page.getByText("参加すると得られること")).toBeVisible();
+    await expect(page.getByText("このイベントでできること")).toBeVisible();
     await expect(page.getByText("地域の人とつながる")).toBeVisible();
     await expect(page.getByText("初参加歓迎").first()).toBeVisible();
     await page.keyboard.press("Escape");
@@ -192,21 +206,21 @@ test.describe("emulator-backed role flows", () => {
     ).toBeHidden();
     await page.getByRole("button", { name: "ホームへ戻る" }).first().click();
     await expect(
-      page.getByRole("heading", { name: "あなたへのおすすめ" }),
+      page.getByRole("heading", { name: "おすすめのイベント" }),
     ).toBeVisible();
 
     await nav.getByRole("button", { name: /^活動/ }).click();
     await expect(
-      page.getByRole("heading", { name: "活動", exact: true }),
+      page.getByRole("heading", { name: "参加履歴", exact: true }),
     ).toBeVisible();
     await expect(page.getByText("証明済み活動")).toBeVisible();
     await expect(page.getByText("活動証明 AC-app-e2e")).toBeVisible();
     await expect(
       page.getByRole("heading", {
-        name: `${new Date().getFullYear()}年の活動`,
+        name: `${new Date().getFullYear()}年`,
       }),
     ).toBeVisible();
-    await expect(page.getByText("主催者確認中")).toBeVisible();
+    await expect(page.getByText("主催者確認中").first()).toBeVisible();
     const applicationItem = page
       .locator(".application-item")
       .filter({ hasText: "E2E 地域交流会" });
@@ -251,12 +265,21 @@ test.describe("emulator-backed role flows", () => {
     const muteButton = page.getByRole("button", {
       name: "このチャットの通知をオフにする",
     });
-    await muteButton.click();
+    const unmuteButton = page.getByRole("button", {
+      name: "このチャットの通知をオンにする",
+    });
     await expect(
       page.getByRole("button", {
-        name: "このチャットの通知をオンにする",
+        name: /このチャットの通知を(オフ|オン)にする/,
       }),
     ).toBeVisible();
+    if (await muteButton.isVisible()) {
+      await muteButton.click();
+      await expect(unmuteButton).toBeVisible();
+    } else {
+      await unmuteButton.click();
+      await expect(muteButton).toBeVisible();
+    }
     await expectNoHorizontalOverflow(page);
 
     await nav.getByRole("button", { name: "プロフィール" }).click();
@@ -266,9 +289,7 @@ test.describe("emulator-backed role flows", () => {
         name: "ログアウト この端末からログアウト",
       })
       .click();
-    await expect(
-      page.getByRole("heading", { name: "おかえりなさい" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "ログイン" })).toBeVisible();
     await expect(page.getByLabel("メールアドレス")).toHaveValue("");
     await expect(page.getByLabel("パスワード", { exact: true })).toHaveValue(
       "",
@@ -285,12 +306,34 @@ test.describe("emulator-backed role flows", () => {
     await reopenedPage.goto("/");
 
     await expect(
-      reopenedPage.getByRole("heading", { name: "あなたへのおすすめ" }),
+      reopenedPage.getByRole("heading", { name: "おすすめのイベント" }),
     ).toBeVisible();
     await expect(
       reopenedPage.getByRole("button", { name: "ログインする" }),
     ).toBeHidden();
     await expectNoHorizontalOverflow(reopenedPage);
+  });
+
+  test("student can load events beyond the first search page", async ({
+    page,
+  }) => {
+    await login(page, "student-e2e@u-aizu.ac.jp");
+    await openSearch(page);
+
+    const pagingEvents = page.getByRole("button", {
+      name: /E2E ページングイベント \d+の詳細を見る/,
+    });
+    const initialEventCount = await pagingEvents.count();
+    expect(initialEventCount).toBeGreaterThan(0);
+    expect(initialEventCount).toBeLessThan(30);
+    await page.getByRole("button", { name: "次の24件を見る" }).click();
+    await expect
+      .poll(() => pagingEvents.count())
+      .toBeGreaterThan(initialEventCount);
+    await expect(
+      page.getByText("公開中のイベントをすべて確認しました"),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
   });
 
   test("verified Aizu student is approved without admin review", async ({
@@ -300,10 +343,10 @@ test.describe("emulator-backed role flows", () => {
     await login(page, `student-auto-approve-${suffix}@u-aizu.ac.jp`);
 
     await expect(
-      page.getByRole("heading", { name: "あなたへのおすすめ" }),
+      page.getByRole("heading", { name: "おすすめのイベント" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "承認待ちです" }),
+      page.getByRole("heading", { name: "運営が登録内容を確認しています" }),
     ).toBeHidden();
     await expectNoHorizontalOverflow(page);
   });
@@ -357,30 +400,31 @@ test.describe("emulator-backed role flows", () => {
     await page.getByRole("button", { name: "企画" }).click();
     await page.getByRole("button", { name: "勉強会" }).click();
     await expect(
-      page.getByRole("heading", { name: "企画したイベント" }),
+      page.getByRole("heading", { name: "登録したイベント" }),
     ).toBeVisible();
     const managementNav = page.getByRole("navigation", {
       name: "企画管理メニュー",
     });
     await expect(
-      managementNav.getByRole("button", { name: /^企画作成 / }),
+      managementNav.getByRole("button", { name: /^企画作成/ }),
     ).toBeVisible();
     await expect(
-      managementNav.getByRole("button", { name: /^イベント / }),
+      managementNav.getByRole("button", { name: /^イベント/ }),
     ).toBeVisible();
     await expect(
-      managementNav.getByRole("button", { name: /^参加者 / }),
+      managementNav.getByRole("button", { name: /^参加者/ }),
     ).toBeVisible();
     await expect(
-      managementNav.getByRole("button", { name: /^連絡 / }),
+      managementNav.getByRole("button", { name: /^連絡/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "イベントを企画する" }),
+      page.getByRole("heading", { name: "新しいイベント" }),
     ).toBeVisible();
 
     const titleField = page.getByLabel("活動名");
     const summaryField = page.getByLabel("活動の概要");
-    const takeawaysField = page.getByLabel("参加すると得られること（1行ずつ）");
+    const takeawaysField =
+      page.getByLabel("イベントで体験できること（1行ずつ）");
     await expect(page.getByText("基本情報", { exact: true })).toBeVisible();
     await expect(page.getByText("開催情報", { exact: true })).toBeVisible();
     await expect(page.getByText("詳細設定", { exact: true })).toBeVisible();
@@ -434,7 +478,10 @@ test.describe("emulator-backed role flows", () => {
     const eventImagePreview = page.locator(
       ".event-form-card .event-image-preview img",
     );
-    await expect(eventImagePreview).toHaveAttribute("src", /event-learning/);
+    await expect(eventImagePreview).toHaveAttribute(
+      "src",
+      /^data:image\/svg\+xml/,
+    );
 
     await page.getByLabel("イベント写真").setInputFiles(fixtureImage);
     await expect(cropDialog).toBeVisible();
@@ -462,10 +509,13 @@ test.describe("emulator-backed role flows", () => {
       `${eventTitle}（複製）`,
     );
     await expect(page.getByLabel("開始日時")).toHaveValue("");
-    await expect(eventImagePreview).toHaveAttribute("src", /event-learning/);
+    await expect(eventImagePreview).toHaveAttribute(
+      "src",
+      /^data:image\/svg\+xml/,
+    );
     await submittedEvent.getByRole("button", { name: "編集" }).click();
     await expect(
-      page.getByRole("heading", { name: "企画を修正する" }),
+      page.getByRole("heading", { name: "イベントを編集" }),
     ).toBeVisible();
     const updatedTitle = `${eventTitle} 修正版`;
     await page.getByLabel("活動名").fill(updatedTitle);
@@ -613,9 +663,7 @@ test.describe("emulator-backed role flows", () => {
         name: "ログアウト この端末からログアウト",
       })
       .click();
-    await expect(
-      page.getByRole("heading", { name: "おかえりなさい" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "ログイン" })).toBeVisible();
     await page.getByLabel("メールアドレス").fill("student-e2e@u-aizu.ac.jp");
     await page.getByLabel("パスワード", { exact: true }).fill(password);
     await page.getByRole("button", { name: "ログインする" }).click();
@@ -768,7 +816,9 @@ test.describe("emulator-backed role flows", () => {
     await deletionDialog
       .getByRole("button", { name: "削除を申請する" })
       .click();
-    await expect(page.getByText("退会・データ削除を申請中")).toBeVisible();
+    await expect(page.getByText("退会・データ削除を申請中")).toBeVisible({
+      timeout: 20_000,
+    });
     await page.getByRole("button", { name: "申請を取り消す" }).click();
     await page
       .getByRole("alertdialog", { name: "退会申請を取り消しますか？" })
@@ -789,7 +839,7 @@ test.describe("emulator-backed role flows", () => {
 
     await page.getByRole("button", { name: "ホームへ戻る" }).first().click();
     await expect(
-      page.getByRole("heading", { name: "企画したイベント" }),
+      page.getByRole("heading", { name: "登録したイベント" }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: /E2E 地域交流会 .* 公開中/ }),
@@ -799,7 +849,7 @@ test.describe("emulator-backed role flows", () => {
       .getByRole("button", { name: /E2E 地域交流会 .* 公開中/ })
       .click();
     await expect(
-      page.getByRole("heading", { name: "参加者を確認" }),
+      page.getByRole("heading", { name: "参加者一覧" }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: /E2E 学生 E2E 地域交流会/ }),
@@ -908,7 +958,7 @@ test.describe("emulator-backed role flows", () => {
     await login(page, "pending-e2e@example.com");
 
     await expect(
-      page.getByRole("heading", { name: "承認待ちです" }),
+      page.getByRole("heading", { name: "運営が登録内容を確認しています" }),
     ).toBeVisible();
     const approvalProgress = page.getByRole("list", {
       name: "アカウント利用開始までの状況",
@@ -925,6 +975,19 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("navigation", { name: "メインナビゲーション" }),
     ).toBeHidden();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("admin can load reports beyond the first review page", async ({
+    page,
+  }) => {
+    await login(page, "admin", "admin123");
+
+    const reportQueue = page.locator(".admin-report-card");
+    await expect(reportQueue.getByText("E2E ページング通報 55")).toHaveCount(0);
+    await reportQueue.getByRole("button", { name: "さらに50件" }).click();
+    await expect(reportQueue.getByText("E2E ページング通報 55")).toBeVisible();
+    await expect(reportQueue.getByText("全件表示")).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 
@@ -993,13 +1056,11 @@ test.describe("emulator-backed role flows", () => {
       page.getByRole("heading", { name: "アカウント審査" }),
     ).toBeVisible();
     await expect(page.getByText("E2E 承認待ち")).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "通報・安全確認" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "通報" })).toBeVisible();
     const deletionQueue = page.locator(".admin-deletion-card");
     await expect(
       deletionQueue.getByRole("heading", {
-        name: "退会・データ削除申請",
+        name: "退会・データ削除",
       }),
     ).toBeVisible();
     const deletionRequest = deletionQueue

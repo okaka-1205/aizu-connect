@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">ボランティアイベントのイメージ</title>
+  <desc id="desc">地域を支える手とハートを表すシンプルな図形</desc>
+  <rect width="1200" height="675" fill="#fff3ed"/>
+  <path d="M0 520h1200v155H0z" fill="#ffe2d3"/>
+  <path d="M600 428c-15-13-180-125-180-239 0-67 48-111 108-111 39 0 61 18 72 38 11-20 33-38 72-38 60 0 108 44 108 111 0 114-165 226-180 239Z" fill="#e26a37"/>
+  <path d="M273 462c70-41 139-62 208-62 83 0 135 36 171 69l77-49c47-30 99-23 130 13L706 550H433l-160-88Z" fill="#fff" stroke="#a84b27" stroke-linecap="round" stroke-linejoin="round" stroke-width="22"/>
+  <path d="M431 436h151c46 0 76 24 76 61H520" fill="none" stroke="#a84b27" stroke-linecap="round" stroke-linejoin="round" stroke-width="22"/>
+</svg>

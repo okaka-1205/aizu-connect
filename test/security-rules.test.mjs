@@ -15,9 +15,10 @@ const timestamp = firebase.firestore.Timestamp.fromDate(
   new Date("2026-01-01T00:00:00.000Z"),
 );
 const legalConsent = {
-  termsVersion: "2026-07-28",
-  privacyVersion: "2026-07-28",
+  termsVersion: "2026-08-01",
+  privacyVersion: "2026-08-01",
   legalAcceptedAt: timestamp,
+  eligibilityConfirmedAt: timestamp,
 };
 
 let testEnv;
@@ -406,6 +407,22 @@ const seedData = async () => {
         updatedAt: timestamp,
       }),
       db.doc("auditLogs/audit-1").set(auditLogDoc()),
+      db.doc("thirdPartyProvisionLogs/app-1").set({
+        applicationId: "app-1",
+        userId: "student-1",
+        userDisplayName: "Student One",
+        recipientId: "org-1",
+        recipientName: "Aizu Org",
+        eventId: "event-published",
+        legalBasis: "本人同意",
+        consentAccepted: true,
+        sensitiveInfoConsent: false,
+        dataCategories: ["表示名", "参加申請情報"],
+        providedAt: timestamp,
+        expiresAt: firebase.firestore.Timestamp.fromDate(
+          new Date("2029-01-01T00:00:00.000Z"),
+        ),
+      }),
       db.doc("eventCheckIns/event-published").set({
         eventId: "event-published",
         organizerId: "org-1",
@@ -716,13 +733,10 @@ describe("users and profiles", () => {
       },
     );
     await assertFails(
-      unverifiedAizu
-        .firestore()
-        .doc("users/student-auto-unverified")
-        .update({
-          status: "active",
-          updatedAt: timestamp,
-        }),
+      unverifiedAizu.firestore().doc("users/student-auto-unverified").update({
+        status: "active",
+        updatedAt: timestamp,
+      }),
     );
 
     const verifiedExternal = testEnv.authenticatedContext(
@@ -733,13 +747,10 @@ describe("users and profiles", () => {
       },
     );
     await assertFails(
-      verifiedExternal
-        .firestore()
-        .doc("users/student-auto-external")
-        .update({
-          status: "active",
-          updatedAt: timestamp,
-        }),
+      verifiedExternal.firestore().doc("users/student-auto-external").update({
+        status: "active",
+        updatedAt: timestamp,
+      }),
     );
   });
 
@@ -786,6 +797,54 @@ describe("users and profiles", () => {
       admin.firestore().doc("users/student-1").update({
         status: "owner",
         updatedAt: timestamp,
+      }),
+    );
+  });
+
+  it("records current-document reconsent atomically and prevents tampering", async () => {
+    const { student, otherStudent, admin } = contexts();
+    const db = student.firestore();
+    const acceptedAt = firebase.firestore.FieldValue.serverTimestamp();
+    const consentRef = db.doc("legalConsents/student-1_2026-08-01_2026-08-01");
+    const batch = db.batch();
+    batch.update(db.doc("users/student-1"), {
+      termsVersion: "2026-08-01",
+      privacyVersion: "2026-08-01",
+      legalAcceptedAt: acceptedAt,
+      eligibilityConfirmedAt: acceptedAt,
+      updatedAt: acceptedAt,
+    });
+    batch.set(consentRef, {
+      userId: "student-1",
+      termsVersion: "2026-08-01",
+      privacyVersion: "2026-08-01",
+      acceptedAt,
+      eligibilityConfirmedAt: acceptedAt,
+      source: "reconsent",
+    });
+    await assertSucceeds(batch.commit());
+    await assertSucceeds(consentRef.get());
+    await assertSucceeds(
+      admin
+        .firestore()
+        .doc("legalConsents/student-1_2026-08-01_2026-08-01")
+        .get(),
+    );
+    await assertFails(
+      otherStudent
+        .firestore()
+        .doc("legalConsents/student-1_2026-08-01_2026-08-01")
+        .get(),
+    );
+    await assertFails(consentRef.update({ source: "registration" }));
+    await assertFails(
+      student.firestore().doc("legalConsents/arbitrary-id").set({
+        userId: "student-1",
+        termsVersion: "2026-08-01",
+        privacyVersion: "2026-08-01",
+        acceptedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        eligibilityConfirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        source: "reconsent",
       }),
     );
   });
@@ -1394,6 +1453,22 @@ describe("saved searches and operational records", () => {
         .doc("chatPreferences/room-1_student-2")
         .set(chatPreferenceDoc("student-2")),
     );
+  });
+
+  it("restricts third-party provision records to the data subject and admins", async () => {
+    const { student, otherStudent, organization, admin } = contexts();
+    const path = "thirdPartyProvisionLogs/app-1";
+    await assertSucceeds(student.firestore().doc(path).get());
+    await assertSucceeds(admin.firestore().doc(path).get());
+    await assertFails(otherStudent.firestore().doc(path).get());
+    await assertFails(organization.firestore().doc(path).get());
+    await assertFails(
+      student.firestore().doc("thirdPartyProvisionLogs/forged").set({
+        userId: "student-1",
+        recipientId: "org-1",
+      }),
+    );
+    await assertFails(student.firestore().doc(path).delete());
   });
 
   it("exposes public organizer profiles but protects audits and check-in codes", async () => {

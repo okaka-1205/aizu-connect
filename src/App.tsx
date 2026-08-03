@@ -12,10 +12,13 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  startAfter,
   Timestamp,
   updateDoc,
   where,
   writeBatch,
+  type DocumentData,
+  type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import {
   createUserWithEmailAndPassword,
@@ -67,7 +70,6 @@ import {
   Send,
   Settings,
   ShieldCheck,
-  Sparkles,
   Trash2,
   UserRound,
   UsersRound,
@@ -95,9 +97,9 @@ import {
   type LegalDocument,
 } from "./content/legalDocuments";
 import { useDialogAccessibility } from "./hooks/useDialogAccessibility";
-import communityEventImage from "./assets/event-community.jpg";
-import learningEventImage from "./assets/event-learning.jpg";
-import volunteerEventImage from "./assets/event-volunteer.jpg";
+import communityEventImage from "./assets/event-community.svg";
+import learningEventImage from "./assets/event-learning.svg";
+import volunteerEventImage from "./assets/event-volunteer.svg";
 import {
   auth,
   authPersistenceReady,
@@ -142,6 +144,8 @@ type SearchFeeFilter = "すべて" | "無料" | "有料";
 type SearchFormatFilter = "すべて" | "現地" | "オンライン" | "ハイブリッド";
 type SearchView = "list" | "calendar";
 
+const EVENT_PAGE_SIZE = 24;
+
 type AppUser = {
   uid: string;
   role: UserRole;
@@ -162,6 +166,7 @@ type AppUser = {
   termsVersion?: string;
   privacyVersion?: string;
   legalAcceptedAt?: Timestamp;
+  eligibilityConfirmedAt?: Timestamp;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 };
@@ -178,6 +183,13 @@ type AizuEvent = {
   endAt?: Timestamp;
   feeType?: "無料" | "有料";
   feeAmount?: number;
+  commercialSellerName?: string;
+  commercialSellerAddress?: string;
+  commercialSellerPhone?: string;
+  commercialResponsiblePerson?: string;
+  paymentMethod?: string;
+  paymentTiming?: string;
+  additionalFees?: string;
   eventFormat?: "現地" | "オンライン" | "ハイブリッド";
   meetingPoint?: string;
   accessInfo?: string;
@@ -217,6 +229,20 @@ type AizuEvent = {
   updatedAt?: Timestamp;
 };
 
+const hasRequiredCommerceDisclosure = (event: AizuEvent) =>
+  event.feeType !== "有料" ||
+  (Number(event.feeAmount ?? 0) > 0 &&
+    [
+      event.commercialSellerName,
+      event.commercialSellerAddress,
+      event.commercialSellerPhone,
+      event.commercialResponsiblePerson,
+      event.paymentMethod,
+      event.paymentTiming,
+      event.additionalFees,
+      event.cancellationPolicy,
+    ].every((value) => typeof value === "string" && value.trim().length > 0));
+
 type EventApplication = {
   id: string;
   eventId: string;
@@ -238,6 +264,8 @@ type EventApplication = {
   accessibilityNeeds?: string;
   emergencyContact?: string;
   consentAccepted?: boolean;
+  sensitiveInfoConsent?: boolean;
+  emergencyContactAuthorityConfirmed?: boolean;
   organizerNote?: string;
   waitlistPosition?: number;
   createdAt?: Timestamp;
@@ -382,6 +410,8 @@ type ApplicationDetails = {
   accessibilityNeeds: string;
   emergencyContact: string;
   consentAccepted: boolean;
+  sensitiveInfoConsent: boolean;
+  emergencyContactAuthorityConfirmed: boolean;
 };
 
 const eventTemplates = [
@@ -391,12 +421,8 @@ const eventTemplates = [
     category: "交流・コミュニティ",
     title: "学生と地域の交流会",
     summary:
-      "初めての人も入りやすい少人数の交流会です。会津で活動する人と話しながら、次の一歩を見つけます。",
-    takeaways: [
-      "地域の人とつながる",
-      "話すきっかけを作る",
-      "次に参加したい活動を見つける",
-    ],
+      "初めての人も参加しやすい少人数の交流会です。会津で活動する人と話し、地域の取り組みを知ることができます。",
+    takeaways: ["地域の人とつながる", "話すきっかけを作る", "地域の活動を知る"],
     beginnerLevel: "初参加歓迎" as const,
     imageUrl: communityEventImage,
   },
@@ -430,7 +456,7 @@ const eventTemplates = [
 
 const defaultTakeaways = [
   "地域とつながる",
-  "新しい経験を得る",
+  "初めてのことを体験する",
   "活動実績として残す",
 ];
 
@@ -438,6 +464,11 @@ const csvEscape = (value: string | number | undefined | null) =>
   `"${String(value ?? "").replace(/"/g, '""')}"`;
 
 const timestampMillis = (value?: Timestamp) => value?.toMillis?.() ?? 0;
+
+const preferredScrollBehavior = (): ScrollBehavior =>
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
 
 const formatChatTime = (value?: Timestamp) =>
   value
@@ -556,6 +587,10 @@ function App() {
   const [organizationName, setOrganizationName] = useState("");
   const [hasAcceptedLegal, setHasAcceptedLegal] = useState(false);
   const [events, setEvents] = useState<AizuEvent[]>([]);
+  const [eventPageCursor, setEventPageCursor] =
+    useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hasMoreEvents, setHasMoreEvents] = useState(false);
+  const [isLoadingMoreEvents, setIsLoadingMoreEvents] = useState(false);
   const [applications, setApplications] = useState<EventApplication[]>([]);
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
@@ -625,6 +660,10 @@ function App() {
       setSelectedEventId(null);
     }
   }, [activeTab, selectedEventId]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [activeTab]);
 
   const filteredEvents = useMemo(() => {
     const normalized = searchText.trim().toLowerCase();
@@ -757,7 +796,7 @@ function App() {
       ...recommendedEvent.tags,
     ].join(" ");
     if (appUser?.interests.some((interest) => searchable.includes(interest))) {
-      return "興味に合うおすすめ";
+      return "興味分野に関連";
     }
     const daysUntil =
       (timestampMillis(recommendedEvent.startAt) - Date.now()) / 86_400_000;
@@ -848,6 +887,9 @@ function App() {
             setApplicationToCancel(null);
             setReportTarget(null);
             setEvents([]);
+            setEventPageCursor(null);
+            setHasMoreEvents(false);
+            setIsLoadingMoreEvents(false);
             setApplications([]);
             setChatRooms([]);
             setChatMessages([]);
@@ -1058,21 +1100,66 @@ function App() {
     );
   }, [appUser]);
 
+  const fetchEventPage = async (
+    cursor: QueryDocumentSnapshot<DocumentData> | null,
+  ) => {
+    const eventQuery = cursor
+      ? query(
+          collection(db, "events"),
+          where("status", "==", "published"),
+          where("startAt", ">=", Timestamp.now()),
+          orderBy("startAt", "asc"),
+          startAfter(cursor),
+          limit(EVENT_PAGE_SIZE + 1),
+        )
+      : query(
+          collection(db, "events"),
+          where("status", "==", "published"),
+          where("startAt", ">=", Timestamp.now()),
+          orderBy("startAt", "asc"),
+          limit(EVENT_PAGE_SIZE + 1),
+        );
+    const snapshot = await getDocs(eventQuery);
+    const pageDocuments = snapshot.docs.slice(0, EVENT_PAGE_SIZE);
+    return {
+      events: pageDocuments.map((eventDoc) => ({
+        id: eventDoc.id,
+        ...eventDoc.data(),
+      })) as AizuEvent[],
+      cursor: pageDocuments[pageDocuments.length - 1] ?? null,
+      hasMore: snapshot.size > EVENT_PAGE_SIZE,
+    };
+  };
+
+  const loadMoreEvents = async () => {
+    if (!eventPageCursor || !hasMoreEvents || isLoadingMoreEvents) return;
+    setIsLoadingMoreEvents(true);
+    try {
+      const page = await fetchEventPage(eventPageCursor);
+      setEvents((current) => {
+        const knownIds = new Set(current.map((event) => event.id));
+        return [
+          ...current,
+          ...page.events.filter((event) => !knownIds.has(event.id)),
+        ];
+      });
+      setEventPageCursor(page.cursor);
+      setHasMoreEvents(page.hasMore);
+    } catch (error) {
+      setMessage(
+        `イベントを追加で読み込めませんでした。${getFirebaseErrorMessage(error)}`,
+      );
+    } finally {
+      setIsLoadingMoreEvents(false);
+    }
+  };
+
   const loadProductData = async (uid: string) => {
-    const eventSnapshot = await getDocs(
-      query(
-        collection(db, "events"),
-        where("status", "==", "published"),
-        where("startAt", ">=", Timestamp.now()),
-        orderBy("startAt", "asc"),
-        limit(50),
-      ),
-    );
-    const loadedEvents = eventSnapshot.docs.map((eventDoc) => ({
-      id: eventDoc.id,
-      ...eventDoc.data(),
-    })) as AizuEvent[];
+    const firstEventPage = await fetchEventPage(null);
+    const loadedEvents = firstEventPage.events;
     setEvents(loadedEvents);
+    setEventPageCursor(firstEventPage.cursor);
+    setHasMoreEvents(firstEventPage.hasMore);
     setSelectedEventId((current) =>
       current && loadedEvents.some((event) => event.id === current)
         ? current
@@ -1342,9 +1429,25 @@ function App() {
         termsVersion: TERMS_VERSION,
         privacyVersion: PRIVACY_VERSION,
         legalAcceptedAt: serverTimestamp(),
+        eligibilityConfirmedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      batch.set(
+        doc(
+          db,
+          "legalConsents",
+          `${credential.user.uid}_${TERMS_VERSION}_${PRIVACY_VERSION}`,
+        ),
+        {
+          userId: credential.user.uid,
+          termsVersion: TERMS_VERSION,
+          privacyVersion: PRIVACY_VERSION,
+          acceptedAt: serverTimestamp(),
+          eligibilityConfirmedAt: serverTimestamp(),
+          source: "registration",
+        },
+      );
       if (isStudent) {
         batch.set(doc(db, "studentProfiles", credential.user.uid), {
           ...userData,
@@ -1377,7 +1480,13 @@ function App() {
       } catch (verificationError) {
         registrationMessage = `登録は完了しましたが、確認メールを送信できませんでした。${getFirebaseErrorMessage(verificationError)}`;
       }
-      setAppUser(userData);
+      setAppUser({
+        ...userData,
+        termsVersion: TERMS_VERSION,
+        privacyVersion: PRIVACY_VERSION,
+        legalAcceptedAt: Timestamp.now(),
+        eligibilityConfirmedAt: Timestamp.now(),
+      });
       setMessage(registrationMessage);
     } catch (error) {
       if (createdUser) {
@@ -1399,6 +1508,12 @@ function App() {
     if (!eventToApply.createdBy) {
       setMessage(
         "この活動は現在申請できません。公開済みの活動を選択してください。",
+      );
+      return;
+    }
+    if (!hasRequiredCommerceDisclosure(eventToApply)) {
+      setMessage(
+        "この有料イベントは法定表示の確認中です。表示が整うまで申込みできません。",
       );
       return;
     }
@@ -1643,6 +1758,42 @@ function App() {
     await signOut(auth);
   };
 
+  const acceptUpdatedLegalDocuments = async () => {
+    if (!appUser || appUser.role === "admin") return;
+    setIsActionLoading(true);
+    setMessage("");
+    try {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "users", appUser.uid), {
+        termsVersion: TERMS_VERSION,
+        privacyVersion: PRIVACY_VERSION,
+        legalAcceptedAt: serverTimestamp(),
+        eligibilityConfirmedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      batch.set(
+        doc(
+          db,
+          "legalConsents",
+          `${appUser.uid}_${TERMS_VERSION}_${PRIVACY_VERSION}`,
+        ),
+        {
+          userId: appUser.uid,
+          termsVersion: TERMS_VERSION,
+          privacyVersion: PRIVACY_VERSION,
+          acceptedAt: serverTimestamp(),
+          eligibilityConfirmedAt: serverTimestamp(),
+          source: "reconsent",
+        },
+      );
+      await batch.commit();
+    } catch (error) {
+      setMessage(getFirebaseErrorMessage(error));
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
   if (isAuthLoading) return <LoadingScreen />;
   if (!firebaseUser || !appUser)
     return (
@@ -1729,6 +1880,21 @@ function App() {
         onLogout={() => void handleLogout()}
       />
     );
+  if (
+    appUser.role !== "admin" &&
+    (appUser.termsVersion !== TERMS_VERSION ||
+      appUser.privacyVersion !== PRIVACY_VERSION ||
+      !appUser.eligibilityConfirmedAt)
+  ) {
+    return (
+      <LegalReconsentScreen
+        isLoading={isActionLoading}
+        message={message}
+        onAccept={acceptUpdatedLegalDocuments}
+        onLogout={() => void handleLogout()}
+      />
+    );
+  }
   if (appUser.role === "organization") {
     return (
       <OrganizationDashboard
@@ -1822,6 +1988,9 @@ function App() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#student-main">
+        メインコンテンツへ移動
+      </a>
       <header className="app-header">
         <div className="header-inner">
           <button
@@ -1830,10 +1999,10 @@ function App() {
             onClick={goToStudentHome}
             aria-label="ホームへ戻る"
           >
-            <span className="brand-mark">A</span>
+            <BrandMark />
             <span>
               <strong>Aizu Connect</strong>
-              <small>会津で、何か始める入口</small>
+              <small>会津のイベント情報</small>
             </span>
           </button>
           <div className="header-location">
@@ -1871,7 +2040,7 @@ function App() {
         </div>
       </header>
 
-      <main className="app-content">
+      <main className="app-content" id="student-main" tabIndex={-1}>
         {isNotificationOpen && (
           <NotificationPanel
             notifications={notifications}
@@ -1914,25 +2083,26 @@ function App() {
             }}
           />
         )}
-        <div className="welcome-row">
-          <div>
-            <p className="eyebrow">WELCOME BACK</p>
-            <h1>
-              こんにちは、
-              <wbr />
-              <span className="welcome-name">{appUser.displayName}さん</span>
-            </h1>
-            <p>今日は、どんな一歩を踏み出す？</p>
+        {activeTab === "home" && (
+          <div className="welcome-row">
+            <div>
+              <h1>
+                <span className="welcome-name">{appUser.displayName}さん</span>
+                <wbr />
+                、こんにちは
+              </h1>
+              <p>参加予定や新しいイベントを確認できます。</p>
+            </div>
+            <div className="welcome-stats">
+              <span>
+                <strong>{applications.length}</strong>申請
+              </span>
+              <span>
+                <strong>{savedEventIds.length}</strong>保存
+              </span>
+            </div>
           </div>
-          <div className="welcome-stats">
-            <span>
-              <strong>{applications.length}</strong>申請
-            </span>
-            <span>
-              <strong>{savedEventIds.length}</strong>保存
-            </span>
-          </div>
-        </div>
+        )}
         {message && (
           <div className="notice" role="status" aria-live="polite">
             <CheckCircle2 size={18} /> {message}
@@ -1977,6 +2147,10 @@ function App() {
           <SearchTab
             {...{
               filteredEvents,
+              loadedEventCount: events.length,
+              hasMoreEvents,
+              isLoadingMoreEvents,
+              onLoadMoreEvents: () => void loadMoreEvents(),
               searchText,
               setSearchText,
               filter,
@@ -2314,7 +2488,7 @@ function HomeTab(props: {
             <CalendarClock size={19} />
           </div>
           <div>
-            <p className="eyebrow">NEXT STEP</p>
+            <p className="eyebrow">申請状況</p>
             <strong>
               {applications.find((application) =>
                 ["confirmed", "pending"].includes(application.status),
@@ -2339,8 +2513,7 @@ function HomeTab(props: {
         <>
           <section className="feature-section">
             <SectionHeading
-              eyebrow="TODAY'S PICK"
-              title="あなたへのおすすめ"
+              title="おすすめのイベント"
               action="すべて見る"
               onClick={() => setActiveTab("search")}
             />
@@ -2356,9 +2529,8 @@ function HomeTab(props: {
           </section>
           <section>
             <SectionHeading
-              eyebrow="DISCOVER"
               title="新着イベント"
-              action="探しにいく"
+              action="イベントを見る"
               onClick={() => setActiveTab("search")}
             />
             <div className="event-grid">
@@ -2393,6 +2565,10 @@ function HomeTab(props: {
 
 function SearchTab(props: {
   filteredEvents: AizuEvent[];
+  loadedEventCount: number;
+  hasMoreEvents: boolean;
+  isLoadingMoreEvents: boolean;
+  onLoadMoreEvents: () => void;
   searchText: string;
   setSearchText: (value: string) => void;
   filter: Filter;
@@ -2429,6 +2605,17 @@ function SearchTab(props: {
   onResetFilters: () => void;
   onReport: (event: AizuEvent) => void;
 }) {
+  const [areAdvancedFiltersOpen, setAreAdvancedFiltersOpen] = useState(false);
+  const activeAdvancedFilterCount = [
+    props.searchDateFilter !== "すべて",
+    props.onlyAvailableEvents,
+    props.onlyBeginnerEvents,
+    props.searchDayFilter !== "すべて",
+    props.searchTimeFilter !== "すべて",
+    props.searchFeeFilter !== "すべて",
+    props.searchFormatFilter !== "すべて",
+    props.searchSort !== "開催が近い順",
+  ].filter(Boolean).length;
   const calendarGroups = props.filteredEvents.reduce<
     Record<string, AizuEvent[]>
   >((groups, event) => {
@@ -2445,22 +2632,27 @@ function SearchTab(props: {
     return groups;
   }, {});
   return (
-    <section className="tab-page">
+    <section className="tab-page search-page">
       <div className="page-title">
         <div>
-          <p className="eyebrow">DISCOVER</p>
-          <h2>気になる活動を探す</h2>
-          <p>ふらっと参加できる会津の機会を集めています。</p>
+          <h2>イベントを探す</h2>
+          <p>キーワードや条件から絞り込めます。</p>
         </div>
         <div className="result-count">
-          {props.filteredEvents.length}
-          <small>件</small>
+          <span>
+            {props.filteredEvents.length}
+            <small>件</small>
+          </span>
+          <em>
+            {props.hasMoreEvents
+              ? `${props.loadedEventCount}件を読み込み済み`
+              : "公開中の全件を読み込み済み"}
+          </em>
         </div>
       </div>
       <div className="search-field large">
         <Search size={19} />
         <input
-          autoFocus
           aria-label="イベントを検索"
           value={props.searchText}
           onChange={(event) => props.setSearchText(event.target.value)}
@@ -2481,116 +2673,153 @@ function SearchTab(props: {
           </button>
         ))}
       </div>
-      <div className="advanced-filter-row" aria-label="追加の絞り込み">
-        <div className="advanced-filter-group">
-          <CalendarClock size={15} />
-          {(["すべて", "今週", "今月"] as SearchDateFilter[]).map((value) => (
-            <button
-              className={props.searchDateFilter === value ? "active" : ""}
-              key={value}
-              type="button"
-              onClick={() => props.setSearchDateFilter(value)}
-            >
-              {value}
-            </button>
-          ))}
-        </div>
-        <label className="toggle-filter">
-          <input
-            type="checkbox"
-            checked={props.onlyAvailableEvents}
-            onChange={(event) =>
-              props.setOnlyAvailableEvents(event.target.checked)
-            }
+      <div className="mobile-filter-actions">
+        <button
+          className="mobile-filter-trigger"
+          type="button"
+          aria-controls="advanced-search-filters"
+          aria-expanded={areAdvancedFiltersOpen}
+          onClick={() => setAreAdvancedFiltersOpen((current) => !current)}
+        >
+          <FilterIcon size={17} />
+          絞り込み
+          {activeAdvancedFilterCount > 0 && (
+            <span>{activeAdvancedFilterCount}</span>
+          )}
+          <ChevronRight
+            className={areAdvancedFiltersOpen ? "open" : ""}
+            size={16}
           />
-          残り枠あり
-        </label>
-        <label className="toggle-filter">
-          <input
-            type="checkbox"
-            checked={props.onlyBeginnerEvents}
-            onChange={(event) =>
-              props.setOnlyBeginnerEvents(event.target.checked)
-            }
-          />
-          初心者歓迎
-        </label>
+        </button>
+        {activeAdvancedFilterCount > 0 && (
+          <button
+            className="mobile-filter-reset"
+            type="button"
+            onClick={props.onResetFilters}
+          >
+            条件をクリア
+          </button>
+        )}
       </div>
-      <div className="search-control-grid">
-        <label>
-          <span>曜日</span>
-          <select
-            aria-label="曜日で絞り込む"
-            value={props.searchDayFilter}
-            onChange={(event) =>
-              props.setSearchDayFilter(event.target.value as SearchDayFilter)
-            }
-          >
-            <option>すべて</option>
-            <option>平日</option>
-            <option>土日</option>
-          </select>
-        </label>
-        <label>
-          <span>時間帯</span>
-          <select
-            aria-label="時間帯で絞り込む"
-            value={props.searchTimeFilter}
-            onChange={(event) =>
-              props.setSearchTimeFilter(event.target.value as SearchTimeFilter)
-            }
-          >
-            <option>すべて</option>
-            <option>午前</option>
-            <option>午後</option>
-            <option>夜</option>
-          </select>
-        </label>
-        <label>
-          <span>料金</span>
-          <select
-            aria-label="料金で絞り込む"
-            value={props.searchFeeFilter}
-            onChange={(event) =>
-              props.setSearchFeeFilter(event.target.value as SearchFeeFilter)
-            }
-          >
-            <option>すべて</option>
-            <option>無料</option>
-            <option>有料</option>
-          </select>
-        </label>
-        <label>
-          <span>開催形式</span>
-          <select
-            aria-label="開催形式で絞り込む"
-            value={props.searchFormatFilter}
-            onChange={(event) =>
-              props.setSearchFormatFilter(
-                event.target.value as SearchFormatFilter,
-              )
-            }
-          >
-            <option>すべて</option>
-            <option>現地</option>
-            <option>オンライン</option>
-            <option>ハイブリッド</option>
-          </select>
-        </label>
-        <label>
-          <span>並び順</span>
-          <select
-            aria-label="イベントの並び順"
-            value={props.searchSort}
-            onChange={(event) =>
-              props.setSearchSort(event.target.value as SearchSort)
-            }
-          >
-            <option>開催が近い順</option>
-            <option>人気順</option>
-            <option>新着順</option>
-          </select>
-        </label>
+      <div
+        className={`search-filter-panel ${areAdvancedFiltersOpen ? "open" : ""}`}
+        id="advanced-search-filters"
+      >
+        <div className="advanced-filter-row" aria-label="追加の絞り込み">
+          <div className="advanced-filter-group">
+            <CalendarClock size={15} />
+            {(["すべて", "今週", "今月"] as SearchDateFilter[]).map(
+              (value) => (
+                <button
+                  className={props.searchDateFilter === value ? "active" : ""}
+                  key={value}
+                  type="button"
+                  onClick={() => props.setSearchDateFilter(value)}
+                >
+                  {value}
+                </button>
+              ),
+            )}
+          </div>
+          <label className="toggle-filter">
+            <input
+              type="checkbox"
+              checked={props.onlyAvailableEvents}
+              onChange={(event) =>
+                props.setOnlyAvailableEvents(event.target.checked)
+              }
+            />
+            残り枠あり
+          </label>
+          <label className="toggle-filter">
+            <input
+              type="checkbox"
+              checked={props.onlyBeginnerEvents}
+              onChange={(event) =>
+                props.setOnlyBeginnerEvents(event.target.checked)
+              }
+            />
+            初心者歓迎
+          </label>
+        </div>
+        <div className="search-control-grid">
+          <label>
+            <span>曜日</span>
+            <select
+              aria-label="曜日で絞り込む"
+              value={props.searchDayFilter}
+              onChange={(event) =>
+                props.setSearchDayFilter(event.target.value as SearchDayFilter)
+              }
+            >
+              <option>すべて</option>
+              <option>平日</option>
+              <option>土日</option>
+            </select>
+          </label>
+          <label>
+            <span>時間帯</span>
+            <select
+              aria-label="時間帯で絞り込む"
+              value={props.searchTimeFilter}
+              onChange={(event) =>
+                props.setSearchTimeFilter(
+                  event.target.value as SearchTimeFilter,
+                )
+              }
+            >
+              <option>すべて</option>
+              <option>午前</option>
+              <option>午後</option>
+              <option>夜</option>
+            </select>
+          </label>
+          <label>
+            <span>料金</span>
+            <select
+              aria-label="料金で絞り込む"
+              value={props.searchFeeFilter}
+              onChange={(event) =>
+                props.setSearchFeeFilter(event.target.value as SearchFeeFilter)
+              }
+            >
+              <option>すべて</option>
+              <option>無料</option>
+              <option>有料</option>
+            </select>
+          </label>
+          <label>
+            <span>開催形式</span>
+            <select
+              aria-label="開催形式で絞り込む"
+              value={props.searchFormatFilter}
+              onChange={(event) =>
+                props.setSearchFormatFilter(
+                  event.target.value as SearchFormatFilter,
+                )
+              }
+            >
+              <option>すべて</option>
+              <option>現地</option>
+              <option>オンライン</option>
+              <option>ハイブリッド</option>
+            </select>
+          </label>
+          <label>
+            <span>並び順</span>
+            <select
+              aria-label="イベントの並び順"
+              value={props.searchSort}
+              onChange={(event) =>
+                props.setSearchSort(event.target.value as SearchSort)
+              }
+            >
+              <option>開催が近い順</option>
+              <option>人気順</option>
+              <option>新着順</option>
+            </select>
+          </label>
+        </div>
       </div>
       <div className="search-toolbar">
         <div className="view-switch" aria-label="表示形式">
@@ -2664,6 +2893,34 @@ function SearchTab(props: {
           ))}
         </div>
       )}
+      <div className="event-pagination" aria-live="polite">
+        <div>
+          <strong>
+            {props.hasMoreEvents
+              ? "まだ表示できるイベントがあります"
+              : "公開中のイベントをすべて確認しました"}
+          </strong>
+          <small>
+            現在{props.loadedEventCount}件を読み込み、条件に合う
+            {props.filteredEvents.length}件を表示しています。
+          </small>
+        </div>
+        {props.hasMoreEvents && (
+          <button
+            type="button"
+            onClick={props.onLoadMoreEvents}
+            disabled={props.isLoadingMoreEvents}
+          >
+            <RefreshCw
+              size={15}
+              className={props.isLoadingMoreEvents ? "spin" : ""}
+            />
+            {props.isLoadingMoreEvents
+              ? "イベントを読み込み中"
+              : `次の${EVENT_PAGE_SIZE}件を見る`}
+          </button>
+        )}
+      </div>
       {props.selectedEvent && (
         <EventDrawer
           event={props.selectedEvent}
@@ -2758,80 +3015,24 @@ function ActivityTab(props: {
     new Set(verifiedActivities.flatMap((activity) => activity.takeaways ?? [])),
   ).slice(0, 5);
   return (
-    <section className="tab-page">
+    <section className="tab-page activity-page">
       <div className="page-title">
         <div>
-          <p className="eyebrow">YOUR ACTIVITY</p>
-          <h2>活動</h2>
-          <p>参加予定も、参加してきたこともここに残ります。</p>
+          <h2>参加履歴</h2>
+          <p>申請中・参加予定・参加済みのイベントを確認できます。</p>
         </div>
         <div className="activity-total">
           <strong>{props.applications.length}</strong>
           <span>申請</span>
         </div>
       </div>
-      <div className="activity-card">
-        <div className="activity-card-head">
-          <div>
-            <p className="eyebrow">ACTIVITY PORTFOLIO</p>
-            <h3>{props.activityYear}年の活動</h3>
-          </div>
-          <Sparkles size={20} />
-        </div>
-        <div className="portfolio-summary">
-          <span>
-            <strong>{verifiedActivities.length}</strong>
-            <small>証明済み活動</small>
-          </span>
-          <span>
-            <strong>{uniqueOrganizations}</strong>
-            <small>つながった主催</small>
-          </span>
-          <span>
-            <strong>{portfolioTakeaways.length}</strong>
-            <small>経験タグ</small>
-          </span>
-        </div>
-        {portfolioTakeaways.length > 0 && (
-          <div className="portfolio-tags">
-            {portfolioTakeaways.map((takeaway) => (
-              <span key={takeaway}>{takeaway}</span>
-            ))}
-          </div>
-        )}
-        <div className="month-grid">
-          {props.activityByMonth.map((item) => (
-            <div
-              className={`month-cell level-${Math.min(item.count, 3)}`}
-              key={item.month}
-            >
-              <span>{item.month}月</span>
-              <strong>{item.count}</strong>
-            </div>
-          ))}
-        </div>
-        <div className="legend">
-          <span>
-            <i className="level-0" /> 参加なし
-          </span>
-          <span>
-            <i className="level-1" /> 1件
-          </span>
-          <span>
-            <i className="level-2" /> 2件
-          </span>
-          <span>
-            <i className="level-3" /> 3件以上
-          </span>
-        </div>
-      </div>
       <SectionHeading
-        eyebrow="UPCOMING"
-        title="参加予定"
+        className="activity-upcoming-heading"
+        title="これから参加するイベント"
         action="イベントを探す"
         onClick={() => props.setActiveTab("search")}
       />
-      <div className="application-list">
+      <div className="application-list activity-upcoming-list">
         {props.applications.length === 0 ? (
           <div className="empty-inline">
             <CalendarDays size={26} />
@@ -2968,11 +3169,69 @@ function ActivityTab(props: {
           })
         )}
       </div>
-      <SectionHeading eyebrow="VERIFIED HISTORY" title="活動実績" />
-      <div className="activity-history">
+      <div className="activity-card activity-overview">
+        <div className="activity-card-head">
+          <div>
+            <p className="eyebrow">年間記録</p>
+            <h3>{props.activityYear}年</h3>
+          </div>
+          <CalendarDays size={20} />
+        </div>
+        <div className="portfolio-summary">
+          <span>
+            <strong>{verifiedActivities.length}</strong>
+            <small>証明済み活動</small>
+          </span>
+          <span>
+            <strong>{uniqueOrganizations}</strong>
+            <small>つながった主催</small>
+          </span>
+          <span>
+            <strong>{portfolioTakeaways.length}</strong>
+            <small>経験タグ</small>
+          </span>
+        </div>
+        {portfolioTakeaways.length > 0 && (
+          <div className="portfolio-tags">
+            {portfolioTakeaways.map((takeaway) => (
+              <span key={takeaway}>{takeaway}</span>
+            ))}
+          </div>
+        )}
+        <div className="month-grid">
+          {props.activityByMonth.map((item) => (
+            <div
+              className={`month-cell level-${Math.min(item.count, 3)}`}
+              key={item.month}
+            >
+              <span>{item.month}月</span>
+              <strong>{item.count}</strong>
+            </div>
+          ))}
+        </div>
+        <div className="legend">
+          <span>
+            <i className="level-0" /> 参加なし
+          </span>
+          <span>
+            <i className="level-1" /> 1件
+          </span>
+          <span>
+            <i className="level-2" /> 2件
+          </span>
+          <span>
+            <i className="level-3" /> 3件以上
+          </span>
+        </div>
+      </div>
+      <SectionHeading
+        className="activity-completed-heading"
+        title="参加したイベント"
+      />
+      <div className="activity-history activity-completed-list">
         {props.activities.length === 0 ? (
           <div className="empty-inline">
-            <Sparkles size={24} />
+            <History size={24} />
             <p>出席確認された活動がここに表示されます。</p>
           </div>
         ) : (
@@ -3093,7 +3352,7 @@ function MessagesTab({
     if (window.matchMedia("(max-width: 620px)").matches) {
       window.requestAnimationFrame(() =>
         chatPanelRef.current?.scrollIntoView({
-          behavior: "smooth",
+          behavior: preferredScrollBehavior(),
           block: "start",
         }),
       );
@@ -3159,9 +3418,8 @@ function MessagesTab({
     <section className="tab-page">
       <div className="page-title">
         <div>
-          <p className="eyebrow">MESSAGES</p>
           <h2>メッセージ</h2>
-          <p>参加するイベントごとに主催者とつながります。</p>
+          <p>イベントの主催者との連絡を確認できます。</p>
         </div>
         <div className="message-count">
           <MessageCircle size={20} />
@@ -3261,7 +3519,7 @@ function MessagesTab({
                     aria-label="チャット一覧へ戻る"
                     onClick={() =>
                       conversationListRef.current?.scrollIntoView({
-                        behavior: "smooth",
+                        behavior: preferredScrollBehavior(),
                         block: "start",
                       })
                     }
@@ -3578,6 +3836,11 @@ function ApplicationDialog({
   const [accessibilityNeeds, setAccessibilityNeeds] = useState("");
   const [emergencyContact, setEmergencyContact] = useState("");
   const [consentAccepted, setConsentAccepted] = useState(false);
+  const [sensitiveInfoConsent, setSensitiveInfoConsent] = useState(false);
+  const [
+    emergencyContactAuthorityConfirmed,
+    setEmergencyContactAuthorityConfirmed,
+  ] = useState(false);
   const isWaitlist =
     Number(event.applicantCount ?? 0) >= Number(event.capacity ?? 0);
   const dialogRef = useDialogAccessibility<HTMLFormElement>(onClose);
@@ -3599,13 +3862,15 @@ function ApplicationDialog({
             accessibilityNeeds: accessibilityNeeds.trim().slice(0, 500),
             emergencyContact: emergencyContact.trim().slice(0, 200),
             consentAccepted,
+            sensitiveInfoConsent,
+            emergencyContactAuthorityConfirmed,
           });
         }}
       >
         <div className="report-dialog-head">
           <div>
             <p className="eyebrow">
-              {isWaitlist ? "WAITING LIST" : "APPLICATION"}
+              {isWaitlist ? "キャンセル待ち" : "参加申請"}
             </p>
             <h2 id="application-dialog-title">
               {isWaitlist ? "キャンセル待ちに登録" : "参加申請を確認"}
@@ -3646,6 +3911,17 @@ function ApplicationDialog({
               "参加できなくなった場合は、活動ページから早めにキャンセルしてください。"}
           </p>
         </div>
+        {event.feeType === "有料" && (
+          <div className="application-policy">
+            <strong>有料イベントの申込内容</strong>
+            <p>
+              参加費 {Number(event.feeAmount ?? 0).toLocaleString("ja-JP")}
+              円（税込） ／追加費用 {event.additionalFees || "なし"}
+            </p>
+            <p>支払方法：{event.paymentMethod}</p>
+            <p>支払時期：{event.paymentTiming}</p>
+          </div>
+        )}
         <Field label="主催者へのメッセージ（任意）">
           <textarea
             maxLength={500}
@@ -3666,6 +3942,22 @@ function ApplicationDialog({
             }
           />
         </Field>
+        {accessibilityNeeds.trim() && (
+          <label className="application-consent">
+            <input
+              required
+              type="checkbox"
+              checked={sensitiveInfoConsent}
+              onChange={(changeEvent) =>
+                setSensitiveInfoConsent(changeEvent.target.checked)
+              }
+            />
+            <span>
+              入力内容に健康・障害等の要配慮個人情報が含まれる場合、その取得と
+              {event.organizationName}への提供に明示的に同意します
+            </span>
+          </label>
+        )}
         <Field label="緊急時の連絡先（任意・主催者のみ閲覧）">
           <input
             maxLength={200}
@@ -3676,6 +3968,24 @@ function ApplicationDialog({
             }
           />
         </Field>
+        {emergencyContact.trim() && (
+          <label className="application-consent">
+            <input
+              required
+              type="checkbox"
+              checked={emergencyContactAuthorityConfirmed}
+              onChange={(changeEvent) =>
+                setEmergencyContactAuthorityConfirmed(
+                  changeEvent.target.checked,
+                )
+              }
+            />
+            <span>
+              本人以外の連絡先の場合、その方へ利用目的と主催者への提供を知らせ、
+              適法に提供できることを確認しました
+            </span>
+          </label>
+        )}
         <label className="application-consent">
           <input
             required
@@ -3686,7 +3996,8 @@ function ApplicationDialog({
             }
           />
           <span>
-            イベント内容、キャンセル方針、主催者との情報共有範囲を確認しました
+            表示名、プロフィール画像、申請内容、配慮事項、緊急連絡先、参加・出欠情報を
+            {event.organizationName}へイベント運営のため提供することに同意します
           </span>
         </label>
         <div className="report-dialog-actions">
@@ -3696,7 +4007,14 @@ function ApplicationDialog({
           <button
             className="primary-action"
             type="submit"
-            disabled={isSubmitting || !consentAccepted}
+            disabled={
+              isSubmitting ||
+              !consentAccepted ||
+              Boolean(accessibilityNeeds.trim() && !sensitiveInfoConsent) ||
+              Boolean(
+                emergencyContact.trim() && !emergencyContactAuthorityConfirmed,
+              )
+            }
           >
             {isSubmitting ? (
               <Loader2 size={16} className="spin" />
@@ -3754,7 +4072,7 @@ function CertificateDialog({
       >
         <div className="image-review-head no-print">
           <div>
-            <p className="eyebrow">ACTIVITY CERTIFICATE</p>
+            <p className="eyebrow">活動の記録</p>
             <h2 id="certificate-title">活動証明書</h2>
           </div>
           <button
@@ -3768,8 +4086,8 @@ function CertificateDialog({
           </button>
         </div>
         <div className="certificate-sheet">
-          <span className="brand-mark">A</span>
-          <p>AIZU CONNECT ACTIVITY CERTIFICATE</p>
+          <BrandMark />
+          <p>Aizu Connect 活動証明</p>
           <h3>活動証明書</h3>
           <strong>{userName} 様</strong>
           <p>
@@ -3896,7 +4214,7 @@ function AccountDeletionPanel({
       {isRequestOpen && (
         <ActionReasonDialog
           title="退会・データ削除を申請"
-          description="運営が内容を確認した後、認証アカウント、プロフィール、参加申請、チャットなどの関連データを削除します。削除完了後は元に戻せません。"
+          description="運営が内容を確認した後、認証アカウント、プロフィール、参加申請、個別チャットなどを削除します。全体チャットの投稿は送信者を匿名化して残る場合があり、法令上必要な記録は所定期間保存します。削除完了後は元に戻せません。"
           label="退会理由・削除に関する連絡"
           placeholder="退会理由や、削除前に確認してほしいことを入力してください"
           confirmLabel="削除を申請する"
@@ -4014,9 +4332,9 @@ function ProfileTab({
     0,
   );
   const earnedBadges = [
-    activities.length >= 1 ? "はじめの一歩" : null,
-    activities.length >= 3 ? "地域と接続" : null,
-    activities.length >= 5 ? "アクティブメンバー" : null,
+    activities.length >= 1 ? "初参加" : null,
+    activities.length >= 3 ? "参加3回" : null,
+    activities.length >= 5 ? "参加5回" : null,
   ].filter(Boolean) as string[];
   const profileMeta = [
     appUser.university,
@@ -4083,7 +4401,6 @@ function ProfileTab({
           )}
         </div>
         <div className="profile-copy">
-          <p className="eyebrow">MY PROFILE</p>
           <h2>{appUser.displayName}</h2>
           <p>{profileMeta || "プロフィール未設定"}</p>
           <div className="interest-list">
@@ -4124,8 +4441,8 @@ function ProfileTab({
         >
           <div className="profile-edit-head">
             <div>
-              <p className="eyebrow">EDIT PROFILE</p>
-              <h3>プロフィールを設定</h3>
+              <p className="eyebrow">編集</p>
+              <h3>プロフィール編集</h3>
             </div>
             <button
               className="icon-button"
@@ -4275,7 +4592,7 @@ function ProfileTab({
       </div>
       <div className="profile-section">
         <SectionHeading
-          eyebrow="PORTFOLIO"
+          eyebrow="参加履歴"
           title="活動実績"
           action="詳しく見る"
           onClick={onOpenActivity}
@@ -4293,7 +4610,7 @@ function ProfileTab({
         </div>
       </div>
       <div className="profile-section saved-events-section">
-        <SectionHeading eyebrow="SAVED" title="保存したイベント" />
+        <SectionHeading eyebrow="保存済み" title="保存したイベント" />
         {savedEventIds.length === 0 ? (
           <div className="empty-inline">
             <Heart size={22} />
@@ -4313,7 +4630,7 @@ function ProfileTab({
                 >
                   <img
                     src={event.imageUrl}
-                    alt={`${event.title}の写真`}
+                    alt={`${event.title}の画像`}
                     loading="lazy"
                   />
                   <span>
@@ -4489,7 +4806,7 @@ function EventCard({
           >
             <img
               src={event.imageUrl}
-              alt={`${event.title}の写真`}
+              alt={`${event.title}の画像`}
               loading="lazy"
             />
             <span className="event-category">{event.category}</span>
@@ -4563,7 +4880,7 @@ function FeaturedEvent({
   return (
     <article className="featured-event">
       <div>
-        <img src={event.imageUrl} alt={`${event.title}の写真`} />
+        <img src={event.imageUrl} alt={`${event.title}の画像`} />
         <div className="featured-overlay" />
         <div className="featured-content">
           <span className="featured-label">{label}</span>
@@ -4613,7 +4930,8 @@ function EventDrawer({
   previewMode?: boolean;
   onClose: () => void;
 }) {
-  const canApply = Boolean(event.createdBy);
+  const hasCommerceDisclosure = hasRequiredCommerceDisclosure(event);
+  const canApply = Boolean(event.createdBy) && hasCommerceDisclosure;
   const capacity = Number(event.capacity ?? 0);
   const applicantCount = Number(event.applicantCount ?? 0);
   const remainingSlots = Math.max(0, capacity - applicantCount);
@@ -4662,7 +4980,7 @@ function EventDrawer({
           </button>
         </div>
         <div className="detail-visual" aria-hidden="true">
-          <img src={event.imageUrl} alt={`${event.title}の写真`} />
+          <img src={event.imageUrl} alt={`${event.title}の画像`} />
           <div className="detail-visual-shade" />
           <div className="detail-visual-copy">
             <span className="detail-visual-badge">{event.category}</span>
@@ -4681,7 +4999,7 @@ function EventDrawer({
           <h2 id="event-detail-title">{event.title}</h2>
           <p className="detail-summary">{event.summary}</p>
           <section className="detail-section detail-value-section">
-            <h3>参加すると得られること</h3>
+            <h3>このイベントでできること</h3>
             <div className="value-chip-grid">
               {(event.takeaways?.length ? event.takeaways : defaultTakeaways)
                 .slice(0, 3)
@@ -4705,7 +5023,7 @@ function EventDrawer({
               <UsersRound size={16} /> 定員 {capacity}名
             </span>
             <span>
-              <Sparkles size={16} /> {event.beginnerLevel ?? "誰でも歓迎"}
+              <UsersRound size={16} /> {event.beginnerLevel ?? "誰でも歓迎"}
             </span>
             <span>
               <FileText size={16} />
@@ -4719,7 +5037,7 @@ function EventDrawer({
             </span>
           </div>
           <section className="detail-section">
-            <h3>参加前に確認</h3>
+            <h3>日時・場所など</h3>
             <dl className="event-guidance-list">
               <div>
                 <dt>集合場所</dt>
@@ -4794,6 +5112,62 @@ function EventDrawer({
               )}
             </div>
           </section>
+          {event.feeType === "有料" && (
+            <section className="detail-section commerce-disclosure">
+              <h3>特定商取引法に基づく表示</h3>
+              {!hasCommerceDisclosure ? (
+                <p className="form-notice">
+                  必要な表示事項を確認中です。確認が完了するまで申込みはできません。
+                </p>
+              ) : (
+                <dl className="event-guidance-list">
+                  <div>
+                    <dt>販売・役務提供事業者</dt>
+                    <dd>{event.commercialSellerName}</dd>
+                  </div>
+                  <div>
+                    <dt>運営責任者</dt>
+                    <dd>{event.commercialResponsiblePerson}</dd>
+                  </div>
+                  <div>
+                    <dt>所在地</dt>
+                    <dd>{event.commercialSellerAddress}</dd>
+                  </div>
+                  <div>
+                    <dt>電話番号</dt>
+                    <dd>{event.commercialSellerPhone}</dd>
+                  </div>
+                  <div>
+                    <dt>参加費</dt>
+                    <dd>
+                      {Number(event.feeAmount ?? 0).toLocaleString("ja-JP")}
+                      円（税込）
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>追加費用</dt>
+                    <dd>{event.additionalFees}</dd>
+                  </div>
+                  <div>
+                    <dt>支払方法</dt>
+                    <dd>{event.paymentMethod}</dd>
+                  </div>
+                  <div>
+                    <dt>支払時期</dt>
+                    <dd>{event.paymentTiming}</dd>
+                  </div>
+                  <div>
+                    <dt>提供時期</dt>
+                    <dd>{event.startAtLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>キャンセル・返金</dt>
+                    <dd>{event.cancellationPolicy}</dd>
+                  </div>
+                </dl>
+              )}
+            </section>
+          )}
           <div className="tag-row detail-tags">
             {event.tags.map((tag) => (
               <span key={tag}>{tag}</span>
@@ -4876,20 +5250,22 @@ function EventDrawer({
 }
 
 function SectionHeading({
+  className,
   eyebrow,
   title,
   action,
   onClick,
 }: {
-  eyebrow: string;
+  className?: string;
+  eyebrow?: string;
   title: string;
   action?: string;
   onClick?: () => void;
 }) {
   return (
-    <div className="section-heading">
+    <div className={`section-heading ${className ?? ""}`.trim()}>
       <div>
-        <p className="eyebrow">{eyebrow}</p>
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h2>{title}</h2>
       </div>
       {action && (
@@ -4925,6 +5301,19 @@ function EmptySearchResults({ onReset }: { onReset: () => void }) {
   );
 }
 
+function BrandMark({ large = false }: { large?: boolean }) {
+  return (
+    <span className={`brand-mark${large ? " large" : ""}`} aria-hidden="true">
+      <svg viewBox="0 0 32 32" focusable="false">
+        <path d="M14.8 8.7 8.4 22.5M17.2 8.7l6.4 13.8M11 19c3-2.7 7-2.7 10 0" />
+        <circle cx="16" cy="6" r="2.8" />
+        <circle cx="7" cy="25" r="2.8" />
+        <circle cx="25" cy="25" r="2.8" />
+      </svg>
+    </span>
+  );
+}
+
 function TabButton({
   active,
   icon,
@@ -4957,9 +5346,81 @@ function TabButton({
 function LoadingScreen() {
   return (
     <main className="loading-screen">
-      <div className="brand-mark large">A</div>
+      <BrandMark large />
       <Loader2 size={20} className="spin" />
       <span>Aizu Connectを準備しています</span>
+    </main>
+  );
+}
+
+function LegalReconsentScreen({
+  isLoading,
+  message,
+  onAccept,
+  onLogout,
+}: {
+  isLoading: boolean;
+  message: string;
+  onAccept: () => Promise<void>;
+  onLogout: () => void;
+}) {
+  const [confirmed, setConfirmed] = useState(false);
+  const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(
+    null,
+  );
+
+  return (
+    <main className="loading-screen">
+      <section className="pending-card legal-reconsent-card">
+        <BrandMark large />
+        <p className="eyebrow">重要なお知らせ</p>
+        <h1>利用条件を更新しました</h1>
+        <p>
+          個人情報の共有範囲、退会時のデータ、有料イベントおよび未成年者の取扱いを
+          明確にしました。利用を続ける前に内容を確認してください。
+        </p>
+        <div className="legal-reconsent-links">
+          <button type="button" onClick={() => setLegalDocument("terms")}>
+            利用規約（{TERMS_VERSION}）を読む
+          </button>
+          <button type="button" onClick={() => setLegalDocument("privacy")}>
+            プライバシーポリシー（{PRIVACY_VERSION}）を読む
+          </button>
+        </div>
+        <label className="application-consent">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(event) => setConfirmed(event.target.checked)}
+          />
+          <span>
+            両文書に同意します。16歳以上で、未成年の場合は法定代理人の同意を得ています
+          </span>
+        </label>
+        {message && (
+          <div className="form-message" role="status" aria-live="polite">
+            {message}
+          </div>
+        )}
+        <button
+          className="primary-action"
+          type="button"
+          disabled={!confirmed || isLoading}
+          onClick={() => void onAccept()}
+        >
+          {isLoading && <Loader2 size={16} className="spin" />}
+          同意して利用を続ける
+        </button>
+        <button className="text-button" type="button" onClick={onLogout}>
+          同意せずログアウト
+        </button>
+      </section>
+      {legalDocument && (
+        <LegalDialog
+          document={legalDocument}
+          onClose={() => setLegalDocument(null)}
+        />
+      )}
     </main>
   );
 }
@@ -5027,39 +5488,39 @@ function AuthScreen(props: {
     <main className="auth-shell">
       <div className="auth-visual">
         <div className="auth-brand">
-          <span className="brand-mark">A</span>
+          <BrandMark />
           <strong>Aizu Connect</strong>
         </div>
         <div>
-          <p className="eyebrow">START SOMETHING IN AIZU</p>
           <h1>
-            会津で、
+            会津のイベント
             <br />
-            <em>何か始める。</em>
+            <em>を探す。</em>
           </h1>
           <p>
-            人との出会い、新しい経験、地域とのつながり。
+            学生・地域・団体が主催するイベントを、
             <br />
-            ふらっと参加した経験が、あなたの実績になる。
+            探して、申し込んで、参加できます。
           </p>
         </div>
         <div className="auth-visual-note">
-          <Sparkles size={17} /> 参加するほど、会津とのつながりが増えていく
+          <UsersRound size={17} /> 参加した活動は記録として残ります
         </div>
       </div>
       <div className="auth-form-wrap">
         <div className="auth-form-card">
           <div className="auth-mobile-brand">
-            <span className="brand-mark">A</span>
+            <BrandMark />
             <strong>Aizu Connect</strong>
           </div>
-          <p className="eyebrow">WELCOME</p>
           <h2>
-            {props.authMode === "register"
-              ? "活動をはじめよう"
-              : "おかえりなさい"}
+            {props.authMode === "register" ? "アカウントを作成" : "ログイン"}
           </h2>
-          <p className="auth-lede">会津でできることを見つけてみよう。</p>
+          <p className="auth-lede">
+            {props.authMode === "register"
+              ? "利用に必要な情報を入力してください。"
+              : "メールアドレスとパスワードを入力してください。"}
+          </p>
           <div className="auth-switch">
             <button
               className={props.authMode === "register" ? "active" : ""}
@@ -5263,7 +5724,10 @@ function AuthScreen(props: {
                       props.setHasAcceptedLegal(event.target.checked)
                     }
                   />
-                  <span>利用規約とプライバシーポリシーに同意します</span>
+                  <span>
+                    利用規約とプライバシーポリシーに同意します。16歳以上で、
+                    未成年の場合は法定代理人の同意を得ています
+                  </span>
                 </label>
                 <p>
                   内容を読む：
@@ -5294,7 +5758,7 @@ function AuthScreen(props: {
                 <Check size={17} />
               )}
               {props.authMode === "register"
-                ? "登録して始める"
+                ? "アカウントを作成"
                 : "ログインする"}
             </button>
           </form>
@@ -5303,7 +5767,7 @@ function AuthScreen(props: {
               className="password-reset-panel"
               onSubmit={(event) => void submitPasswordReset(event)}
             >
-              <p className="eyebrow">RESET PASSWORD</p>
+              <p className="eyebrow">ログインできない場合</p>
               <h3>パスワードを再設定</h3>
               <p>登録済みのメールアドレスへ再設定リンクを送ります。</p>
               <input
@@ -5401,8 +5865,7 @@ function VerifyEmailScreen({
   return (
     <main className="loading-screen">
       <div className="pending-card verify-card">
-        <div className="brand-mark">A</div>
-        <p className="eyebrow">EMAIL VERIFICATION</p>
+        <BrandMark />
         <h1>メールを確認してください</h1>
         <p>
           <strong>{firebaseUser.email}</strong> に確認メールを送信しました。
@@ -5449,9 +5912,8 @@ function AdminApprovalPendingScreen({
   return (
     <main className="loading-screen">
       <div className="pending-card approval-pending-card">
-        <div className="brand-mark">A</div>
-        <p className="eyebrow">ADMIN REVIEW</p>
-        <h1>承認待ちです</h1>
+        <BrandMark />
+        <h1>運営が登録内容を確認しています</h1>
         <p>
           {appUser.displayName}
           さんのメール認証は完了しています。利用開始に必要なのは管理者の承認のみです。
@@ -5509,8 +5971,7 @@ function AccountSetupScreen({
   return (
     <main className="loading-screen">
       <div className="pending-card">
-        <div className="brand-mark">A</div>
-        <p className="eyebrow">ACCOUNT STATUS</p>
+        <BrandMark />
         <h1>登録状態を確認しています</h1>
         <p>
           {appUser.displayName}
@@ -5534,8 +5995,7 @@ function AccountRejectedScreen({
   return (
     <main className="loading-screen">
       <div className="pending-card">
-        <div className="brand-mark">A</div>
-        <p className="eyebrow">ACCOUNT REVIEW</p>
+        <BrandMark />
         <h1>
           {appUser.status === "suspended"
             ? "アカウントを確認してください"
@@ -5597,6 +6057,14 @@ function OrganizationDashboard({
   const [category, setCategory] = useState("交流・コミュニティ");
   const [feeType, setFeeType] = useState<AizuEvent["feeType"]>("無料");
   const [feeAmount, setFeeAmount] = useState(0);
+  const [commercialSellerName, setCommercialSellerName] = useState("");
+  const [commercialSellerAddress, setCommercialSellerAddress] = useState("");
+  const [commercialSellerPhone, setCommercialSellerPhone] = useState("");
+  const [commercialResponsiblePerson, setCommercialResponsiblePerson] =
+    useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentTiming, setPaymentTiming] = useState("");
+  const [additionalFees, setAdditionalFees] = useState("なし");
   const [eventFormat, setEventFormat] =
     useState<AizuEvent["eventFormat"]>("現地");
   const [meetingPoint, setMeetingPoint] = useState("会津若松市");
@@ -5752,7 +6220,10 @@ function OrganizationDashboard({
   );
 
   const scrollToManagementSection = (element: HTMLElement | null) => {
-    element?.scrollIntoView({ behavior: "smooth", block: "start" });
+    element?.scrollIntoView({
+      behavior: preferredScrollBehavior(),
+      block: "start",
+    });
   };
 
   const beginEditEvent = (event: AizuEvent) => {
@@ -5768,6 +6239,13 @@ function OrganizationDashboard({
     setCategory(event.category);
     setFeeType(event.feeType ?? "無料");
     setFeeAmount(event.feeAmount ?? 0);
+    setCommercialSellerName(event.commercialSellerName ?? "");
+    setCommercialSellerAddress(event.commercialSellerAddress ?? "");
+    setCommercialSellerPhone(event.commercialSellerPhone ?? "");
+    setCommercialResponsiblePerson(event.commercialResponsiblePerson ?? "");
+    setPaymentMethod(event.paymentMethod ?? "");
+    setPaymentTiming(event.paymentTiming ?? "");
+    setAdditionalFees(event.additionalFees ?? "なし");
     setEventFormat(event.eventFormat ?? "現地");
     setMeetingPoint(event.meetingPoint ?? event.location);
     setAccessInfo(event.accessInfo ?? "");
@@ -5828,6 +6306,13 @@ function OrganizationDashboard({
     setCategory("交流・コミュニティ");
     setFeeType("無料");
     setFeeAmount(0);
+    setCommercialSellerName("");
+    setCommercialSellerAddress("");
+    setCommercialSellerPhone("");
+    setCommercialResponsiblePerson("");
+    setPaymentMethod("");
+    setPaymentTiming("");
+    setAdditionalFees("なし");
     setEventFormat("現地");
     setMeetingPoint("会津若松市");
     setAccessInfo("");
@@ -5918,6 +6403,15 @@ function OrganizationDashboard({
         setTakeawayText(restoredTakeaways);
         setFeeType((draft.feeType as AizuEvent["feeType"]) ?? "無料");
         setFeeAmount(Number(draft.feeAmount ?? 0));
+        setCommercialSellerName(String(draft.commercialSellerName ?? ""));
+        setCommercialSellerAddress(String(draft.commercialSellerAddress ?? ""));
+        setCommercialSellerPhone(String(draft.commercialSellerPhone ?? ""));
+        setCommercialResponsiblePerson(
+          String(draft.commercialResponsiblePerson ?? ""),
+        );
+        setPaymentMethod(String(draft.paymentMethod ?? ""));
+        setPaymentTiming(String(draft.paymentTiming ?? ""));
+        setAdditionalFees(String(draft.additionalFees ?? "なし"));
         setEventFormat(
           (draft.eventFormat as AizuEvent["eventFormat"]) ?? "現地",
         );
@@ -5955,6 +6449,13 @@ function OrganizationDashboard({
       takeawayText,
       feeType,
       feeAmount,
+      commercialSellerName,
+      commercialSellerAddress,
+      commercialSellerPhone,
+      commercialResponsiblePerson,
+      paymentMethod,
+      paymentTiming,
+      additionalFees,
       eventFormat,
       accessInfo,
       bringItems,
@@ -5996,6 +6497,13 @@ function OrganizationDashboard({
     eventFormat,
     feeAmount,
     feeType,
+    commercialSellerName,
+    commercialSellerAddress,
+    commercialSellerPhone,
+    commercialResponsiblePerson,
+    paymentMethod,
+    paymentTiming,
+    additionalFees,
     isDraftReady,
     location,
     meetingPoint,
@@ -6369,7 +6877,7 @@ function OrganizationDashboard({
       !takeawayText.trim() ||
       !startAtInput.trim()
     ) {
-      setNotice("タイトル、概要、得られること、開催日時を入力してください。");
+      setNotice("タイトル、概要、体験できること、開催日時を入力してください。");
       return;
     }
     const startAtDate = new Date(startAtInput);
@@ -6389,6 +6897,23 @@ function OrganizationDashboard({
       endAtDate.getTime() <= startAtDate.getTime()
     ) {
       setNotice("終了日時は開催日時より後にしてください。");
+      return;
+    }
+    if (
+      feeType === "有料" &&
+      ![
+        commercialSellerAddress,
+        commercialSellerPhone,
+        commercialResponsiblePerson,
+        paymentMethod,
+        paymentTiming,
+        additionalFees,
+        cancellationPolicy,
+      ].every((value) => value.trim().length > 0)
+    ) {
+      setNotice(
+        "有料イベントは、特定商取引法に基づく表示をすべて入力してください。",
+      );
       return;
     }
     setIsLoading(true);
@@ -6430,6 +6955,26 @@ function OrganizationDashboard({
           feeType === "有料"
             ? Math.max(0, Math.min(Number(feeAmount) || 0, 1_000_000))
             : 0,
+        commercialSellerName:
+          feeType === "有料"
+            ? (commercialSellerName.trim() || organizationName).slice(0, 120)
+            : "",
+        commercialSellerAddress:
+          feeType === "有料"
+            ? commercialSellerAddress.trim().slice(0, 240)
+            : "",
+        commercialSellerPhone:
+          feeType === "有料" ? commercialSellerPhone.trim().slice(0, 40) : "",
+        commercialResponsiblePerson:
+          feeType === "有料"
+            ? commercialResponsiblePerson.trim().slice(0, 80)
+            : "",
+        paymentMethod:
+          feeType === "有料" ? paymentMethod.trim().slice(0, 200) : "",
+        paymentTiming:
+          feeType === "有料" ? paymentTiming.trim().slice(0, 200) : "",
+        additionalFees:
+          feeType === "有料" ? additionalFees.trim().slice(0, 200) : "なし",
         eventFormat: eventFormat ?? "現地",
         meetingPoint: meetingPoint.trim().slice(0, 160),
         accessInfo: accessInfo.trim().slice(0, 300),
@@ -6638,7 +7183,7 @@ function OrganizationDashboard({
     setActiveRoomId(null);
     setEventSearch("");
     setApplicantSearch("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
   };
 
   return (
@@ -6713,10 +7258,8 @@ function OrganizationDashboard({
         >
           <div className="role-card-head">
             <div>
-              <p className="eyebrow">PLAN EVENT</p>
-              <h2>
-                {editingEventId ? "企画を修正する" : "イベントを企画する"}
-              </h2>
+              <p className="eyebrow">イベント登録</p>
+              <h2>{editingEventId ? "イベントを編集" : "新しいイベント"}</h2>
             </div>
             {editingEventId ? (
               <button
@@ -6779,7 +7322,7 @@ function OrganizationDashboard({
                       type="button"
                       onClick={() => applyTemplate(template)}
                     >
-                      <Sparkles size={15} />
+                      <FileText size={15} />
                       {template.label}
                     </button>
                   ))}
@@ -6802,7 +7345,7 @@ function OrganizationDashboard({
                     onChange={(event) => setSummary(event.target.value)}
                   />
                 </Field>
-                <Field label="参加すると得られること（1行ずつ）">
+                <Field label="イベントで体験できること（1行ずつ）">
                   <textarea
                     required
                     maxLength={180}
@@ -6998,18 +7541,104 @@ function OrganizationDashboard({
                   </Field>
                 </div>
                 {feeType === "有料" && (
-                  <Field label="参加費（円）">
-                    <input
-                      type="number"
-                      min={0}
-                      max={1_000_000}
-                      required
-                      value={feeAmount}
-                      onChange={(event) =>
-                        setFeeAmount(Number(event.target.value))
-                      }
-                    />
-                  </Field>
+                  <div className="commerce-disclosure-form">
+                    <p>
+                      有料イベントは、申込前に特定商取引法に基づく表示を参加者へ示します。
+                    </p>
+                    <Field label="参加費（税込・円）">
+                      <input
+                        type="number"
+                        min={1}
+                        max={1_000_000}
+                        required
+                        value={feeAmount}
+                        onChange={(event) =>
+                          setFeeAmount(Number(event.target.value))
+                        }
+                      />
+                    </Field>
+                    <div className="form-grid">
+                      <Field label="販売・役務提供事業者名">
+                        <input
+                          required
+                          maxLength={120}
+                          placeholder={organizationName}
+                          value={commercialSellerName}
+                          onChange={(event) =>
+                            setCommercialSellerName(event.target.value)
+                          }
+                        />
+                      </Field>
+                      <Field label="運営責任者名">
+                        <input
+                          required
+                          maxLength={80}
+                          value={commercialResponsiblePerson}
+                          onChange={(event) =>
+                            setCommercialResponsiblePerson(event.target.value)
+                          }
+                        />
+                      </Field>
+                    </div>
+                    <Field label="事業者所在地">
+                      <input
+                        required
+                        maxLength={240}
+                        autoComplete="street-address"
+                        value={commercialSellerAddress}
+                        onChange={(event) =>
+                          setCommercialSellerAddress(event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="事業者電話番号">
+                      <input
+                        required
+                        maxLength={40}
+                        type="tel"
+                        autoComplete="tel"
+                        value={commercialSellerPhone}
+                        onChange={(event) =>
+                          setCommercialSellerPhone(event.target.value)
+                        }
+                      />
+                    </Field>
+                    <div className="form-grid">
+                      <Field label="支払方法">
+                        <input
+                          required
+                          maxLength={200}
+                          placeholder="例：当日受付で現金"
+                          value={paymentMethod}
+                          onChange={(event) =>
+                            setPaymentMethod(event.target.value)
+                          }
+                        />
+                      </Field>
+                      <Field label="支払時期">
+                        <input
+                          required
+                          maxLength={200}
+                          placeholder="例：イベント当日の受付時"
+                          value={paymentTiming}
+                          onChange={(event) =>
+                            setPaymentTiming(event.target.value)
+                          }
+                        />
+                      </Field>
+                    </div>
+                    <Field label="参加費以外の追加費用">
+                      <input
+                        required
+                        maxLength={200}
+                        placeholder="ない場合は「なし」"
+                        value={additionalFees}
+                        onChange={(event) =>
+                          setAdditionalFees(event.target.value)
+                        }
+                      />
+                    </Field>
+                  </div>
                 )}
                 <div className="form-grid">
                   <Field label="開催エリア・場所">
@@ -7159,8 +7788,8 @@ function OrganizationDashboard({
         >
           <div className="role-card-head">
             <div>
-              <p className="eyebrow">YOUR PLANS</p>
-              <h2>企画したイベント</h2>
+              <p className="eyebrow">イベント一覧</p>
+              <h2>登録したイベント</h2>
             </div>
             <strong>{events.length}件</strong>
           </div>
@@ -7313,8 +7942,8 @@ function OrganizationDashboard({
         <section className="role-card applicant-card" ref={applicantSectionRef}>
           <div className="role-card-head">
             <div>
-              <p className="eyebrow">APPLICANTS</p>
-              <h2>参加者を確認</h2>
+              <p className="eyebrow">申込者</p>
+              <h2>参加者一覧</h2>
               {selectedEvent && <small>{selectedEvent.title}</small>}
             </div>
             <div className="row-actions">
@@ -7694,6 +8323,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   >({});
   const [managedUsers, setManagedUsers] = useState<AppUser[]>([]);
   const [managedEvents, setManagedEvents] = useState<AizuEvent[]>([]);
+  const [pendingEventQueryLimit, setPendingEventQueryLimit] = useState(50);
+  const [pendingUserQueryLimit, setPendingUserQueryLimit] = useState(50);
+  const [pendingReportQueryLimit, setPendingReportQueryLimit] = useState(50);
+  const [deletionRequestQueryLimit, setDeletionRequestQueryLimit] =
+    useState(50);
+  const [hasMorePendingEvents, setHasMorePendingEvents] = useState(false);
+  const [hasMorePendingUsers, setHasMorePendingUsers] = useState(false);
+  const [hasMorePendingReports, setHasMorePendingReports] = useState(false);
+  const [hasMoreDeletionRequests, setHasMoreDeletionRequests] = useState(false);
   const [managedUserQueryLimit, setManagedUserQueryLimit] = useState(50);
   const [managedEventQueryLimit, setManagedEventQueryLimit] = useState(50);
   const [hasMoreManagedUsers, setHasMoreManagedUsers] = useState(false);
@@ -7811,6 +8449,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       date?.getDate() === now.getDate()
     );
   }).length;
+  const reviewQueueHasMore =
+    hasMorePendingEvents ||
+    hasMorePendingUsers ||
+    hasMorePendingReports ||
+    hasMoreDeletionRequests;
 
   const loadReviewQueue = useCallback(async () => {
     setIsLoading(true);
@@ -7821,7 +8464,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             collection(db, "events"),
             where("status", "==", "pending_review"),
             orderBy("createdAt", "desc"),
-            limit(50),
+            limit(pendingEventQueryLimit),
           ),
         ),
         getDocs(
@@ -7829,7 +8472,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             collection(db, "reports"),
             where("status", "==", "submitted"),
             orderBy("createdAt", "desc"),
-            limit(50),
+            limit(pendingReportQueryLimit),
           ),
         ),
         getDocs(
@@ -7837,7 +8480,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             collection(db, "users"),
             where("status", "in", ["pending_approval", "pending"]),
             orderBy("createdAt", "desc"),
-            limit(100),
+            limit(pendingUserQueryLimit),
           ),
         ),
       ]);
@@ -7847,6 +8490,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           ...eventDoc.data(),
         })) as AizuEvent[],
       );
+      setHasMorePendingEvents(eventSnapshot.size === pendingEventQueryLimit);
       setPendingUsers(
         userSnapshot.docs
           .map((userDoc) => ({
@@ -7855,16 +8499,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           }))
           .filter((user) => user.role !== "admin") as AppUser[],
       );
+      setHasMorePendingUsers(userSnapshot.size === pendingUserQueryLimit);
       setPendingReports(
         reportSnapshot.docs.map((reportDoc) => ({
           id: reportDoc.id,
           ...reportDoc.data(),
         })) as ReportRecord[],
       );
+      setHasMorePendingReports(reportSnapshot.size === pendingReportQueryLimit);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [pendingEventQueryLimit, pendingReportQueryLimit, pendingUserQueryLimit]);
 
   useEffect(() => {
     const eventUnsubscribe = onSnapshot(
@@ -7872,15 +8518,17 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         collection(db, "events"),
         where("status", "==", "pending_review"),
         orderBy("createdAt", "desc"),
-        limit(50),
+        limit(pendingEventQueryLimit),
       ),
-      (snapshot) =>
+      (snapshot) => {
+        setHasMorePendingEvents(snapshot.size === pendingEventQueryLimit);
         setPendingEvents(
           snapshot.docs.map((eventDoc) => ({
             id: eventDoc.id,
             ...eventDoc.data(),
           })) as AizuEvent[],
-        ),
+        );
+      },
       () => setNotice("イベント審査キューを取得できませんでした。"),
     );
     const userUnsubscribe = onSnapshot(
@@ -7888,9 +8536,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         collection(db, "users"),
         where("status", "in", ["pending_approval", "pending"]),
         orderBy("createdAt", "desc"),
-        limit(100),
+        limit(pendingUserQueryLimit),
       ),
-      (snapshot) =>
+      (snapshot) => {
+        setHasMorePendingUsers(snapshot.size === pendingUserQueryLimit);
         setPendingUsers(
           snapshot.docs
             .map((userDoc) => ({
@@ -7898,7 +8547,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               ...(userDoc.data() as Omit<AppUser, "uid">),
             }))
             .filter((user) => user.role !== "admin") as AppUser[],
-        ),
+        );
+      },
       () => setNotice("アカウント審査キューを取得できませんでした。"),
     );
     const reportUnsubscribe = onSnapshot(
@@ -7906,15 +8556,17 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         collection(db, "reports"),
         where("status", "==", "submitted"),
         orderBy("createdAt", "desc"),
-        limit(50),
+        limit(pendingReportQueryLimit),
       ),
-      (snapshot) =>
+      (snapshot) => {
+        setHasMorePendingReports(snapshot.size === pendingReportQueryLimit);
         setPendingReports(
           snapshot.docs.map((reportDoc) => ({
             id: reportDoc.id,
             ...reportDoc.data(),
           })) as ReportRecord[],
-        ),
+        );
+      },
       () => setNotice("通報キューを取得できませんでした。"),
     );
     const deletionRequestUnsubscribe = onSnapshot(
@@ -7922,9 +8574,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         collection(db, "accountDeletionRequests"),
         where("status", "==", "submitted"),
         orderBy("requestedAt", "desc"),
-        limit(100),
+        limit(deletionRequestQueryLimit),
       ),
       (snapshot) => {
+        setHasMoreDeletionRequests(snapshot.size === deletionRequestQueryLimit);
         const requests = snapshot.docs.map(
           (requestDoc) => requestDoc.data() as AccountDeletionRequest,
         );
@@ -7960,7 +8613,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       reportUnsubscribe();
       deletionRequestUnsubscribe();
     };
-  }, []);
+  }, [
+    deletionRequestQueryLimit,
+    pendingEventQueryLimit,
+    pendingReportQueryLimit,
+    pendingUserQueryLimit,
+  ]);
 
   useEffect(() => {
     const usersUnsubscribe = onSnapshot(
@@ -8175,6 +8833,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       !event.meetingPoint ? "集合案内なし" : null,
       !event.accessibility ? "配慮情報なし" : null,
       event.feeType === "有料" && !event.feeAmount ? "料金未確定" : null,
+      event.feeType === "有料" &&
+      ![
+        event.commercialSellerName,
+        event.commercialSellerAddress,
+        event.commercialSellerPhone,
+        event.commercialResponsiblePerson,
+        event.paymentMethod,
+        event.paymentTiming,
+        event.additionalFees,
+      ].every(Boolean)
+        ? "特商法表示不足"
+        : null,
     ].filter(Boolean) as string[];
   const userRiskFlags = (user: AppUser) =>
     [
@@ -8191,7 +8861,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setAdminSearch("");
     setExpandedEventId(null);
     setManagedUserStatus("active");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
   };
 
   return (
@@ -8224,24 +8894,38 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </div>
       <div className="role-metrics">
         <div>
-          <strong>{pendingEvents.length}</strong>
+          <strong>
+            {pendingEvents.length}
+            {hasMorePendingEvents ? "+" : ""}
+          </strong>
           <span>イベント審査</span>
         </div>
         <div>
-          <strong>{pendingUsers.length}</strong>
+          <strong>
+            {pendingUsers.length}
+            {hasMorePendingUsers ? "+" : ""}
+          </strong>
           <span>アカウント審査</span>
         </div>
         <div>
-          <strong>{pendingReports.length}</strong>
+          <strong>
+            {pendingReports.length}
+            {hasMorePendingReports ? "+" : ""}
+          </strong>
           <span>通報対応</span>
         </div>
         <div>
-          <strong>{deletionRequests.length}</strong>
+          <strong>
+            {deletionRequests.length}
+            {hasMoreDeletionRequests ? "+" : ""}
+          </strong>
           <span>退会申請</span>
         </div>
         <div>
           <strong>{oldestPendingDays}日</strong>
-          <span>最も古い未処理</span>
+          <span>
+            {reviewQueueHasMore ? "読込範囲の最古" : "最も古い未処理"}
+          </span>
         </div>
         <div>
           <strong>{processedToday}</strong>
@@ -8252,7 +8936,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <section className="role-card">
           <div className="role-card-head">
             <div>
-              <p className="eyebrow">EVENT REVIEW</p>
+              <p className="eyebrow">公開申請</p>
               <h2>イベント審査</h2>
             </div>
             <CalendarDays size={20} />
@@ -8378,11 +9062,21 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               ))
             )}
           </div>
+          <QueuePagination
+            label="イベント審査"
+            loadedCount={pendingEvents.length}
+            pageSize={50}
+            hasMore={hasMorePendingEvents}
+            disabled={isLoading}
+            onLoadMore={() =>
+              setPendingEventQueryLimit((current) => current + 50)
+            }
+          />
         </section>
         <section className="role-card">
           <div className="role-card-head">
             <div>
-              <p className="eyebrow">ACCOUNT REVIEW</p>
+              <p className="eyebrow">利用申請</p>
               <h2>アカウント審査</h2>
             </div>
             <button
@@ -8468,13 +9162,23 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               ))
             )}
           </div>
+          <QueuePagination
+            label="アカウント審査"
+            loadedCount={pendingUsers.length}
+            pageSize={50}
+            hasMore={hasMorePendingUsers}
+            disabled={isLoading}
+            onLoadMore={() =>
+              setPendingUserQueryLimit((current) => current + 50)
+            }
+          />
         </section>
       </div>
       <section className="role-card admin-deletion-card">
         <div className="role-card-head">
           <div>
-            <p className="eyebrow">ACCOUNT DELETION</p>
-            <h2>退会・データ削除申請</h2>
+            <p className="eyebrow">削除申請</p>
+            <h2>退会・データ削除</h2>
           </div>
           <Trash2 size={20} />
         </div>
@@ -8545,12 +9249,22 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             })}
           </div>
         )}
+        <QueuePagination
+          label="退会申請"
+          loadedCount={deletionRequests.length}
+          pageSize={50}
+          hasMore={hasMoreDeletionRequests}
+          disabled={isLoading}
+          onLoadMore={() =>
+            setDeletionRequestQueryLimit((current) => current + 50)
+          }
+        />
       </section>
       <section className="role-card admin-report-card">
         <div className="role-card-head">
           <div>
-            <p className="eyebrow">SAFETY QUEUE</p>
-            <h2>通報・安全確認</h2>
+            <p className="eyebrow">未対応</p>
+            <h2>通報</h2>
           </div>
           <Flag size={20} />
         </div>
@@ -8563,9 +9277,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             }`}
             role={visiblePendingReports.length > 10 ? "region" : undefined}
             aria-label={
-              visiblePendingReports.length > 10
-                ? "通報・安全確認一覧"
-                : undefined
+              visiblePendingReports.length > 10 ? "通報一覧" : undefined
             }
             tabIndex={visiblePendingReports.length > 10 ? 0 : undefined}
           >
@@ -8652,12 +9364,22 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             ))}
           </div>
         )}
+        <QueuePagination
+          label="通報"
+          loadedCount={pendingReports.length}
+          pageSize={50}
+          hasMore={hasMorePendingReports}
+          disabled={isLoading}
+          onLoadMore={() =>
+            setPendingReportQueryLimit((current) => current + 50)
+          }
+        />
       </section>
       <div className="role-grid admin-operations-grid">
         <section className="role-card">
           <div className="role-card-head">
             <div>
-              <p className="eyebrow">USER OPERATIONS</p>
+              <p className="eyebrow">アカウント</p>
               <h2>ユーザー管理</h2>
             </div>
             <UsersRound size={20} />
@@ -8794,8 +9516,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <section className="role-card">
           <div className="role-card-head">
             <div>
-              <p className="eyebrow">EVENT OPERATIONS</p>
-              <h2>公開イベント管理</h2>
+              <p className="eyebrow">イベント</p>
+              <h2>公開中のイベント</h2>
             </div>
             <CalendarDays size={20} />
           </div>
@@ -8906,7 +9628,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       <section className="role-card audit-log-card">
         <div className="role-card-head">
           <div>
-            <p className="eyebrow">AUDIT HISTORY</p>
+            <p className="eyebrow">記録</p>
             <h2>操作履歴</h2>
           </div>
           <History size={20} />
@@ -8985,7 +9707,10 @@ function RoleShell({
   children: ReactNode;
 }) {
   return (
-    <main className="role-shell">
+    <div className="role-shell">
+      <a className="skip-link" href="#role-main">
+        管理内容へ移動
+      </a>
       <header className="role-header">
         <button
           className="brand-lockup"
@@ -8993,7 +9718,7 @@ function RoleShell({
           onClick={onHome}
           aria-label="ホームへ戻る"
         >
-          <span className="brand-mark">A</span>
+          <BrandMark />
           <span>
             <strong>Aizu Connect</strong>
             <small>{subtitle}</small>
@@ -9021,8 +9746,10 @@ function RoleShell({
           </button>
         </div>
       </header>
-      <div className="role-content">{children}</div>
-    </main>
+      <main className="role-content" id="role-main" tabIndex={-1}>
+        {children}
+      </main>
+    </div>
   );
 }
 
@@ -9031,6 +9758,42 @@ function EmptyRoleState({ text }: { text: string }) {
     <div className="empty-role-state">
       <Compass size={22} />
       <span>{text}</span>
+    </div>
+  );
+}
+
+function QueuePagination({
+  label,
+  loadedCount,
+  pageSize,
+  hasMore,
+  disabled,
+  onLoadMore,
+}: {
+  label: string;
+  loadedCount: number;
+  pageSize: number;
+  hasMore: boolean;
+  disabled: boolean;
+  onLoadMore: () => void;
+}) {
+  return (
+    <div className={`queue-pagination ${hasMore ? "" : "is-complete"}`}>
+      <span>
+        <strong>{loadedCount}件</strong>
+        <small>{label}を読み込み済み</small>
+      </span>
+      {hasMore ? (
+        <button type="button" disabled={disabled} onClick={onLoadMore}>
+          さらに{pageSize}件
+          <ChevronRight size={14} />
+        </button>
+      ) : (
+        <em>
+          <CheckCircle2 size={14} />
+          全件表示
+        </em>
+      )}
     </div>
   );
 }
@@ -9048,7 +9811,6 @@ function NotificationPanel({
     <aside className="notification-panel" aria-label="通知">
       <div className="notification-panel-head">
         <div>
-          <p className="eyebrow">NOTIFICATIONS</p>
           <h2>通知</h2>
         </div>
         <button
@@ -9118,7 +9880,6 @@ function ReportDialog({
       >
         <div className="report-dialog-head">
           <div>
-            <p className="eyebrow">SAFETY</p>
             <h2 id="report-dialog-title">通報する</h2>
           </div>
           <button
@@ -9215,7 +9976,6 @@ function ActionReasonDialog({
       >
         <div className="report-dialog-head">
           <div>
-            <p className="eyebrow">REASON REQUIRED</p>
             <h2 id="action-reason-title">{title}</h2>
           </div>
           <button
