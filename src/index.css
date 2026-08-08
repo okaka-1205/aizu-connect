@@ -6415,3 +6415,112 @@ body,
     border: 2px solid Highlight;
   }
 }
+
+/* Release baseline: readable secondary text and AA-compliant inactive states. */
+.auth-switch button {
+  color: #526276;
+}
+
+.account-type-switch button {
+  color: #526276;
+}
+
+.form-message,
+.form-footnote,
+.text-button,
+.legal-links,
+.loading-screen {
+  font-size: 12px;
+}
+
+.form-footnote,
+.legal-links {
+  color: var(--muted);
+}
+
+.fatal-error-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: var(--canvas);
+}
+
+.fatal-error-card {
+  width: min(100%, 520px);
+  padding: clamp(28px, 6vw, 48px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.fatal-error-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: #f9e9ec;
+  color: var(--danger);
+}
+
+.fatal-error-card h1 {
+  margin: 6px 0 12px;
+  color: var(--ink);
+  font-size: clamp(24px, 5vw, 32px);
+  line-height: 1.35;
+}
+
+.fatal-error-card > p:not(.eyebrow) {
+  margin: 0 0 24px;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.fatal-error-card .primary-action {
+  min-height: 48px;
+}
+
+.initial-app-shell .auth-mobile-brand > .auth-brand {
+  display: contents;
+}
+
+.initial-loading-lines {
+  display: grid;
+  gap: 14px;
+  margin-top: 30px;
+}
+
+.initial-loading-lines span {
+  display: block;
+  height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: linear-gradient(
+    100deg,
+    var(--surface-soft) 20%,
+    var(--surface) 40%,
+    var(--surface-soft) 60%
+  );
+  background-size: 220% 100%;
+  animation: initial-loading-shimmer 1.2s ease-in-out infinite;
+}
+
+.initial-loading-lines span:nth-child(3) {
+  width: 72%;
+}
+
+@keyframes initial-loading-shimmer {
+  to {
+    background-position-x: -220%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .initial-loading-lines span {
+    animation: none;
+  }
+}

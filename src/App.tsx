@@ -106,6 +106,7 @@ import {
   auth,
   authPersistenceReady,
   db,
+  ensureAppCheck,
   functions,
   storage,
 } from "./lib/firebase";
@@ -1016,29 +1017,42 @@ function App() {
             setIsAuthLoading(false);
             return;
           }
-          unsubscribeProfile = onSnapshot(
-            doc(db, "users", user.uid),
-            (snapshot) => {
-              if (snapshot.exists()) {
-                setAppUser(snapshot.data() as AppUser);
-              } else {
-                setMessage(
-                  "認証は完了しましたが、プロフィール情報が見つかりません。もう一度登録してください。",
-                  "error",
-                );
-                void signOut(auth);
-              }
-              setIsAuthLoading(false);
-            },
-            (error) => {
+          void ensureAppCheck()
+            .then(() => {
+              if (disposed || auth.currentUser?.uid !== user.uid) return;
+              unsubscribeProfile = onSnapshot(
+                doc(db, "users", user.uid),
+                (snapshot) => {
+                  if (snapshot.exists()) {
+                    setAppUser(snapshot.data() as AppUser);
+                  } else {
+                    setMessage(
+                      "認証は完了しましたが、プロフィール情報が見つかりません。もう一度登録してください。",
+                      "error",
+                    );
+                    void signOut(auth);
+                  }
+                  setIsAuthLoading(false);
+                },
+                (error) => {
+                  setMessage(
+                    `アカウント情報を読み込めませんでした。再ログインしてください。${getFirebaseErrorMessage(error)}`,
+                    "error",
+                  );
+                  setIsAuthLoading(false);
+                  void signOut(auth);
+                },
+              );
+            })
+            .catch((error: unknown) => {
+              if (disposed || auth.currentUser?.uid !== user.uid) return;
               setMessage(
-                `アカウント情報を読み込めませんでした。再ログインしてください。${getFirebaseErrorMessage(error)}`,
+                `安全性の確認に失敗しました。通信環境を確認して、もう一度お試しください。${getFirebaseErrorMessage(error)}`,
                 "error",
               );
               setIsAuthLoading(false);
               void signOut(auth);
-            },
-          );
+            });
         });
       })
       .catch((error: unknown) => {
@@ -1554,6 +1568,7 @@ function App() {
     setIsActionLoading(true);
     let createdUser: User | null = null;
     try {
+      await ensureAppCheck();
       if (authMode === "login") {
         await signInWithEmailAndPassword(
           auth,
@@ -5821,6 +5836,7 @@ function AuthScreen(props: {
     setIsResetting(true);
     setResetMessage("");
     try {
+      await ensureAppCheck();
       await sendPasswordResetEmail(auth, resetEmail.trim());
       setResetMessage(
         "パスワード再設定メールを送信しました。メールを確認してください。",

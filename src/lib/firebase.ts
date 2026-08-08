@@ -1,5 +1,7 @@
 import { initializeApp } from "firebase/app";
 import {
+  type AppCheck,
+  getToken,
   initializeAppCheck,
   ReCaptchaEnterpriseProvider,
 } from "firebase/app-check";
@@ -25,16 +27,41 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 const appCheckSiteKey = import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY;
-if (
-  import.meta.env.PROD &&
-  typeof appCheckSiteKey === "string" &&
-  appCheckSiteKey.length > 0
-) {
-  initializeAppCheck(app, {
-    provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
-    isTokenAutoRefreshEnabled: true,
-  });
-}
+let appCheckInstance: AppCheck | null = null;
+let appCheckReady: Promise<void> | null = null;
+
+/**
+ * Start App Check only when a protected Firebase operation is about to run.
+ * This keeps the public sign-in screen lightweight while preserving enforced
+ * App Check for authentication and authenticated data access.
+ */
+export const ensureAppCheck = (): Promise<void> => {
+  if (
+    !import.meta.env.PROD ||
+    typeof appCheckSiteKey !== "string" ||
+    appCheckSiteKey.length === 0
+  ) {
+    return Promise.resolve();
+  }
+
+  if (!appCheckInstance) {
+    appCheckInstance = initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  }
+
+  if (!appCheckReady) {
+    appCheckReady = getToken(appCheckInstance, false)
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        appCheckReady = null;
+        throw error;
+      });
+  }
+
+  return appCheckReady;
+};
 export const auth = getAuth(app);
 auth.languageCode = "ja";
 export const db = getFirestore(app);
