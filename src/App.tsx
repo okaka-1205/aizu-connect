@@ -34,6 +34,7 @@ import {
 } from "firebase/auth";
 import { httpsCallable } from "firebase/functions";
 import {
+  AlertCircle,
   Bell,
   CalendarPlus,
   CalendarDays,
@@ -60,6 +61,7 @@ import {
   FileText,
   Filter as FilterIcon,
   History,
+  Info,
   Link as LinkIcon,
   List,
   Map,
@@ -135,6 +137,27 @@ type AccountStatus =
   | "rejected"
   | "suspended";
 type Tab = "home" | "search" | "activity" | "messages" | "profile";
+type NoticeTone = "success" | "error" | "info";
+type SetNotice = (message: string, tone?: NoticeTone) => void;
+
+function useNoticeState(): [string, NoticeTone, SetNotice] {
+  const [notice, setNoticeState] = useState<{
+    message: string;
+    tone: NoticeTone;
+  }>({ message: "", tone: "info" });
+  const setNotice = useCallback<SetNotice>((message, tone = "info") => {
+    setNoticeState({ message, tone });
+  }, []);
+  return [notice.message, notice.tone, setNotice];
+}
+
+const tabLabels: Record<Tab, string> = {
+  home: "ホーム",
+  search: "イベントを探す",
+  activity: "活動",
+  messages: "メッセージ",
+  profile: "プロフィール",
+};
 type UserRole = "student" | "organization" | "admin";
 type SearchDateFilter = "すべて" | "今週" | "今月";
 type SearchSort = "開催が近い順" | "人気順" | "新着順";
@@ -623,7 +646,7 @@ function App() {
   const [isAutoApprovingAizuStudent, setIsAutoApprovingAizuStudent] =
     useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, messageTone, setMessage] = useNoticeState();
   const [accountDeletionRequest, setAccountDeletionRequest] =
     useState<AccountDeletionRequest | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -644,6 +667,9 @@ function App() {
   const [isCreatorDashboardOpen, setIsCreatorDashboardOpen] = useState(false);
   const authenticatedUidRef = useRef<string | null>(null);
   const verificationRefreshUidRef = useRef<string | null>(null);
+  const shouldFocusSearchRef = useRef(false);
+  const notificationButtonRef = useRef<HTMLButtonElement>(null);
+  const exhaustiveSearchRequestRef = useRef(0);
 
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === selectedEventId),
@@ -663,7 +689,68 @@ function App() {
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
+    window.requestAnimationFrame(() => {
+      if (document.querySelector('[aria-modal="true"]')) return;
+      if (activeTab === "search" && shouldFocusSearchRef.current) {
+        document.getElementById("event-search-input")?.focus();
+        shouldFocusSearchRef.current = false;
+        return;
+      }
+      document.getElementById("student-main")?.focus({ preventScroll: true });
+    });
   }, [activeTab]);
+
+  useEffect(() => {
+    let currentPageTitle = tabLabels[activeTab];
+    if (isAuthLoading) {
+      currentPageTitle = "読み込み中";
+    } else if (!firebaseUser || !appUser) {
+      currentPageTitle = authMode === "login" ? "ログイン" : "新規登録";
+    } else {
+      const isAutoApproving =
+        isAutoApprovingAizuStudent ||
+        shouldAutoApproveAizuStudent({
+          role: appUser.role,
+          status: appUser.status,
+          email: firebaseUser.email ?? appUser.email,
+          emailVerified: isEmailVerified,
+        });
+      const accessGate = resolveAccountAccessGate({
+        isProduction: import.meta.env.PROD,
+        emailVerified: isEmailVerified,
+        status: appUser.status,
+      });
+
+      if (isAutoApproving) currentPageTitle = "アカウントを準備中";
+      else if (accessGate === "email_verification")
+        currentPageTitle = "メールを確認";
+      else if (accessGate === "account_rejected")
+        currentPageTitle = "アカウントを確認";
+      else if (accessGate === "admin_approval") currentPageTitle = "承認待ち";
+      else if (accessGate === "account_setup")
+        currentPageTitle = "登録内容を確認";
+      else if (
+        appUser.role !== "admin" &&
+        (appUser.termsVersion !== TERMS_VERSION ||
+          appUser.privacyVersion !== PRIVACY_VERSION ||
+          !appUser.eligibilityConfirmedAt)
+      )
+        currentPageTitle = "利用条件の更新";
+      else if (appUser.role === "admin") currentPageTitle = "管理";
+      else if (appUser.role === "organization" || isCreatorDashboardOpen)
+        currentPageTitle = "企画管理";
+    }
+    document.title = `${currentPageTitle} | Aizu Connect`;
+  }, [
+    activeTab,
+    appUser,
+    authMode,
+    firebaseUser,
+    isAuthLoading,
+    isAutoApprovingAizuStudent,
+    isCreatorDashboardOpen,
+    isEmailVerified,
+  ]);
 
   const filteredEvents = useMemo(() => {
     const normalized = searchText.trim().toLowerCase();
@@ -764,6 +851,18 @@ function App() {
     searchTimeFilter,
     upcomingEvents,
   ]);
+  const hasActiveSearchCriteria = Boolean(
+    searchText.trim() ||
+    filter !== "すべて" ||
+    searchDateFilter !== "すべて" ||
+    searchDayFilter !== "すべて" ||
+    searchTimeFilter !== "すべて" ||
+    searchFeeFilter !== "すべて" ||
+    searchFormatFilter !== "すべて" ||
+    searchSort !== "開催が近い順" ||
+    onlyAvailableEvents ||
+    onlyBeginnerEvents,
+  );
 
   const recommendedEvent = useMemo(() => {
     const interests = appUser?.interests ?? [];
@@ -807,12 +906,17 @@ function App() {
     const openSearch = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
+        if (activeTab === "search") {
+          document.getElementById("event-search-input")?.focus();
+          return;
+        }
+        shouldFocusSearchRef.current = true;
         setActiveTab("search");
       }
     };
     window.addEventListener("keydown", openSearch);
     return () => window.removeEventListener("keydown", openSearch);
-  }, []);
+  }, [activeTab]);
 
   const activityYear = new Date().getFullYear();
   const activityByMonth = useMemo(() => {
@@ -851,6 +955,9 @@ function App() {
     (total, count) => total + count,
     0,
   );
+  const unreadNotificationTotal = notifications.filter(
+    (notification) => !notification.isRead,
+  ).length;
 
   useEffect(() => {
     let disposed = false;
@@ -917,6 +1024,7 @@ function App() {
               } else {
                 setMessage(
                   "認証は完了しましたが、プロフィール情報が見つかりません。もう一度登録してください。",
+                  "error",
                 );
                 void signOut(auth);
               }
@@ -925,6 +1033,7 @@ function App() {
             (error) => {
               setMessage(
                 `アカウント情報を読み込めませんでした。再ログインしてください。${getFirebaseErrorMessage(error)}`,
+                "error",
               );
               setIsAuthLoading(false);
               void signOut(auth);
@@ -935,6 +1044,7 @@ function App() {
       .catch((error: unknown) => {
         setMessage(
           `ログイン状態を保存できませんでした。${getFirebaseErrorMessage(error)}`,
+          "error",
         );
         setIsAuthLoading(false);
       });
@@ -943,7 +1053,7 @@ function App() {
       unsubscribeProfile?.();
       unsubscribeAuth();
     };
-  }, []);
+  }, [setMessage]);
 
   useEffect(() => {
     if (
@@ -969,7 +1079,7 @@ function App() {
       .catch(() => {
         verificationRefreshUidRef.current = null;
       });
-  }, [appUser, firebaseUser, isEmailVerified]);
+  }, [appUser, firebaseUser, isEmailVerified, setMessage]);
 
   useEffect(() => {
     if (
@@ -1007,12 +1117,14 @@ function App() {
         if (!disposed) {
           setMessage(
             "メール認証が完了しました。会津大学アカウントを承認しました。",
+            "success",
           );
         }
       } catch (error) {
         if (!disposed) {
           setMessage(
             `会津大学アカウントの承認を完了できませんでした。${getFirebaseErrorMessage(error)}`,
+            "error",
           );
           setIsEmailVerified(false);
           verificationRefreshUidRef.current = null;
@@ -1025,7 +1137,7 @@ function App() {
     return () => {
       disposed = true;
     };
-  }, [appUser, firebaseUser, isEmailVerified]);
+  }, [appUser, firebaseUser, isEmailVerified, setMessage]);
 
   useEffect(() => {
     if (!appUser || appUser.status !== "active" || appUser.role !== "student") {
@@ -1038,9 +1150,9 @@ function App() {
       return;
     }
     void loadProductData(appUser.uid).catch((error) => {
-      setMessage(getFirebaseErrorMessage(error));
+      setMessage(getFirebaseErrorMessage(error), "error");
     });
-  }, [appUser]);
+  }, [appUser, setMessage]);
 
   useEffect(() => {
     if (!appUser || appUser.status !== "active" || appUser.role === "admin") {
@@ -1055,9 +1167,9 @@ function App() {
             ? (snapshot.data() as AccountDeletionRequest)
             : null,
         ),
-      (error) => setMessage(getFirebaseErrorMessage(error)),
+      (error) => setMessage(getFirebaseErrorMessage(error), "error"),
     );
-  }, [appUser]);
+  }, [appUser, setMessage]);
 
   const requestAccountDeletion = async (reason: string) => {
     if (!appUser) return;
@@ -1096,9 +1208,9 @@ function App() {
             ...applicationDoc.data(),
           })) as EventApplication[],
         ),
-      (error) => setMessage(getFirebaseErrorMessage(error)),
+      (error) => setMessage(getFirebaseErrorMessage(error), "error"),
     );
-  }, [appUser]);
+  }, [appUser, setMessage]);
 
   const fetchEventPage = async (
     cursor: QueryDocumentSnapshot<DocumentData> | null,
@@ -1148,11 +1260,82 @@ function App() {
     } catch (error) {
       setMessage(
         `イベントを追加で読み込めませんでした。${getFirebaseErrorMessage(error)}`,
+        "error",
       );
     } finally {
       setIsLoadingMoreEvents(false);
     }
   };
+
+  useEffect(() => {
+    const requestId = exhaustiveSearchRequestRef.current + 1;
+    exhaustiveSearchRequestRef.current = requestId;
+
+    if (
+      activeTab !== "search" ||
+      !hasActiveSearchCriteria ||
+      !eventPageCursor ||
+      !hasMoreEvents
+    ) {
+      setIsLoadingMoreEvents(false);
+      return;
+    }
+
+    setIsLoadingMoreEvents(true);
+    void (async () => {
+      try {
+        let cursor: QueryDocumentSnapshot<DocumentData> | null =
+          eventPageCursor;
+        let hasNextPage: boolean = hasMoreEvents;
+        const searchEvents: AizuEvent[] = [];
+
+        while (
+          cursor &&
+          hasNextPage &&
+          exhaustiveSearchRequestRef.current === requestId
+        ) {
+          const page = await fetchEventPage(cursor);
+          searchEvents.push(...page.events);
+          cursor = page.cursor;
+          hasNextPage = page.hasMore;
+        }
+
+        if (exhaustiveSearchRequestRef.current !== requestId) return;
+        setEvents((current) => {
+          const knownIds = new Set(current.map((event) => event.id));
+          return [
+            ...current,
+            ...searchEvents.filter((event) => !knownIds.has(event.id)),
+          ];
+        });
+        setEventPageCursor(cursor);
+        setHasMoreEvents(hasNextPage);
+      } catch (error) {
+        if (exhaustiveSearchRequestRef.current === requestId) {
+          setMessage(
+            `検索対象をすべて読み込めませんでした。${getFirebaseErrorMessage(error)}`,
+            "error",
+          );
+        }
+      } finally {
+        if (exhaustiveSearchRequestRef.current === requestId) {
+          setIsLoadingMoreEvents(false);
+        }
+      }
+    })();
+
+    return () => {
+      if (exhaustiveSearchRequestRef.current === requestId) {
+        exhaustiveSearchRequestRef.current += 1;
+      }
+    };
+  }, [
+    activeTab,
+    eventPageCursor,
+    hasActiveSearchCriteria,
+    hasMoreEvents,
+    setMessage,
+  ]);
 
   const loadProductData = async (uid: string) => {
     const firstEventPage = await fetchEventPage(null);
@@ -1294,10 +1477,10 @@ function App() {
         setHasOlderChatMessages(snapshot.size === chatMessageLimit);
       },
       (error) => {
-        setMessage(getFirebaseErrorMessage(error));
+        setMessage(getFirebaseErrorMessage(error), "error");
       },
     );
-  }, [activeRoomId, chatMessageLimit]);
+  }, [activeRoomId, chatMessageLimit, setMessage]);
 
   useEffect(() => {
     if (!activeRoomId || !appUser) {
@@ -1311,7 +1494,9 @@ function App() {
         readAt: serverTimestamp(),
       },
       { merge: true },
-    ).catch((error: unknown) => setMessage(getFirebaseErrorMessage(error)));
+    ).catch((error: unknown) =>
+      setMessage(getFirebaseErrorMessage(error), "error"),
+    );
     return onSnapshot(
       collection(db, "chatRooms", activeRoomId, "reads"),
       (snapshot) =>
@@ -1320,9 +1505,9 @@ function App() {
             ...(receiptDoc.data() as ChatReadReceipt),
           })),
         ),
-      (error) => setMessage(getFirebaseErrorMessage(error)),
+      (error) => setMessage(getFirebaseErrorMessage(error), "error"),
     );
-  }, [activeRoomId, appUser]);
+  }, [activeRoomId, appUser, setMessage]);
 
   const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1342,26 +1527,27 @@ function App() {
         ? devAdminPassword
         : password;
     if (!normalizedEmail || !password) {
-      setMessage("メールアドレスとパスワードを入力してください。");
+      setMessage("メールアドレスとパスワードを入力してください。", "error");
       return;
     }
     if (authMode === "register") {
       if (!hasAcceptedLegal) {
         setMessage(
           "利用規約とプライバシーポリシーを確認し、同意してください。",
+          "error",
         );
         return;
       }
       if (password.length < 10) {
-        setMessage("パスワードは10文字以上にしてください。");
+        setMessage("パスワードは10文字以上にしてください。", "error");
         return;
       }
       if (accountType === "student" && !displayName.trim()) {
-        setMessage("表示名を入力してください。");
+        setMessage("表示名を入力してください。", "error");
         return;
       }
       if (accountType === "organization" && !organizationName.trim()) {
-        setMessage("団体・自治体名を入力してください。");
+        setMessage("団体・自治体名を入力してください。", "error");
         return;
       }
     }
@@ -1475,9 +1661,11 @@ function App() {
       let registrationMessage = isAizuStudent
         ? "登録しました。メール認証が完了すると、すぐに利用できます。"
         : "登録しました。メール認証と管理者の承認後に利用できます。";
+      let registrationTone: NoticeTone = "success";
       try {
         await sendEmailVerification(credential.user);
       } catch (verificationError) {
+        registrationTone = "info";
         registrationMessage = `登録は完了しましたが、確認メールを送信できませんでした。${getFirebaseErrorMessage(verificationError)}`;
       }
       setAppUser({
@@ -1487,14 +1675,14 @@ function App() {
         legalAcceptedAt: Timestamp.now(),
         eligibilityConfirmedAt: Timestamp.now(),
       });
-      setMessage(registrationMessage);
+      setMessage(registrationMessage, registrationTone);
     } catch (error) {
       if (createdUser) {
         await deleteUser(createdUser).catch(async () => {
           await signOut(auth).catch(() => undefined);
         });
       }
-      setMessage(getFirebaseErrorMessage(error));
+      setMessage(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsActionLoading(false);
     }
@@ -1508,12 +1696,14 @@ function App() {
     if (!eventToApply.createdBy) {
       setMessage(
         "この活動は現在申請できません。公開済みの活動を選択してください。",
+        "error",
       );
       return;
     }
     if (!hasRequiredCommerceDisclosure(eventToApply)) {
       setMessage(
         "この有料イベントは法定表示の確認中です。表示が整うまで申込みできません。",
+        "error",
       );
       return;
     }
@@ -1539,9 +1729,10 @@ function App() {
         applicationStatus === "waitlisted"
           ? "キャンセル待ちに登録しました。空きが出たら通知します。"
           : "参加申請を送信しました。主催者からの連絡を待ちましょう。",
+        "success",
       );
     } catch (error) {
-      setMessage(getFirebaseErrorMessage(error));
+      setMessage(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsActionLoading(false);
     }
@@ -1600,7 +1791,7 @@ function App() {
       await batch.commit();
     } catch (error) {
       setMessageDraft((current) => current || text);
-      setMessage(getFirebaseErrorMessage(error));
+      setMessage(getFirebaseErrorMessage(error), "error");
     }
   };
 
@@ -1630,7 +1821,9 @@ function App() {
           readAt: serverTimestamp(),
         }),
       ),
-    ).catch((error: unknown) => setMessage(getFirebaseErrorMessage(error)));
+    ).catch((error: unknown) =>
+      setMessage(getFirebaseErrorMessage(error), "error"),
+    );
   };
 
   const toggleChatMute = async (roomId: string) => {
@@ -1658,7 +1851,7 @@ function App() {
         ...preferences.filter((preference) => preference.roomId !== roomId),
         ...(current ? [current] : []),
       ]);
-      setMessage(getFirebaseErrorMessage(error));
+      setMessage(getFirebaseErrorMessage(error), "error");
     }
   };
 
@@ -1676,9 +1869,9 @@ function App() {
         status: "cancelled",
       });
       await loadProductData(appUser.uid);
-      setMessage("参加申請をキャンセルしました。");
+      setMessage("参加申請をキャンセルしました。", "success");
     } catch (error) {
-      setMessage(getFirebaseErrorMessage(error));
+      setMessage(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsActionLoading(false);
     }
@@ -1695,7 +1888,7 @@ function App() {
     >(functions, "checkInToEvent");
     await checkIn({ eventId: application.eventId, code });
     await loadProductData(appUser.uid);
-    setMessage("受付が完了しました。活動実績へ反映します。");
+    setMessage("受付が完了しました。活動実績へ反映します。", "success");
   };
 
   const submitReport = async (reason: string, description: string) => {
@@ -1713,9 +1906,9 @@ function App() {
         createdAt: serverTimestamp(),
       });
       setReportTarget(null);
-      setMessage("通報を受け付けました。運営が確認します。");
+      setMessage("通報を受け付けました。運営が確認します。", "success");
     } catch (error) {
-      setMessage(getFirebaseErrorMessage(error));
+      setMessage(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsActionLoading(false);
     }
@@ -1788,7 +1981,7 @@ function App() {
       );
       await batch.commit();
     } catch (error) {
-      setMessage(getFirebaseErrorMessage(error));
+      setMessage(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsActionLoading(false);
     }
@@ -1827,6 +2020,7 @@ function App() {
           setHasAcceptedLegal,
           isActionLoading,
           message,
+          messageTone,
           handleAuthSubmit,
         }}
       />
@@ -1890,6 +2084,7 @@ function App() {
       <LegalReconsentScreen
         isLoading={isActionLoading}
         message={message}
+        messageTone={messageTone}
         onAccept={acceptUpdatedLegalDocuments}
         onLogout={() => void handleLogout()}
       />
@@ -1924,6 +2119,10 @@ function App() {
 
   const hasApplied = (eventId: string) =>
     applications.some((application) => application.eventId === eventId);
+  const openApplicationDialog = (event: AizuEvent) => {
+    setSelectedEventId(null);
+    setApplicationEvent(event);
+  };
   const saveCurrentSearch = async () => {
     const nextSearch: SavedSearch = {
       userId: appUser.uid,
@@ -1943,7 +2142,10 @@ function App() {
       { merge: true },
     );
     setSavedSearch(nextSearch);
-    setMessage("検索条件を保存しました。条件に合う新着イベントを通知します。");
+    setMessage(
+      "検索条件を保存しました。条件に合う新着イベントを通知します。",
+      "success",
+    );
   };
   const applySavedSearch = () => {
     if (!savedSearch) return;
@@ -1975,7 +2177,7 @@ function App() {
       setSavedEventIds((current) =>
         saved ? [...current, eventId] : current.filter((id) => id !== eventId),
       );
-      setMessage(getFirebaseErrorMessage(error));
+      setMessage(getFirebaseErrorMessage(error), "error");
     });
   };
 
@@ -2018,20 +2220,29 @@ function App() {
               企画
             </button>
             <button
+              ref={notificationButtonRef}
               className="icon-button"
               title="通知"
               type="button"
+              aria-label={
+                unreadNotificationTotal > 0
+                  ? `通知、未読${unreadNotificationTotal}件`
+                  : "通知"
+              }
+              aria-controls="notification-panel"
+              aria-expanded={isNotificationOpen}
               onClick={() => setIsNotificationOpen((current) => !current)}
             >
               <Bell size={19} />
               {notifications.some((notification) => !notification.isRead) && (
-                <span className="notification-dot" />
+                <span className="notification-dot" aria-hidden="true" />
               )}
             </button>
             <button
               className="avatar-button"
               title="プロフィール"
               type="button"
+              aria-label="プロフィール"
               onClick={() => setActiveTab("profile")}
             >
               <UserRound size={18} />
@@ -2040,11 +2251,55 @@ function App() {
         </div>
       </header>
 
-      <main className="app-content" id="student-main" tabIndex={-1}>
+      <nav className="bottom-nav" aria-label="メインナビゲーション">
+        <TabButton
+          active={activeTab === "home"}
+          icon={<Home size={19} />}
+          label="ホーム"
+          onClick={goToStudentHome}
+        />
+        <TabButton
+          active={activeTab === "search"}
+          icon={<Compass size={19} />}
+          label="探す"
+          onClick={() => setActiveTab("search")}
+        />
+        <TabButton
+          active={activeTab === "activity"}
+          icon={<CalendarDays size={19} />}
+          label="活動"
+          onClick={() => setActiveTab("activity")}
+        />
+        <TabButton
+          active={activeTab === "messages"}
+          icon={<MessageSquareText size={19} />}
+          label="メッセージ"
+          badge={unreadChatTotal || undefined}
+          onClick={() => setActiveTab("messages")}
+        />
+        <TabButton
+          active={activeTab === "profile"}
+          icon={<CircleUserRound size={19} />}
+          label="プロフィール"
+          onClick={() => setActiveTab("profile")}
+        />
+      </nav>
+
+      <main
+        className="app-content"
+        id="student-main"
+        aria-label={tabLabels[activeTab]}
+        tabIndex={-1}
+      >
         {isNotificationOpen && (
           <NotificationPanel
             notifications={notifications}
-            onClose={() => setIsNotificationOpen(false)}
+            onClose={() => {
+              setIsNotificationOpen(false);
+              window.requestAnimationFrame(() =>
+                notificationButtonRef.current?.focus(),
+              );
+            }}
             onRead={async (notification) => {
               try {
                 await updateDoc(doc(db, "notifications", notification.id), {
@@ -2078,7 +2333,7 @@ function App() {
                   setIsNotificationOpen(false);
                 }
               } catch (error) {
-                setMessage(getFirebaseErrorMessage(error));
+                setMessage(getFirebaseErrorMessage(error), "error");
               }
             }}
           />
@@ -2087,9 +2342,9 @@ function App() {
           <div className="welcome-row">
             <div>
               <h1>
-                <span className="welcome-name">{appUser.displayName}さん</span>
+                こんにちは、
                 <wbr />
-                、こんにちは
+                <span className="welcome-name">{appUser.displayName}さん</span>
               </h1>
               <p>参加予定や新しいイベントを確認できます。</p>
             </div>
@@ -2104,16 +2359,11 @@ function App() {
           </div>
         )}
         {message && (
-          <div className="notice" role="status" aria-live="polite">
-            <CheckCircle2 size={18} /> {message}
-            <button
-              type="button"
-              onClick={() => setMessage("")}
-              aria-label="お知らせを閉じる"
-            >
-              <X size={16} />
-            </button>
-          </div>
+          <NoticeBanner
+            message={message}
+            tone={messageTone}
+            onClose={() => setMessage("")}
+          />
         )}
         {activeTab === "home" && (
           <HomeTab
@@ -2128,7 +2378,7 @@ function App() {
               setSelectedEventId,
               toggleSaved,
               hasApplied,
-              requestApplication: setApplicationEvent,
+              requestApplication: openApplicationDialog,
               isActionLoading,
               setActiveTab,
               setFilter,
@@ -2161,7 +2411,7 @@ function App() {
               setSelectedEventId,
               selectedEvent,
               hasApplied,
-              requestApplication: setApplicationEvent,
+              requestApplication: openApplicationDialog,
               isActionLoading,
               searchDateFilter,
               setSearchDateFilter,
@@ -2180,7 +2430,7 @@ function App() {
               savedSearch,
               onSaveSearch: () =>
                 void saveCurrentSearch().catch((error) =>
-                  setMessage(getFirebaseErrorMessage(error)),
+                  setMessage(getFirebaseErrorMessage(error), "error"),
                 ),
               onApplySavedSearch: applySavedSearch,
               onlyAvailableEvents,
@@ -2195,6 +2445,7 @@ function App() {
                 setSearchTimeFilter("すべて");
                 setSearchFeeFilter("すべて");
                 setSearchFormatFilter("すべて");
+                setSearchSort("開催が近い順");
                 setOnlyAvailableEvents(false);
                 setOnlyBeginnerEvents(false);
               },
@@ -2256,7 +2507,7 @@ function App() {
               try {
                 await uploadChatAttachment(file);
               } catch (error) {
-                setMessage(getFirebaseErrorMessage(error));
+                setMessage(getFirebaseErrorMessage(error), "error");
               }
             }}
             onReportMessage={(chatMessage) =>
@@ -2346,39 +2597,6 @@ function App() {
           />
         )}
       </main>
-      <nav className="bottom-nav" aria-label="メインナビゲーション">
-        <TabButton
-          active={activeTab === "home"}
-          icon={<Home size={19} />}
-          label="ホーム"
-          onClick={goToStudentHome}
-        />
-        <TabButton
-          active={activeTab === "search"}
-          icon={<Compass size={19} />}
-          label="探す"
-          onClick={() => setActiveTab("search")}
-        />
-        <TabButton
-          active={activeTab === "activity"}
-          icon={<CalendarDays size={19} />}
-          label="活動"
-          onClick={() => setActiveTab("activity")}
-        />
-        <TabButton
-          active={activeTab === "messages"}
-          icon={<MessageSquareText size={19} />}
-          label="メッセージ"
-          badge={unreadChatTotal || undefined}
-          onClick={() => setActiveTab("messages")}
-        />
-        <TabButton
-          active={activeTab === "profile"}
-          icon={<CircleUserRound size={19} />}
-          label="プロフィール"
-          onClick={() => setActiveTab("profile")}
-        />
-      </nav>
       {reportTarget && (
         <ReportDialog
           target={reportTarget}
@@ -2635,24 +2853,27 @@ function SearchTab(props: {
     <section className="tab-page search-page">
       <div className="page-title">
         <div>
-          <h2>イベントを探す</h2>
+          <h1>イベントを探す</h1>
           <p>キーワードや条件から絞り込めます。</p>
         </div>
-        <div className="result-count">
+        <div className="result-count" role="status" aria-atomic="true">
           <span>
             {props.filteredEvents.length}
             <small>件</small>
           </span>
           <em>
-            {props.hasMoreEvents
-              ? `${props.loadedEventCount}件を読み込み済み`
-              : "公開中の全件を読み込み済み"}
+            {props.isLoadingMoreEvents
+              ? "検索対象を読み込み中"
+              : props.hasMoreEvents
+                ? `${props.loadedEventCount}件を読み込み済み`
+                : "公開中の全件を読み込み済み"}
           </em>
         </div>
       </div>
       <div className="search-field large">
         <Search size={19} />
         <input
+          id="event-search-input"
           aria-label="イベントを検索"
           value={props.searchText}
           onChange={(event) => props.setSearchText(event.target.value)}
@@ -2667,6 +2888,7 @@ function SearchTab(props: {
             }
             key={category}
             type="button"
+            aria-pressed={props.filter === category}
             onClick={() => props.setFilter(category)}
           >
             {category}
@@ -2705,21 +2927,24 @@ function SearchTab(props: {
         className={`search-filter-panel ${areAdvancedFiltersOpen ? "open" : ""}`}
         id="advanced-search-filters"
       >
+        <div className="search-filter-panel-head">
+          <strong>詳細な絞り込み</strong>
+          <small>必要な条件だけ選べます</small>
+        </div>
         <div className="advanced-filter-row" aria-label="追加の絞り込み">
           <div className="advanced-filter-group">
             <CalendarClock size={15} />
-            {(["すべて", "今週", "今月"] as SearchDateFilter[]).map(
-              (value) => (
-                <button
-                  className={props.searchDateFilter === value ? "active" : ""}
-                  key={value}
-                  type="button"
-                  onClick={() => props.setSearchDateFilter(value)}
-                >
-                  {value}
-                </button>
-              ),
-            )}
+            {(["すべて", "今週", "今月"] as SearchDateFilter[]).map((value) => (
+              <button
+                className={props.searchDateFilter === value ? "active" : ""}
+                key={value}
+                type="button"
+                aria-pressed={props.searchDateFilter === value}
+                onClick={() => props.setSearchDateFilter(value)}
+              >
+                {value}
+              </button>
+            ))}
           </div>
           <label className="toggle-filter">
             <input
@@ -2822,12 +3047,13 @@ function SearchTab(props: {
         </div>
       </div>
       <div className="search-toolbar">
-        <div className="view-switch" aria-label="表示形式">
+        <div className="view-switch" role="group" aria-label="表示形式">
           <button
             className={props.searchView === "list" ? "active" : ""}
             type="button"
             title="一覧表示"
             aria-label="一覧表示"
+            aria-pressed={props.searchView === "list"}
             onClick={() => props.setSearchView("list")}
           >
             <List size={16} />
@@ -2837,6 +3063,7 @@ function SearchTab(props: {
             type="button"
             title="日付別表示"
             aria-label="日付別表示"
+            aria-pressed={props.searchView === "calendar"}
             onClick={() => props.setSearchView("calendar")}
           >
             <CalendarDays size={16} />
@@ -2856,7 +3083,11 @@ function SearchTab(props: {
         </div>
       </div>
       {props.filteredEvents.length === 0 ? (
-        <EmptySearchResults onReset={props.onResetFilters} />
+        <EmptySearchResults
+          hasMoreEvents={props.hasMoreEvents}
+          isLoading={props.isLoadingMoreEvents}
+          onReset={props.onResetFilters}
+        />
       ) : props.searchView === "calendar" ? (
         <div className="calendar-event-groups">
           {Object.entries(calendarGroups).map(([date, events]) => (
@@ -2893,7 +3124,7 @@ function SearchTab(props: {
           ))}
         </div>
       )}
-      <div className="event-pagination" aria-live="polite">
+      <div className="event-pagination">
         <div>
           <strong>
             {props.hasMoreEvents
@@ -3018,7 +3249,7 @@ function ActivityTab(props: {
     <section className="tab-page activity-page">
       <div className="page-title">
         <div>
-          <h2>参加履歴</h2>
+          <h1>参加履歴</h1>
           <p>申請中・参加予定・参加済みのイベントを確認できます。</p>
         </div>
         <div className="activity-total">
@@ -3334,6 +3565,7 @@ function MessagesTab({
   onOpenEvent?: (eventId: string) => void;
 }) {
   const activeRoom = rooms.find((room) => room.id === activeRoomId);
+  const newestMessage = messages[messages.length - 1];
   const [pinnedDraft, setPinnedDraft] = useState("");
   const [noticeDraft, setNoticeDraft] = useState("");
   const [isMetaEditing, setIsMetaEditing] = useState(false);
@@ -3418,7 +3650,7 @@ function MessagesTab({
     <section className="tab-page">
       <div className="page-title">
         <div>
-          <h2>メッセージ</h2>
+          <h1>メッセージ</h1>
           <p>イベントの主催者との連絡を確認できます。</p>
         </div>
         <div className="message-count">
@@ -3447,7 +3679,11 @@ function MessagesTab({
                   onChange={(event) => setRoomSearch(event.target.value)}
                 />
               </div>
-              <div className="conversation-filters" aria-label="チャット種別">
+              <div
+                className="conversation-filters"
+                role="group"
+                aria-label="チャット種別"
+              >
                 {(
                   [
                     ["all", "すべて"],
@@ -3459,6 +3695,7 @@ function MessagesTab({
                     className={roomTypeFilter === value ? "active" : ""}
                     type="button"
                     key={value}
+                    aria-pressed={roomTypeFilter === value}
                     onClick={() => setRoomTypeFilter(value)}
                   >
                     {label}
@@ -3467,6 +3704,7 @@ function MessagesTab({
                 <button
                   className={unreadOnly ? "active" : ""}
                   type="button"
+                  aria-pressed={unreadOnly}
                   onClick={() => setUnreadOnly((current) => !current)}
                 >
                   未読
@@ -3484,6 +3722,7 @@ function MessagesTab({
                   className={`conversation-item ${room.id === activeRoomId ? "active" : ""}`}
                   key={room.id}
                   type="button"
+                  aria-pressed={room.id === activeRoomId}
                   onClick={() => selectRoom(room.id)}
                 >
                   <div className="conversation-avatar">
@@ -3666,7 +3905,21 @@ function MessagesTab({
                   <ChevronRight size={15} />
                 </button>
               )}
-              <div className="chat-messages">
+              <div
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {newestMessage
+                  ? `最新のメッセージ。${newestMessage.senderName}さん、${newestMessage.text || newestMessage.attachmentName || "添付ファイル"}`
+                  : ""}
+              </div>
+              <div
+                className="chat-messages"
+                role="region"
+                aria-label="メッセージ履歴"
+              >
                 {hasOlderMessages && onLoadOlder && (
                   <button
                     className="chat-load-older"
@@ -3745,6 +3998,7 @@ function MessagesTab({
                                 className="message-report-button"
                                 type="button"
                                 title="メッセージを通報"
+                                aria-label={`${chatMessage.senderName}さんのメッセージを通報`}
                                 onClick={() => onReportMessage(chatMessage)}
                               >
                                 <Flag size={12} />
@@ -4042,7 +4296,12 @@ function CertificateDialog({
   onClose: () => void;
 }) {
   const [shareNotice, setShareNotice] = useState("");
-  const dialogRef = useDialogAccessibility<HTMLElement>(onClose);
+  const dialogRef = useDialogAccessibility<HTMLElement>(onClose, () => {
+    const activeTabButton = document.querySelector<HTMLElement>(
+      '.bottom-nav [aria-current="page"]',
+    );
+    return activeTabButton ?? document.getElementById("student-main");
+  });
   const shareText = `${userName}さんは「${activity.title}」に参加しました。活動証明: ${activity.certificateId ?? activity.id}`;
   const shareCertificate = async () => {
     if (navigator.share) {
@@ -4123,7 +4382,13 @@ function CertificateDialog({
           <small>発行: Aizu Connect / 主催者確認済み</small>
         </div>
         {shareNotice && (
-          <div className="form-message no-print">{shareNotice}</div>
+          <div
+            className="form-message no-print"
+            role="status"
+            aria-live="polite"
+          >
+            {shareNotice}
+          </div>
         )}
         <div className="image-review-actions no-print">
           <button
@@ -4161,7 +4426,7 @@ function AccountDeletionPanel({
   const [isRequestOpen, setIsRequestOpen] = useState(false);
   const [isCancelOpen, setIsCancelOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, noticeTone, setNotice] = useNoticeState();
   const isSubmitted = request?.status === "submitted";
 
   return (
@@ -4184,11 +4449,7 @@ function AccountDeletionPanel({
       {isSubmitted && request?.reason && (
         <p className="account-deletion-reason">申請理由: {request.reason}</p>
       )}
-      {notice && (
-        <div className="form-message" role="status" aria-live="polite">
-          {notice}
-        </div>
-      )}
+      {notice && <NoticeBanner message={notice} tone={noticeTone} />}
       <div className="row-actions">
         {isSubmitted ? (
           <button
@@ -4226,9 +4487,14 @@ function AccountDeletionPanel({
             void onRequest(reason)
               .then(() => {
                 setIsRequestOpen(false);
-                setNotice("退会・データ削除の申請を受け付けました。");
+                setNotice(
+                  "退会・データ削除の申請を受け付けました。",
+                  "success",
+                );
               })
-              .catch((error) => setNotice(getFirebaseErrorMessage(error)))
+              .catch((error) =>
+                setNotice(getFirebaseErrorMessage(error), "error"),
+              )
               .finally(() => setIsSaving(false));
           }}
         />
@@ -4245,9 +4511,11 @@ function AccountDeletionPanel({
             void onCancel()
               .then(() => {
                 setIsCancelOpen(false);
-                setNotice("退会申請を取り消しました。");
+                setNotice("退会申請を取り消しました。", "success");
               })
-              .catch((error) => setNotice(getFirebaseErrorMessage(error)))
+              .catch((error) =>
+                setNotice(getFirebaseErrorMessage(error), "error"),
+              )
               .finally(() => setIsSaving(false));
           }}
         />
@@ -4320,7 +4588,8 @@ function ProfileTab({
     useState(false);
   const [profileImageInputKey, setProfileImageInputKey] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
-  const [profileMessage, setProfileMessage] = useState("");
+  const [profileMessage, profileMessageTone, setProfileMessage] =
+    useNoticeState();
   const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(
     null,
   );
@@ -4382,9 +4651,9 @@ function ProfileTab({
       setProfileImageFile(null);
       setProfileImagePreview(null);
       setIsEditing(false);
-      setProfileMessage("プロフィールを更新しました。");
+      setProfileMessage("プロフィールを更新しました。", "success");
     } catch (error) {
-      setProfileMessage(getFirebaseErrorMessage(error));
+      setProfileMessage(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsSaving(false);
     }
@@ -4401,7 +4670,7 @@ function ProfileTab({
           )}
         </div>
         <div className="profile-copy">
-          <h2>{appUser.displayName}</h2>
+          <h1>{appUser.displayName}</h1>
           <p>{profileMeta || "プロフィール未設定"}</p>
           <div className="interest-list">
             {appUser.interests.map((interest) => (
@@ -4430,9 +4699,7 @@ function ProfileTab({
         </button>
       </div>
       {profileMessage && (
-        <div className="notice" role="status" aria-live="polite">
-          {profileMessage}
-        </div>
+        <NoticeBanner message={profileMessage} tone={profileMessageTone} />
       )}
       {isEditing && (
         <form
@@ -4486,7 +4753,7 @@ function ProfileTab({
                     setProfileMessage("");
                     setIsProfileImageReviewOpen(true);
                   } catch (error) {
-                    setProfileMessage(getFirebaseErrorMessage(error));
+                    setProfileMessage(getFirebaseErrorMessage(error), "error");
                     event.target.value = "";
                   }
                 }}
@@ -4701,7 +4968,10 @@ function ProfileTab({
                         [key]: event.target.checked,
                       });
                     } catch (error) {
-                      setProfileMessage(getFirebaseErrorMessage(error));
+                      setProfileMessage(
+                        getFirebaseErrorMessage(error),
+                        "error",
+                      );
                     } finally {
                       setIsSavingNotifications(false);
                     }
@@ -4939,7 +5209,12 @@ function EventDrawer({
     event.organizationVerified ?? Boolean(event.createdBy);
   const [organizerProfile, setOrganizerProfile] =
     useState<PublicOrganizerProfile | null>(null);
-  const dialogRef = useDialogAccessibility<HTMLElement>(onClose);
+  const dialogRef = useDialogAccessibility<HTMLElement>(onClose, () => {
+    const activeTabButton = document.querySelector<HTMLElement>(
+      '.bottom-nav [aria-current="page"]',
+    );
+    return activeTabButton ?? document.getElementById("student-main");
+  });
   useEffect(() => {
     if (!event.createdBy) {
       setOrganizerProfile(null);
@@ -5197,6 +5472,15 @@ function EventDrawer({
               </small>
             </div>
           </div>
+          {!previewMode && (
+            <button
+              className="detail-inline-report text-button"
+              type="button"
+              onClick={onReport}
+            >
+              <Flag size={14} /> 掲載を通報
+            </button>
+          )}
           <div className="detail-action-bar">
             <div className="detail-trust-row">
               <span>
@@ -5288,12 +5572,32 @@ function EmptyEvents() {
   );
 }
 
-function EmptySearchResults({ onReset }: { onReset: () => void }) {
+function EmptySearchResults({
+  hasMoreEvents,
+  isLoading,
+  onReset,
+}: {
+  hasMoreEvents: boolean;
+  isLoading: boolean;
+  onReset: () => void;
+}) {
   return (
     <div className="empty-state">
       <Search size={30} />
-      <h3>条件に合う活動が見つかりません</h3>
-      <p>検索語や絞り込み条件を変えると、別の活動が見つかるかもしれません。</p>
+      <h3>
+        {isLoading
+          ? "すべてのイベントを検索しています"
+          : hasMoreEvents
+            ? "読み込み済みの範囲に一致するイベントはありません"
+            : "条件に合うイベントが見つかりません"}
+      </h3>
+      <p>
+        {isLoading
+          ? "結果がそろうまで少しお待ちください。"
+          : hasMoreEvents
+            ? `下の「次の${EVENT_PAGE_SIZE}件を見る」で検索対象を広げるか、条件を変えてください。`
+            : "検索語や絞り込み条件を変えると、別のイベントが見つかるかもしれません。"}
+      </p>
       <button className="secondary-action" type="button" onClick={onReset}>
         条件をリセット
       </button>
@@ -5314,6 +5618,38 @@ function BrandMark({ large = false }: { large?: boolean }) {
   );
 }
 
+function NoticeBanner({
+  message,
+  tone,
+  onClose,
+}: {
+  message: string;
+  tone: NoticeTone;
+  onClose?: () => void;
+}) {
+  return (
+    <div
+      className={`notice is-${tone}`}
+      role={tone === "error" ? "alert" : "status"}
+      aria-live={tone === "error" ? "assertive" : "polite"}
+    >
+      {tone === "error" ? (
+        <AlertCircle size={18} />
+      ) : tone === "success" ? (
+        <CheckCircle2 size={18} />
+      ) : (
+        <Info size={18} />
+      )}
+      <span>{message}</span>
+      {onClose && (
+        <button type="button" onClick={onClose} aria-label="お知らせを閉じる">
+          <X size={16} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function TabButton({
   active,
   icon,
@@ -5327,25 +5663,38 @@ function TabButton({
   badge?: number;
   onClick: () => void;
 }) {
+  const accessibleLabel = [
+    label,
+    label === "プロフィール" ? "自分" : "",
+    badge ? `未読${badge}件` : "",
+  ]
+    .filter(Boolean)
+    .join("、");
   return (
     <button
       className={`tab-button ${active ? "active" : ""}`}
       type="button"
+      aria-label={accessibleLabel}
       aria-current={active ? "page" : undefined}
       onClick={onClick}
     >
       {icon}
-      <span>{label}</span>
-      {badge ? (
-        <b aria-label={`${badge}件の未読`}>{badge > 99 ? "99+" : badge}</b>
-      ) : null}
+      <span data-short-label={label === "プロフィール" ? "自分" : undefined}>
+        {label}
+      </span>
+      {badge ? <b aria-hidden="true">{badge > 99 ? "99+" : badge}</b> : null}
     </button>
   );
 }
 
 function LoadingScreen() {
   return (
-    <main className="loading-screen">
+    <main
+      className="loading-screen"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
       <BrandMark large />
       <Loader2 size={20} className="spin" />
       <span>Aizu Connectを準備しています</span>
@@ -5356,11 +5705,13 @@ function LoadingScreen() {
 function LegalReconsentScreen({
   isLoading,
   message,
+  messageTone,
   onAccept,
   onLogout,
 }: {
   isLoading: boolean;
   message: string;
+  messageTone: NoticeTone;
   onAccept: () => Promise<void>;
   onLogout: () => void;
 }) {
@@ -5397,11 +5748,7 @@ function LegalReconsentScreen({
             両文書に同意します。16歳以上で、未成年の場合は法定代理人の同意を得ています
           </span>
         </label>
-        {message && (
-          <div className="form-message" role="status" aria-live="polite">
-            {message}
-          </div>
-        )}
+        {message && <NoticeBanner message={message} tone={messageTone} />}
         <button
           className="primary-action"
           type="button"
@@ -5454,6 +5801,7 @@ function AuthScreen(props: {
   setHasAcceptedLegal: (value: boolean) => void;
   isActionLoading: boolean;
   message: string;
+  messageTone: NoticeTone;
   handleAuthSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(
@@ -5461,13 +5809,13 @@ function AuthScreen(props: {
   );
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState(props.email);
-  const [resetMessage, setResetMessage] = useState("");
+  const [resetMessage, resetMessageTone, setResetMessage] = useNoticeState();
   const [isResetting, setIsResetting] = useState(false);
 
   const submitPasswordReset = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!resetEmail.trim()) {
-      setResetMessage("メールアドレスを入力してください。");
+      setResetMessage("メールアドレスを入力してください。", "error");
       return;
     }
     setIsResetting(true);
@@ -5476,9 +5824,10 @@ function AuthScreen(props: {
       await sendPasswordResetEmail(auth, resetEmail.trim());
       setResetMessage(
         "パスワード再設定メールを送信しました。メールを確認してください。",
+        "success",
       );
     } catch (error) {
-      setResetMessage(getFirebaseErrorMessage(error));
+      setResetMessage(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsResetting(false);
     }
@@ -5521,10 +5870,11 @@ function AuthScreen(props: {
               ? "利用に必要な情報を入力してください。"
               : "メールアドレスとパスワードを入力してください。"}
           </p>
-          <div className="auth-switch">
+          <div className="auth-switch" role="group" aria-label="認証方法">
             <button
               className={props.authMode === "register" ? "active" : ""}
               type="button"
+              aria-pressed={props.authMode === "register"}
               onClick={() => props.setAuthMode("register")}
             >
               新規登録
@@ -5532,6 +5882,7 @@ function AuthScreen(props: {
             <button
               className={props.authMode === "login" ? "active" : ""}
               type="button"
+              aria-pressed={props.authMode === "login"}
               onClick={() => props.setAuthMode("login")}
             >
               ログイン
@@ -5784,13 +6135,13 @@ function AuthScreen(props: {
                 {isResetting && <Loader2 size={16} className="spin" />}
                 メールを送る
               </button>
-              {resetMessage && <small>{resetMessage}</small>}
+              {resetMessage && (
+                <NoticeBanner message={resetMessage} tone={resetMessageTone} />
+              )}
             </form>
           )}
           {props.message && (
-            <div className="form-message" role="status" aria-live="polite">
-              {props.message}
-            </div>
+            <NoticeBanner message={props.message} tone={props.messageTone} />
           )}
           <p className="form-footnote">
             登録後、誰でもイベント企画を申請できます。会津大学メール以外の方は管理者が確認します。
@@ -5828,7 +6179,7 @@ function VerifyEmailScreen({
   onVerified: () => Promise<void>;
   onLogout: () => void;
 }) {
-  const [notice, setNotice] = useState("");
+  const [notice, noticeTone, setNotice] = useNoticeState();
   const [isSending, setIsSending] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
 
@@ -5837,9 +6188,12 @@ function VerifyEmailScreen({
     setNotice("");
     try {
       await sendEmailVerification(firebaseUser);
-      setNotice("確認メールを再送しました。メール内のリンクを開いてください。");
+      setNotice(
+        "確認メールを再送しました。メール内のリンクを開いてください。",
+        "success",
+      );
     } catch (error) {
-      setNotice(getFirebaseErrorMessage(error));
+      setNotice(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsSending(false);
     }
@@ -5850,13 +6204,15 @@ function VerifyEmailScreen({
     setNotice("");
     try {
       await onVerified();
+      const isVerified = Boolean(auth.currentUser?.emailVerified);
       setNotice(
-        auth.currentUser?.emailVerified
+        isVerified
           ? "メール認証が完了しました。"
           : "まだ認証を確認できません。メールのリンクを開いてから再確認してください。",
+        isVerified ? "success" : "info",
       );
     } catch (error) {
-      setNotice(getFirebaseErrorMessage(error));
+      setNotice(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsChecking(false);
     }
@@ -5871,11 +6227,7 @@ function VerifyEmailScreen({
           <strong>{firebaseUser.email}</strong> に確認メールを送信しました。
           リンクを開いたあと、この画面で認証状態を確認してください。
         </p>
-        {notice && (
-          <div className="notice" role="status" aria-live="polite">
-            {notice}
-          </div>
-        )}
+        {notice && <NoticeBanner message={notice} tone={noticeTone} />}
         <button
           className="primary-action"
           type="button"
@@ -6106,7 +6458,7 @@ function OrganizationDashboard({
       window.matchMedia("(min-width: 621px)").matches,
   }));
   const [isLoading, setIsLoading] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, noticeTone, setNotice] = useNoticeState();
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -6281,6 +6633,7 @@ function OrganizationDashboard({
       event.status === "published"
         ? "公開中イベントの変更は、再審査後に反映されます。"
         : "イベントを修正して再申請できます。",
+      "info",
     );
     window.setTimeout(
       () => scrollToManagementSection(eventFormSectionRef.current),
@@ -6349,6 +6702,7 @@ function OrganizationDashboard({
     setEventImagePreview(duplicateTemplate.imageUrl);
     setNotice(
       "イベントを複製しました。写真と開催日時を確認して申請してください。",
+      "info",
     );
   };
 
@@ -6423,7 +6777,7 @@ function OrganizationDashboard({
         setContactMethod(String(draft.contactMethod ?? ""));
         setOrganizerDescription(String(draft.organizerDescription ?? ""));
         setOrganizerExperience(String(draft.organizerExperience ?? ""));
-        setNotice("保存されていた下書きを復元しました。");
+        setNotice("保存されていた下書きを復元しました。", "info");
       } catch {
         window.localStorage.removeItem(
           `aizu-connect:event-draft:${appUser.uid}`,
@@ -6431,7 +6785,7 @@ function OrganizationDashboard({
       }
     }
     setIsDraftReady(true);
-  }, [appUser.uid]);
+  }, [appUser.uid, setNotice]);
 
   useEffect(() => {
     if (!isDraftReady || editingEventId) return;
@@ -6548,9 +6902,9 @@ function OrganizationDashboard({
             ...eventDoc.data(),
           })) as AizuEvent[],
         ),
-      () => setNotice("掲載した活動を取得できませんでした。"),
+      () => setNotice("掲載した活動を取得できませんでした。", "error"),
     );
-  }, [appUser.uid]);
+  }, [appUser.uid, setNotice]);
 
   useEffect(() => {
     const notificationsQuery = query(
@@ -6567,9 +6921,9 @@ function OrganizationDashboard({
             ...notificationDoc.data(),
           })) as NotificationItem[],
         ),
-      () => setNotice("通知を取得できませんでした。"),
+      () => setNotice("通知を取得できませんでした。", "error"),
     );
-  }, [appUser.uid]);
+  }, [appUser.uid, setNotice]);
 
   useEffect(() => {
     if (!selectedEventId) {
@@ -6591,9 +6945,9 @@ function OrganizationDashboard({
             ...applicationDoc.data(),
           })) as EventApplication[],
         ),
-      () => setNotice("参加者情報を取得できませんでした。"),
+      () => setNotice("参加者情報を取得できませんでした。", "error"),
     );
-  }, [appUser.uid, selectedEventId]);
+  }, [appUser.uid, selectedEventId, setNotice]);
 
   useEffect(() => {
     const roomsQuery = query(
@@ -6611,9 +6965,9 @@ function OrganizationDashboard({
         setChatRooms(rooms);
         setActiveRoomId((current) => current ?? rooms[0]?.id ?? null);
       },
-      () => setNotice("メッセージを取得できませんでした。"),
+      () => setNotice("メッセージを取得できませんでした。", "error"),
     );
-  }, [appUser.uid]);
+  }, [appUser.uid, setNotice]);
 
   useEffect(() => {
     const preferencesQuery = query(
@@ -6629,9 +6983,9 @@ function OrganizationDashboard({
             (preferenceDoc) => preferenceDoc.data() as ChatPreference,
           ),
         ),
-      () => setNotice("チャット通知設定を取得できませんでした。"),
+      () => setNotice("チャット通知設定を取得できませんでした。", "error"),
     );
-  }, [appUser.uid]);
+  }, [appUser.uid, setNotice]);
 
   useEffect(() => {
     if (!activeRoomId) {
@@ -6654,9 +7008,9 @@ function OrganizationDashboard({
         );
         setHasOlderChatMessages(snapshot.size === chatMessageLimit);
       },
-      () => setNotice("チャットを取得できませんでした。"),
+      () => setNotice("チャットを取得できませんでした。", "error"),
     );
-  }, [activeRoomId, chatMessageLimit]);
+  }, [activeRoomId, chatMessageLimit, setNotice]);
 
   useEffect(() => {
     if (!activeRoomId) {
@@ -6667,7 +7021,9 @@ function OrganizationDashboard({
       doc(db, "chatRooms", activeRoomId, "reads", appUser.uid),
       { userId: appUser.uid, readAt: serverTimestamp() },
       { merge: true },
-    ).catch((error: unknown) => setNotice(getFirebaseErrorMessage(error)));
+    ).catch((error: unknown) =>
+      setNotice(getFirebaseErrorMessage(error), "error"),
+    );
     return onSnapshot(
       collection(db, "chatRooms", activeRoomId, "reads"),
       (snapshot) =>
@@ -6676,9 +7032,9 @@ function OrganizationDashboard({
             (receiptDoc) => receiptDoc.data() as ChatReadReceipt,
           ),
         ),
-      () => setNotice("既読情報を取得できませんでした。"),
+      () => setNotice("既読情報を取得できませんでした。", "error"),
     );
-  }, [activeRoomId, appUser.uid]);
+  }, [activeRoomId, appUser.uid, setNotice]);
 
   useEffect(() => {
     setSelectedApplicantIds([]);
@@ -6718,7 +7074,7 @@ function OrganizationDashboard({
       await batch.commit();
     } catch (error) {
       setMessageDraft((current) => current || text);
-      setNotice(getFirebaseErrorMessage(error));
+      setNotice(getFirebaseErrorMessage(error), "error");
     }
   };
 
@@ -6778,7 +7134,9 @@ function OrganizationDashboard({
           readAt: serverTimestamp(),
         }),
       ),
-    ).catch((error: unknown) => setNotice(getFirebaseErrorMessage(error)));
+    ).catch((error: unknown) =>
+      setNotice(getFirebaseErrorMessage(error), "error"),
+    );
   };
 
   const toggleOrganizationChatMute = async (roomId: string) => {
@@ -6806,12 +7164,12 @@ function OrganizationDashboard({
       organizerNotice: updates.organizerNotice ?? "",
       updatedAt: serverTimestamp(),
     });
-    setNotice("全体チャットのお知らせを更新しました。");
+    setNotice("全体チャットのお知らせを更新しました。", "success");
   };
 
   const exportSelectedEventReport = () => {
     if (!selectedEvent) {
-      setNotice("レポートを出力するイベントを選択してください。");
+      setNotice("レポートを出力するイベントを選択してください。", "error");
       return;
     }
     const rows = [
@@ -6854,7 +7212,7 @@ function OrganizationDashboard({
     link.download = `${selectedEvent.title}-参加者レポート.csv`;
     link.click();
     URL.revokeObjectURL(url);
-    setNotice("参加者レポートを出力しました。");
+    setNotice("参加者レポートを出力しました。", "success");
   };
 
   const applyTemplate = (template: (typeof eventTemplates)[number]) => {
@@ -6866,6 +7224,7 @@ function OrganizationDashboard({
     setEventImagePreview(template.imageUrl);
     setNotice(
       "テンプレートの例文を表示しました。入力した内容だけが保存されます。",
+      "info",
     );
   };
 
@@ -6877,16 +7236,19 @@ function OrganizationDashboard({
       !takeawayText.trim() ||
       !startAtInput.trim()
     ) {
-      setNotice("タイトル、概要、体験できること、開催日時を入力してください。");
+      setNotice(
+        "タイトル、概要、体験できること、開催日時を入力してください。",
+        "error",
+      );
       return;
     }
     const startAtDate = new Date(startAtInput);
     if (Number.isNaN(startAtDate.getTime())) {
-      setNotice("開催日時の形式を確認してください。");
+      setNotice("開催日時の形式を確認してください。", "error");
       return;
     }
     if (!isFutureEventStart(startAtDate)) {
-      setNotice("開催日時は現在より後の日時を指定してください。");
+      setNotice("開催日時は現在より後の日時を指定してください。", "error");
       return;
     }
     const endAtDate = endAtInput
@@ -6896,7 +7258,7 @@ function OrganizationDashboard({
       Number.isNaN(endAtDate.getTime()) ||
       endAtDate.getTime() <= startAtDate.getTime()
     ) {
-      setNotice("終了日時は開催日時より後にしてください。");
+      setNotice("終了日時は開催日時より後にしてください。", "error");
       return;
     }
     if (
@@ -6913,6 +7275,7 @@ function OrganizationDashboard({
     ) {
       setNotice(
         "有料イベントは、特定商取引法に基づく表示をすべて入力してください。",
+        "error",
       );
       return;
     }
@@ -7011,9 +7374,10 @@ function OrganizationDashboard({
         editingEventId
           ? "活動を修正して再申請しました。"
           : "活動を審査へ申請しました。管理者の確認をお待ちください。",
+        "success",
       );
     } catch (error) {
-      setNotice(getFirebaseErrorMessage(error));
+      setNotice(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsLoading(false);
     }
@@ -7030,9 +7394,9 @@ function OrganizationDashboard({
           item.id === application.id ? { ...item, status } : item,
         ),
       );
-      setNotice("参加者の状態を更新しました。");
+      setNotice("参加者の状態を更新しました。", "success");
     } catch (error) {
-      setNotice(getFirebaseErrorMessage(error));
+      setNotice(getFirebaseErrorMessage(error), "error");
     }
   };
 
@@ -7047,7 +7411,7 @@ function OrganizationDashboard({
           : application.status === "confirmed"),
     );
     if (targets.length === 0) {
-      setNotice("更新できる参加者を選択してください。");
+      setNotice("更新できる参加者を選択してください。", "error");
       return;
     }
     const batch = writeBatch(db);
@@ -7062,6 +7426,7 @@ function OrganizationDashboard({
       targetStatus === "confirmed"
         ? `${targets.length}名を参加確定にしました。`
         : `${targets.length}名を出席として記録しました。`,
+      "success",
     );
   };
 
@@ -7072,7 +7437,10 @@ function OrganizationDashboard({
     await updateDoc(doc(db, "eventApplications", application.id), {
       organizerNote: organizerNote.trim().slice(0, 500),
     });
-    setNotice(`${application.studentName}さんの運営メモを保存しました。`);
+    setNotice(
+      `${application.studentName}さんの運営メモを保存しました。`,
+      "success",
+    );
   };
 
   const openApplicantChat = (application: EventApplication) => {
@@ -7082,7 +7450,7 @@ function OrganizationDashboard({
         chatRoom.roomType !== "event",
     );
     if (!room) {
-      setNotice("この参加者の個別チャットはまだ作成されていません。");
+      setNotice("この参加者の個別チャットはまだ作成されていません。", "info");
       return;
     }
     selectOrganizationChatRoom(room.id);
@@ -7098,7 +7466,10 @@ function OrganizationDashboard({
     });
     setSelectedEventId(null);
     setEventCancellationTarget(null);
-    setNotice("イベントを中止し、参加者への通知処理を開始しました。");
+    setNotice(
+      "イベントを中止し、参加者への通知処理を開始しました。",
+      "success",
+    );
   };
 
   const selectManagedEvent = (eventId: string) => {
@@ -7195,11 +7566,7 @@ function OrganizationDashboard({
       onClose={onClose}
       onLogout={onLogout}
     >
-      {notice && (
-        <div className="notice" role="status" aria-live="polite">
-          {notice}
-        </div>
-      )}
+      {notice && <NoticeBanner message={notice} tone={noticeTone} />}
       <nav className="management-nav" aria-label="企画管理メニュー">
         <button
           type="button"
@@ -7395,7 +7762,7 @@ function OrganizationDashboard({
                           setNotice("");
                           setIsEventImageReviewOpen(true);
                         } catch (error) {
-                          setNotice(getFirebaseErrorMessage(error));
+                          setNotice(getFirebaseErrorMessage(error), "error");
                           event.target.value = "";
                         }
                       }}
@@ -7983,7 +8350,7 @@ function OrganizationDashboard({
                 type="button"
                 onClick={() => {
                   void navigator.clipboard.writeText(checkInCode);
-                  setNotice("受付コードをコピーしました。");
+                  setNotice("受付コードをコピーしました。", "success");
                 }}
               >
                 <LinkIcon size={14} />
@@ -8050,7 +8417,7 @@ function OrganizationDashboard({
                 disabled={selectedApplicantIds.length === 0}
                 onClick={() =>
                   void bulkUpdateApplications("confirmed").catch((error) =>
-                    setNotice(getFirebaseErrorMessage(error)),
+                    setNotice(getFirebaseErrorMessage(error), "error"),
                   )
                 }
               >
@@ -8062,7 +8429,7 @@ function OrganizationDashboard({
                 disabled={selectedApplicantIds.length === 0}
                 onClick={() =>
                   void bulkUpdateApplications("attended").catch((error) =>
-                    setNotice(getFirebaseErrorMessage(error)),
+                    setNotice(getFirebaseErrorMessage(error), "error"),
                   )
                 }
               >
@@ -8140,7 +8507,7 @@ function OrganizationDashboard({
                           application,
                           event.currentTarget.value,
                         ).catch((error) =>
-                          setNotice(getFirebaseErrorMessage(error)),
+                          setNotice(getFirebaseErrorMessage(error), "error"),
                         );
                       }}
                     />
@@ -8246,7 +8613,7 @@ function OrganizationDashboard({
           onSelectRoom={selectOrganizationChatRoom}
           onToggleMute={(roomId) =>
             void toggleOrganizationChatMute(roomId).catch((error) =>
-              setNotice(getFirebaseErrorMessage(error)),
+              setNotice(getFirebaseErrorMessage(error), "error"),
             )
           }
           onDraftChange={setMessageDraft}
@@ -8255,7 +8622,7 @@ function OrganizationDashboard({
             try {
               await uploadOrganizationAttachment(file);
             } catch (error) {
-              setNotice(getFirebaseErrorMessage(error));
+              setNotice(getFirebaseErrorMessage(error), "error");
             }
           }}
           onSaveRoomMeta={saveRoomMeta}
@@ -8302,7 +8669,7 @@ function OrganizationDashboard({
           onClose={() => setEventCancellationTarget(null)}
           onConfirm={(reason) =>
             void cancelManagedEvent(eventCancellationTarget, reason).catch(
-              (error) => setNotice(getFirebaseErrorMessage(error)),
+              (error) => setNotice(getFirebaseErrorMessage(error), "error"),
             )
           }
         />
@@ -8337,7 +8704,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [hasMoreManagedUsers, setHasMoreManagedUsers] = useState(false);
   const [hasMoreManagedEvents, setHasMoreManagedEvents] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [notice, setNotice] = useState("");
+  const [notice, noticeTone, setNotice] = useNoticeState();
   const [isLoading, setIsLoading] = useState(false);
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [adminSearch, setAdminSearch] = useState("");
@@ -8529,7 +8896,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           })) as AizuEvent[],
         );
       },
-      () => setNotice("イベント審査キューを取得できませんでした。"),
+      () => setNotice("イベント審査キューを取得できませんでした。", "error"),
     );
     const userUnsubscribe = onSnapshot(
       query(
@@ -8549,7 +8916,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             .filter((user) => user.role !== "admin") as AppUser[],
         );
       },
-      () => setNotice("アカウント審査キューを取得できませんでした。"),
+      () => setNotice("アカウント審査キューを取得できませんでした。", "error"),
     );
     const reportUnsubscribe = onSnapshot(
       query(
@@ -8567,7 +8934,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           })) as ReportRecord[],
         );
       },
-      () => setNotice("通報キューを取得できませんでした。"),
+      () => setNotice("通報キューを取得できませんでした。", "error"),
     );
     const deletionRequestUnsubscribe = onSnapshot(
       query(
@@ -8602,10 +8969,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             ),
           )
           .catch(() =>
-            setNotice("退会申請者のアカウント情報を取得できませんでした。"),
+            setNotice(
+              "退会申請者のアカウント情報を取得できませんでした。",
+              "error",
+            ),
           );
       },
-      () => setNotice("退会申請を取得できませんでした。"),
+      () => setNotice("退会申請を取得できませんでした。", "error"),
     );
     return () => {
       eventUnsubscribe();
@@ -8618,6 +8988,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     pendingEventQueryLimit,
     pendingReportQueryLimit,
     pendingUserQueryLimit,
+    setNotice,
   ]);
 
   useEffect(() => {
@@ -8638,7 +9009,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             .filter((user) => user.role !== "admin") as AppUser[],
         );
       },
-      () => setNotice("ユーザー管理データを取得できませんでした。"),
+      () => setNotice("ユーザー管理データを取得できませんでした。", "error"),
     );
     const eventsUnsubscribe = onSnapshot(
       query(
@@ -8663,7 +9034,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             ) as AizuEvent[],
         );
       },
-      () => setNotice("公開イベント管理データを取得できませんでした。"),
+      () =>
+        setNotice("公開イベント管理データを取得できませんでした。", "error"),
     );
     const auditUnsubscribe = onSnapshot(
       query(
@@ -8678,14 +9050,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             ...auditDoc.data(),
           })) as AuditLog[],
         ),
-      () => setNotice("監査履歴を取得できませんでした。"),
+      () => setNotice("監査履歴を取得できませんでした。", "error"),
     );
     return () => {
       usersUnsubscribe();
       eventsUnsubscribe();
       auditUnsubscribe();
     };
-  }, [managedEventQueryLimit, managedUserQueryLimit]);
+  }, [managedEventQueryLimit, managedUserQueryLimit, setNotice]);
 
   const approveEvent = async (event: AizuEvent) => {
     await runAdminAction(
@@ -8770,9 +9142,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         reason: reason.trim().slice(0, 1000),
       });
       setReasonAction(null);
-      setNotice(successMessage);
+      setNotice(successMessage, "success");
     } catch (error) {
-      setNotice(getFirebaseErrorMessage(error));
+      setNotice(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsLoading(false);
     }
@@ -8872,11 +9244,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       onHome={goToAdminHome}
       onLogout={onLogout}
     >
-      {notice && (
-        <div className="notice" role="status" aria-live="polite">
-          {notice}
-        </div>
-      )}
+      {notice && <NoticeBanner message={notice} tone={noticeTone} />}
       <div className="admin-toolbar">
         <div className="conversation-search">
           <Search size={15} />
@@ -9085,7 +9453,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               type="button"
               onClick={() =>
                 void loadReviewQueue().catch((error) =>
-                  setNotice(getFirebaseErrorMessage(error)),
+                  setNotice(getFirebaseErrorMessage(error), "error"),
                 )
               }
               disabled={isLoading}
@@ -9724,7 +10092,7 @@ function RoleShell({
             <small>{subtitle}</small>
           </span>
         </button>
-        <div className="role-header-user">
+        <div className={`role-header-user${onClose ? " has-home-action" : ""}`}>
           {icon}
           <strong>{title}</strong>
           {onClose && (
@@ -9739,6 +10107,7 @@ function RoleShell({
           <button
             className="icon-button"
             title="ログアウト"
+            aria-label="ログアウト"
             type="button"
             onClick={onLogout}
           >
@@ -9807,8 +10176,26 @@ function NotificationPanel({
   onClose: () => void;
   onRead: (notification: NotificationItem) => Promise<void>;
 }) {
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    panelRef.current?.focus();
+  }, []);
+
   return (
-    <aside className="notification-panel" aria-label="通知">
+    <aside
+      ref={panelRef}
+      className="notification-panel"
+      id="notification-panel"
+      aria-label="通知"
+      tabIndex={-1}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onClose();
+        }
+      }}
+    >
       <div className="notification-panel-head">
         <div>
           <h2>通知</h2>

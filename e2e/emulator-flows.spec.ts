@@ -181,12 +181,21 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("heading", { name: "イベントを探す" }),
     ).toBeVisible();
+    const filterTrigger = page.getByRole("button", { name: "絞り込み" });
+    await expect(filterTrigger).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByLabel("曜日で絞り込む")).toBeHidden();
+    await filterTrigger.click();
+    await expect(filterTrigger).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByLabel("曜日で絞り込む")).toBeVisible();
+    await filterTrigger.click();
     const searchInput = page.getByRole("textbox", { name: "イベントを検索" });
     await searchInput.click();
     await expect(searchInput).toBeFocused();
     await searchInput.fill("存在しない活動");
     await expect(
-      page.getByRole("heading", { name: "条件に合う活動が見つかりません" }),
+      page.getByRole("heading", {
+        name: /読み込み済みの範囲に一致するイベントはありません|条件に合うイベントが見つかりません/,
+      }),
     ).toBeVisible();
     await page.getByRole("button", { name: "条件をリセット" }).click();
     await expect(searchInput).toHaveValue("");
@@ -336,6 +345,26 @@ test.describe("emulator-backed role flows", () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test("search automatically includes events beyond the first page", async ({
+    page,
+  }) => {
+    await login(page, "student-e2e@u-aizu.ac.jp");
+    await openSearch(page);
+
+    const laterEvent = page.getByRole("button", {
+      name: "E2E ページングイベント 18の詳細を見る",
+    });
+    await expect(laterEvent).toHaveCount(0);
+    await page
+      .getByRole("textbox", { name: "イベントを検索" })
+      .fill("E2E ページングイベント 18");
+    await expect(laterEvent).toBeVisible();
+    await expect(
+      page.getByText("公開中のイベントをすべて確認しました"),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
   test("verified Aizu student is approved without admin review", async ({
     page,
   }, testInfo) => {
@@ -367,6 +396,8 @@ test.describe("emulator-backed role flows", () => {
     await expect(page.getByRole("dialog", { name: eventTitle })).toBeVisible();
 
     await page.getByRole("button", { name: "このイベントに参加する" }).click();
+    await expect(page.locator('[aria-modal="true"]')).toHaveCount(1);
+    await expect(page.getByRole("dialog", { name: eventTitle })).toBeHidden();
     await confirmApplication(page, {
       message: `${projectVariant(testInfo.project.name)}から参加します。`,
     });

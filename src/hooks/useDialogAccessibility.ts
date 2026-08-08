@@ -12,13 +12,16 @@ const focusableSelector = [
 
 export function useDialogAccessibility<T extends HTMLElement>(
   onClose: () => void,
+  getFallbackFocus?: () => HTMLElement | null,
 ) {
   const dialogRef = useRef<T>(null);
   const onCloseRef = useRef(onClose);
+  const fallbackFocusRef = useRef(getFallbackFocus);
 
   useLayoutEffect(() => {
     onCloseRef.current = onClose;
-  }, [onClose]);
+    fallbackFocusRef.current = getFallbackFocus;
+  }, [getFallbackFocus, onClose]);
 
   useLayoutEffect(() => {
     const previouslyFocused =
@@ -76,7 +79,14 @@ export function useDialogAccessibility<T extends HTMLElement>(
       window.cancelAnimationFrame(focusDialog);
       window.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = previousOverflow;
-      previouslyFocused?.focus();
+      const canRestorePreviousFocus =
+        previouslyFocused &&
+        previouslyFocused !== document.body &&
+        previouslyFocused.isConnected;
+      const returnFocus = canRestorePreviousFocus
+        ? previouslyFocused
+        : fallbackFocusRef.current?.();
+      returnFocus?.focus();
     };
   }, []);
 

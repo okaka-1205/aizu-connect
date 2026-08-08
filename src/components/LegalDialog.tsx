@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import type { KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 
 import { legalDocuments, type LegalDocument } from "../content/legalDocuments";
 import { useDialogAccessibility } from "../hooks/useDialogAccessibility";
@@ -50,7 +51,7 @@ export function LegalDialog({
   const content = legalDocuments[document];
   const dialogRef = useDialogAccessibility<HTMLElement>(onClose);
 
-  return (
+  return createPortal(
     <div className="legal-backdrop" role="presentation" onClick={onClose}>
       <section
         ref={dialogRef}
@@ -126,6 +127,7 @@ export function LegalDialog({
           ))}
         </div>
       </section>
-    </div>
+    </div>,
+    globalThis.document.body,
   );
 }
