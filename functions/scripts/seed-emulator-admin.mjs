@@ -16,7 +16,7 @@ initializeApp({
   projectId:
     process.env.GCLOUD_PROJECT ??
     process.env.GOOGLE_CLOUD_PROJECT ??
-    "aizu-connect-dev",
+    "demo-aizu-connect-local",
 });
 
 const email = "admin@aizu-connect.local";

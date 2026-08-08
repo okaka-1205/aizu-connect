@@ -29,9 +29,9 @@ const unsafeValues = [
   env.VITE_FIREBASE_STORAGE_BUCKET,
 ].join(" ");
 
-if (/demo-aizu|localhost|127\.0\.0\.1/i.test(unsafeValues)) {
+if (/demo-aizu|aizu-connect-dev|localhost|127\.0\.0\.1/i.test(unsafeValues)) {
   throw new Error(
-    "Production build cannot use demo or local Firebase services.",
+    "Production build cannot use development, demo, or local Firebase services.",
   );
 }
 

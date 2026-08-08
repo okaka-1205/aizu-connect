@@ -7,8 +7,9 @@
     "node": "24"
   },
   "scripts": {
-    "dev": "vite",
-    "dev:local": "npm --prefix functions run build && firebase emulators:exec --config firebase.e2e.json --project demo-aizu-connect-e2e --only auth,firestore,storage,functions \"node functions/scripts/seed-e2e.mjs && npm run dev -- --host 127.0.0.1 --port 5173 --strictPort --mode emulator\"",
+    "dev": "npm run dev:local",
+    "dev:local": "npm --prefix functions run build && firebase emulators:exec --config firebase.e2e.json --project demo-aizu-connect-e2e --only auth,firestore,storage,functions \"node functions/scripts/seed-e2e.mjs && vite --host 127.0.0.1 --port 5173 --strictPort --mode emulator\"",
+    "dev:test": "vite --mode emulator",
     "build": "npm run build:production",
     "build:production": "node scripts/validate-production-env.mjs && tsc -b && vite build --mode production && node scripts/validate-production-bundle.mjs",
     "build:test": "tsc -b && vite build --mode emulator",

@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-`.env.local`のFirebaseプロジェクトへ接続せず、端末内だけで全ロールを確認する場合は次のコマンドを使います。Functionsのビルド、Auth・Firestore・Storage・Functions Emulatorの起動、確認用データの投入、Viteの起動までをまとめて行います。
+`npm run dev`は`npm run dev:local`を呼び出し、端末内のFirebase Emulatorだけを使用します。Functionsのビルド、Auth・Firestore・Storage・Functions Emulatorの起動、確認用データの投入、Viteの起動までをまとめて行います。
 
 ```bash
 npm run dev:local
@@ -38,7 +38,7 @@ npm run dev:local
 
 ## Firebase設定
 
-プロジェクトのルートに`.env.local`を作成します。
+本番用設定は、プロジェクトのルートにある`.env.production`で管理します。このファイルはGitへ追加しません。設定項目は`.env.example`を参照してください。
 
 ```env
 VITE_FIREBASE_API_KEY=...
@@ -54,13 +54,13 @@ VITE_LEGAL_REPRESENTATIVE=...
 VITE_LEGAL_CONTACT_EMAIL=...
 ```
 
-本番Firebaseへ接続して確認する場合だけ、次を設定します。
+本番ビルドでは次を設定します。
 
 ```env
 VITE_USE_FIREBASE_EMULATORS=false
 ```
 
-通常の`npm run dev`では、設定を省略するとブラウザSDKはEmulatorへ接続しません。Emulatorを使う場合は、接続設定を含む`npm run dev:local`を使用してください。
+ローカル開発から本番Firebaseへ直接接続する運用は禁止します。クラウド上の確認はデプロイ後の本番URLで行ってください。
 
 ## ロール
 
@@ -76,7 +76,7 @@ VITE_USE_FIREBASE_EMULATORS=false
 
 ```bash
 gcloud auth application-default login
-GCLOUD_PROJECT=aizu-connect-dev npm --prefix functions run admin:create -- admin@example.com
+GCLOUD_PROJECT=aizu-connect-prod npm --prefix functions run admin:create -- admin@example.com
 ```
 
 コマンドが成功したら、Authenticationの対象UIDとFirestoreの
@@ -91,7 +91,7 @@ GCLOUD_PROJECT=aizu-connect-dev npm --prefix functions run admin:create -- admin
 ```bash
 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
-GCLOUD_PROJECT=aizu-connect-dev \
+GCLOUD_PROJECT=demo-aizu-connect-local \
 npm --prefix functions run admin:seed-emulator
 ```
 
@@ -101,7 +101,7 @@ npm --prefix functions run admin:seed-emulator
 
 ```bash
 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
-GCLOUD_PROJECT=aizu-connect-dev \
+GCLOUD_PROJECT=demo-aizu-connect-local \
 npm --prefix functions run emulator:verify-user -- student@example.com
 ```
 
@@ -126,8 +126,8 @@ npm --prefix functions run build
 
 ## Hostingへの公開
 
-Firebaseプロジェクト`aizu-connect-dev`を正式な本番環境として使用します。
-プロジェクトIDに`dev`を含みますが、別の本番プロジェクトへ切り替えません。
+Firebaseプロジェクト`aizu-connect-prod`を正式な本番環境として使用します。
+旧`aizu-connect-dev`は移行確認とロールバックのためだけに保持します。
 通常の開発と自動テストには`npm run dev:local`とEmulatorを使用し、本番データへ
 テストデータを投入しないでください。
 
@@ -152,7 +152,7 @@ Functions側だけを有効化すると管理者操作が拒否されるため�
 ```bash
 npm run release:check
 npx -y firebase-tools@latest deploy \
-  --project aizu-connect-dev \
+  --project aizu-connect-prod \
   --only hosting,functions,firestore:rules,firestore:indexes,storage
 ```
 
@@ -160,9 +160,9 @@ npx -y firebase-tools@latest deploy \
 
 ## リリース前チェック
 
-- 開発・E2EテストはEmulatorだけで行い、`aizu-connect-dev`へテストデータを投入しない
+- 開発・E2EテストはEmulatorだけで行い、`aizu-connect-prod`へテストデータを投入しない
 - 本番Authenticationに初期管理者を作成し、メール確認とMFAを完了する
-- `.env.local`をGitへ追加しない
+- `.env.production`と`functions/.env.*`をGitへ追加しない
 - Firestore Rulesを本番データで検証する
 - Authenticationのメール認証とパスワード再設定を確認する
 - Storageを使う場合はStorage Rulesを追加する

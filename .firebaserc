@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "aizu-connect-dev"
+    "default": "aizu-connect-prod",
+    "production": "aizu-connect-prod"
   }
 }

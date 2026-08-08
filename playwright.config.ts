@@ -14,7 +14,7 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: `npm run dev -- --host 127.0.0.1 --port ${testPort} --strictPort`,
+    command: `npm run dev:test -- --host 127.0.0.1 --port ${testPort} --strictPort`,
     url: testBaseUrl,
     reuseExistingServer:
       !process.env.CI && process.env.VITE_USE_FIREBASE_EMULATORS !== "true",
