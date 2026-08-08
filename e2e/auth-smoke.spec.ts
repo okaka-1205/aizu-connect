@@ -59,11 +59,30 @@ test.describe("auth entry", () => {
     await page.goto("/");
 
     await page.getByRole("button", { name: "利用規約" }).click();
-    await expect(page.getByRole("dialog", { name: "利用規約" })).toBeVisible();
+    const termsDialog = page.getByRole("dialog", { name: "利用規約" });
+    const termsBody = page.getByRole("region", { name: "利用規約の本文" });
+    await expect(termsDialog).toBeVisible();
+    await expect(termsBody).toBeFocused();
     await expect(
       page.getByRole("heading", { name: "第1条 適用とアカウント" }),
     ).toBeVisible();
     await expect(page.getByText("2026年8月1日")).toBeVisible();
+    await termsBody.press("PageDown");
+    await expect
+      .poll(() => termsBody.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    const legalLayout = await termsDialog.evaluate((dialog) => {
+      const body = dialog.querySelector<HTMLElement>(".legal-dialog-body");
+      const dialogBounds = dialog.getBoundingClientRect();
+      const bodyBounds = body?.getBoundingClientRect();
+      return {
+        bodyBottom: Math.round(bodyBounds?.bottom ?? 0),
+        dialogBottom: Math.round(dialogBounds.bottom),
+      };
+    });
+    expect(legalLayout.bodyBottom).toBeLessThanOrEqual(
+      legalLayout.dialogBottom,
+    );
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "利用規約" })).toBeHidden();
 

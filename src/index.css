@@ -3758,6 +3758,8 @@ kbd {
   background: rgba(19, 34, 56, 0.42);
 }
 .legal-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   width: min(760px, 100%);
   max-height: min(760px, 90vh);
   overflow: hidden;
@@ -3784,9 +3786,14 @@ kbd {
 .legal-dialog-body {
   display: grid;
   gap: 24px;
-  max-height: calc(min(760px, 90vh) - 88px);
+  min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 22px 24px 28px;
+}
+.legal-dialog-body:focus-visible {
+  outline: 2px solid #7398d4;
+  outline-offset: -2px;
 }
 .legal-dialog-body section {
   display: grid;
