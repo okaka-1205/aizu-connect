@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">学びイベントのイメージ</title>
+  <desc id="desc">開いた本と鉛筆を表すシンプルな図形</desc>
+  <rect width="1200" height="675" fill="#eef8f4"/>
+  <path d="M0 520h1200v155H0z" fill="#d9eee6"/>
+  <path d="M600 500c-91-69-197-92-318-69V204c121-23 227 0 318 69v227Z" fill="#fff" stroke="#247b65" stroke-linejoin="round" stroke-width="22"/>
+  <path d="M600 500c91-69 197-92 318-69V204c-121-23-227 0-318 69v227Z" fill="#fff" stroke="#247b65" stroke-linejoin="round" stroke-width="22"/>
+  <path d="M600 273v227M354 286c67-6 123 7 171 37M354 355c67-6 123 7 171 37M846 286c-67-6-123 7-171 37" fill="none" stroke="#247b65" stroke-linecap="round" stroke-width="18"/>
+  <path d="m814 117 112 112-211 211-130 18 18-130 211-211Z" fill="#f3b943" stroke="#6e5221" stroke-linejoin="round" stroke-width="18"/>
+  <path d="m715 440-130 18 18-130" fill="#fff" stroke="#6e5221" stroke-linejoin="round" stroke-width="18"/>
+</svg>

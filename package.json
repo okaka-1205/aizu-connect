@@ -1,18 +1,23 @@
 {
   "name": "aizu-connect",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": "24"
+  },
   "scripts": {
-    "dev": "vite",
-    "dev:local": "npm --prefix functions run build && firebase emulators:exec --config firebase.e2e.json --project demo-aizu-connect-e2e --only auth,firestore,storage,functions \"node functions/scripts/seed-e2e.mjs && npm run dev -- --host 127.0.0.1 --port 5173 --strictPort --mode emulator\"",
+    "dev": "npm run dev:local",
+    "dev:local": "npm --prefix functions run build && firebase emulators:exec --config firebase.e2e.json --project demo-aizu-connect-e2e --only auth,firestore,storage,functions \"node functions/scripts/seed-e2e.mjs && vite --host 127.0.0.1 --port 5173 --strictPort --mode emulator\"",
+    "dev:test": "vite --mode emulator",
     "build": "npm run build:production",
     "build:production": "node scripts/validate-production-env.mjs && tsc -b && vite build --mode production && node scripts/validate-production-bundle.mjs",
     "build:test": "tsc -b && vite build --mode emulator",
     "lint": "oxlint",
     "test:unit": "vitest run src/lib/appLogic.test.ts",
     "test:e2e": "playwright test e2e/auth-smoke.spec.ts",
-    "test:e2e:emulator": "npm --prefix functions run build && firebase emulators:exec --config firebase.e2e.json --project demo-aizu-connect-e2e --only auth,firestore,storage,functions \"node functions/scripts/seed-e2e.mjs && VITE_USE_FIREBASE_EMULATORS=true VITE_FIREBASE_API_KEY=demo VITE_FIREBASE_AUTH_DOMAIN=demo-aizu-connect-e2e.firebaseapp.com VITE_FIREBASE_PROJECT_ID=demo-aizu-connect-e2e VITE_FIREBASE_STORAGE_BUCKET=demo-aizu-connect-e2e.appspot.com VITE_FIREBASE_MESSAGING_SENDER_ID=0 VITE_FIREBASE_APP_ID=demo VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:19099 VITE_FIREBASE_FIRESTORE_EMULATOR_PORT=18082 VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT=15001 VITE_FIREBASE_STORAGE_EMULATOR_PORT=19197 VITE_DEV_ADMIN_EMAIL=admin@aizu-connect.local VITE_DEV_ADMIN_PASSWORD=admin123 playwright test e2e/emulator-flows.spec.ts\"",
+    "test:e2e:emulator": "npm --prefix functions run build && firebase emulators:exec --config firebase.e2e.json --project demo-aizu-connect-e2e --only auth,firestore,storage,functions \"node functions/scripts/seed-e2e.mjs && PLAYWRIGHT_TEST_PORT=15173 VITE_USE_FIREBASE_EMULATORS=true VITE_FIREBASE_API_KEY=demo VITE_FIREBASE_AUTH_DOMAIN=demo-aizu-connect-e2e.firebaseapp.com VITE_FIREBASE_PROJECT_ID=demo-aizu-connect-e2e VITE_FIREBASE_STORAGE_BUCKET=demo-aizu-connect-e2e.appspot.com VITE_FIREBASE_MESSAGING_SENDER_ID=0 VITE_FIREBASE_APP_ID=demo VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:19099 VITE_FIREBASE_FIRESTORE_EMULATOR_PORT=18082 VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT=15001 VITE_FIREBASE_STORAGE_EMULATOR_PORT=19197 VITE_DEV_ADMIN_EMAIL=admin@aizu-connect.local VITE_DEV_ADMIN_PASSWORD=admin123 playwright test e2e/emulator-flows.spec.ts && node functions/scripts/verify-admin-cleanup.mjs\"",
+    "test:scale:emulator": "npm --prefix functions run build && firebase emulators:exec --config firebase.e2e.json --project demo-aizu-connect-pagination --only firestore,functions \"node functions/scripts/verify-notification-pagination.mjs\"",
     "check": "npm run lint && npm run build && npm --prefix functions run lint && npm --prefix functions run build",
     "verify": "npm run check && npm run test:unit && npm --prefix functions test && npm run test:rules && npm run test:e2e && npm run test:e2e:emulator",
     "release:check": "npm run verify",
@@ -28,8 +33,8 @@
     "lucide-react": "^1.25.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-easy-crop": "^6.2.3",
     "react-hook-form": "^7.82.0",
-    "react-router-dom": "^7.18.1",
     "tailwindcss": "^4.3.3",
     "zod": "^4.4.3"
   },

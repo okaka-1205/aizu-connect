@@ -39,6 +39,29 @@ export const shouldIncrementApplicantCount = (
 export const shouldSetChatRoomReadOnly = (status: string): boolean =>
   ["cancelled", "rejected"].includes(status);
 
+export const isEventPlanEditableStatus = (status: unknown): boolean =>
+  ["pending_review", "published", "revision_required", "unpublished"].includes(
+    String(status),
+  );
+
+export const isMissingStorageBucketError = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") return false;
+  const storageError = error as {
+    code?: unknown;
+    statusCode?: unknown;
+    message?: unknown;
+    errors?: Array<{ reason?: unknown }>;
+  };
+  return (
+    storageError.code === 404 ||
+    storageError.statusCode === 404 ||
+    storageError.code === "404" ||
+    storageError.errors?.some((item) => item.reason === "notFound") === true ||
+    (typeof storageError.message === "string" &&
+      storageError.message.includes("specified bucket does not exist"))
+  );
+};
+
 export const isCheckInWindowOpen = (
   eventStatus: string,
   startAtMillis: number,
@@ -74,6 +97,13 @@ export type EventPlanInput = {
   endAtMillis: number;
   feeType: "無料" | "有料";
   feeAmount: number;
+  commercialSellerName: string;
+  commercialSellerAddress: string;
+  commercialSellerPhone: string;
+  commercialResponsiblePerson: string;
+  paymentMethod: string;
+  paymentTiming: string;
+  additionalFees: string;
   eventFormat: "現地" | "オンライン" | "ハイブリッド";
   meetingPoint: string;
   accessInfo: string;
@@ -87,7 +117,6 @@ export type EventPlanInput = {
   templateKey: string;
   beginnerLevel: "初参加歓迎" | "少し経験者向け" | "誰でも歓迎";
   takeaways: string[];
-  atmosphere: string;
   organizerDescription: string;
   organizerExperience: string;
 };
@@ -130,12 +159,9 @@ export const normalizeEventPlanInput = (
   ];
   const feeTypes = ["無料", "有料"];
   const eventFormats = ["現地", "オンライン", "ハイブリッド"];
-  const beginnerLevels = [
-    "初参加歓迎",
-    "少し経験者向け",
-    "誰でも歓迎",
-  ];
+  const beginnerLevels = ["初参加歓迎", "少し経験者向け", "誰でも歓迎"];
   const takeaways = data.takeaways;
+  const isPaidEvent = data.feeType === "有料";
   if (
     !validText(data.title, 1, 80) ||
     !validText(data.summary, 1, 220) ||
@@ -153,6 +179,14 @@ export const normalizeEventPlanInput = (
     !Number.isFinite(data.feeAmount) ||
     data.feeAmount < 0 ||
     data.feeAmount > 1_000_000 ||
+    (isPaidEvent && data.feeAmount < 1) ||
+    (isPaidEvent && !validText(data.commercialSellerName, 1, 120)) ||
+    (isPaidEvent && !validText(data.commercialSellerAddress, 1, 240)) ||
+    (isPaidEvent && !validText(data.commercialSellerPhone, 1, 40)) ||
+    (isPaidEvent && !validText(data.commercialResponsiblePerson, 1, 80)) ||
+    (isPaidEvent && !validText(data.paymentMethod, 1, 200)) ||
+    (isPaidEvent && !validText(data.paymentTiming, 1, 200)) ||
+    (isPaidEvent && !validText(data.additionalFees, 1, 200)) ||
     !eventFormats.includes(String(data.eventFormat)) ||
     !validText(data.meetingPoint, 1, 160) ||
     !validText(data.accessInfo, 0, 300) ||
@@ -173,7 +207,6 @@ export const normalizeEventPlanInput = (
     takeaways.length < 1 ||
     takeaways.length > 3 ||
     !takeaways.every((item) => validText(item, 1, 60)) ||
-    !validText(data.atmosphere, 1, 180) ||
     !validText(data.organizerDescription, 1, 500) ||
     !validText(data.organizerExperience, 1, 300)
   ) {
@@ -188,6 +221,24 @@ export const normalizeEventPlanInput = (
     endAtMillis: data.endAtMillis,
     feeType: data.feeType as EventPlanInput["feeType"],
     feeAmount: data.feeType === "無料" ? 0 : data.feeAmount,
+    commercialSellerName:
+      data.feeType === "有料" ? String(data.commercialSellerName).trim() : "",
+    commercialSellerAddress:
+      data.feeType === "有料" ?
+        String(data.commercialSellerAddress).trim() :
+        "",
+    commercialSellerPhone:
+      data.feeType === "有料" ? String(data.commercialSellerPhone).trim() : "",
+    commercialResponsiblePerson:
+      data.feeType === "有料" ?
+        String(data.commercialResponsiblePerson).trim() :
+        "",
+    paymentMethod:
+      data.feeType === "有料" ? String(data.paymentMethod).trim() : "",
+    paymentTiming:
+      data.feeType === "有料" ? String(data.paymentTiming).trim() : "",
+    additionalFees:
+      data.feeType === "有料" ? String(data.additionalFees).trim() : "なし",
     eventFormat: data.eventFormat as EventPlanInput["eventFormat"],
     meetingPoint: String(data.meetingPoint).trim(),
     accessInfo: String(data.accessInfo).trim(),
@@ -199,10 +250,8 @@ export const normalizeEventPlanInput = (
     capacity: data.capacity,
     imageUrl: String(data.imageUrl).trim(),
     templateKey: String(data.templateKey),
-    beginnerLevel:
-      data.beginnerLevel as EventPlanInput["beginnerLevel"],
+    beginnerLevel: data.beginnerLevel as EventPlanInput["beginnerLevel"],
     takeaways: takeaways.map((item) => String(item).trim()),
-    atmosphere: String(data.atmosphere).trim(),
     organizerDescription: String(data.organizerDescription).trim(),
     organizerExperience: String(data.organizerExperience).trim(),
   };
@@ -241,7 +290,9 @@ export const matchesSavedSearch = (
   nowMillis: number,
 ): boolean => {
   if (!savedSearch) return true;
-  const searchText = String(savedSearch.searchText ?? "").trim().toLowerCase();
+  const searchText = String(savedSearch.searchText ?? "")
+    .trim()
+    .toLowerCase();
   const searchable = [
     event.title,
     event.summary,
@@ -290,25 +341,15 @@ export const matchesSavedSearch = (
   const eventDate = new Date(Number(event.startAtMillis));
   if (!Number.isFinite(eventDate.getTime())) return false;
   const day = eventDate.getDay();
-  if (
-    savedSearch.dayFilter === "土日" &&
-    day !== 0 &&
-    day !== 6
-  ) {
+  if (savedSearch.dayFilter === "土日" && day !== 0 && day !== 6) {
     return false;
   }
-  if (
-    savedSearch.dayFilter === "平日" &&
-    (day === 0 || day === 6)
-  ) {
+  if (savedSearch.dayFilter === "平日" && (day === 0 || day === 6)) {
     return false;
   }
   const hour = eventDate.getHours();
   if (savedSearch.timeFilter === "午前" && hour >= 12) return false;
-  if (
-    savedSearch.timeFilter === "午後" &&
-    (hour < 12 || hour >= 18)
-  ) {
+  if (savedSearch.timeFilter === "午後" && (hour < 12 || hour >= 18)) {
     return false;
   }
   if (savedSearch.timeFilter === "夜" && hour < 18) return false;

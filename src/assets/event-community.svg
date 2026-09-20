@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">交流イベントのイメージ</title>
+  <desc id="desc">人と人のつながりを表すシンプルな図形</desc>
+  <rect width="1200" height="675" fill="#eaf2ff"/>
+  <path d="M0 520h1200v155H0z" fill="#d8e8ff"/>
+  <circle cx="600" cy="265" r="82" fill="#155eef"/>
+  <circle cx="380" cy="315" r="62" fill="#fff" stroke="#155eef" stroke-width="22"/>
+  <circle cx="820" cy="315" r="62" fill="#fff" stroke="#155eef" stroke-width="22"/>
+  <path d="M468 300h264M441 383l105-59M759 383l-105-59" fill="none" stroke="#155eef" stroke-linecap="round" stroke-width="22"/>
+  <path d="M493 510c0-78 48-133 107-133s107 55 107 133" fill="#fff" stroke="#155eef" stroke-width="22"/>
+  <path d="M270 515c0-67 49-112 110-112 51 0 94 32 107 83M930 515c0-67-49-112-110-112-51 0-94 32-107 83" fill="none" stroke="#155eef" stroke-linecap="round" stroke-width="22"/>
+</svg>

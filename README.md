@@ -4,14 +4,38 @@
 
 利益を目的とするのではなく、まだやりたいことが見つかっていない人や、何かに挑戦したい人が、気軽に活動へ参加できる場所を目指します。
 
+## 参加者向け画面
+
+以下はFirebase Emulatorの確認用データを使った参加者画面です。
+
+### デスクトップ
+
+| ホーム | イベントを探す |
+| --- | --- |
+| ![参加者ホーム](docs/screenshots/participant/01-desktop-home.png) | ![イベント検索](docs/screenshots/participant/02-desktop-search.png) |
+
+| イベント詳細 | メッセージ |
+| --- | --- |
+| ![イベント詳細](docs/screenshots/participant/03-desktop-event-detail.png) | ![メッセージ](docs/screenshots/participant/05-desktop-messages.png) |
+
+[参加履歴](docs/screenshots/participant/04-desktop-activity.png) / [プロフィール](docs/screenshots/participant/06-desktop-profile.png)
+
+### スマートフォン
+
+| ホーム | イベント詳細 | メッセージ |
+| --- | --- | --- |
+| ![スマートフォンのホーム](docs/screenshots/participant/07-mobile-home.png) | ![スマートフォンのイベント詳細](docs/screenshots/participant/08-mobile-event-detail.png) | ![スマートフォンのメッセージ](docs/screenshots/participant/09-mobile-messages.png) |
+
 ## 開発環境
+
+Node.js 24を使用します（`.nvmrc`対応環境では`nvm use`で切り替え）。
 
 ```bash
 npm install
 npm run dev
 ```
 
-`.env.local`のFirebaseプロジェクトへ接続せず、端末内だけで全ロールを確認する場合は次のコマンドを使います。Functionsのビルド、Auth・Firestore・Storage・Functions Emulatorの起動、確認用データの投入、Viteの起動までをまとめて行います。
+`npm run dev`は`npm run dev:local`を呼び出し、端末内のFirebase Emulatorだけを使用します。Functionsのビルド、Auth・Firestore・Storage・Functions Emulatorの起動、確認用データの投入、Viteの起動までをまとめて行います。
 
 ```bash
 npm run dev:local
@@ -27,16 +51,16 @@ npm run dev:local
 
 確認用アカウント：
 
-| ロール | メールアドレス | パスワード |
-| --- | --- | --- |
-| 学生 | `student-e2e@u-aizu.ac.jp` | `password123` |
-| 主催者・団体 | `org-e2e@example.com` | `password123` |
-| 管理者 | `admin@aizu-connect.local` | `admin123` |
-| 承認待ち | `pending-e2e@example.com` | `password123` |
+| ロール       | メールアドレス             | パスワード    |
+| ------------ | -------------------------- | ------------- |
+| 学生         | `student-e2e@u-aizu.ac.jp` | `password123` |
+| 主催者・団体 | `org-e2e@example.com`      | `password123` |
+| 管理者       | `admin@aizu-connect.local` | `admin123`    |
+| 承認待ち     | `pending-e2e@example.com`  | `password123` |
 
 ## Firebase設定
 
-プロジェクトのルートに`.env.local`を作成します。
+本番用設定は、プロジェクトのルートにある`.env.production`で管理します。このファイルはGitへ追加しません。設定項目は`.env.example`を参照してください。
 
 ```env
 VITE_FIREBASE_API_KEY=...
@@ -45,15 +69,20 @@ VITE_FIREBASE_PROJECT_ID=...
 VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
+VITE_FIREBASE_APP_CHECK_SITE_KEY=...
+VITE_LEGAL_OPERATOR_NAME=...
+VITE_LEGAL_OPERATOR_ADDRESS=...
+VITE_LEGAL_REPRESENTATIVE=...
+VITE_LEGAL_CONTACT_EMAIL=...
 ```
 
-本番Firebaseへ接続して確認する場合だけ、次を設定します。
+本番ビルドでは次を設定します。
 
 ```env
 VITE_USE_FIREBASE_EMULATORS=false
 ```
 
-通常の`npm run dev`では、設定を省略するとブラウザSDKはEmulatorへ接続しません。Emulatorを使う場合は、接続設定を含む`npm run dev:local`を使用してください。
+ローカル開発から本番Firebaseへ直接接続する運用は禁止します。クラウド上の確認はデプロイ後の本番URLで行ってください。
 
 ## ロール
 
@@ -65,14 +94,17 @@ VITE_USE_FIREBASE_EMULATORS=false
 
 ### 管理者の初期設定
 
-対象ユーザーを先に通常のメールアドレスで登録した後、Firebase Admin SDKが利用できる環境で実行します。サービスアカウント鍵をリポジトリへ置かず、`GOOGLE_APPLICATION_CREDENTIALS`またはApplication Default Credentialsを使用してください。
+対象ユーザーを先に通常のメールアドレスで登録し、メール確認を完了した後、Firebase Admin SDKが利用できる環境で実行します。サービスアカウント鍵をリポジトリへ置かず、`GOOGLE_APPLICATION_CREDENTIALS`またはApplication Default Credentialsを使用してください。
 
 ```bash
 gcloud auth application-default login
 GCLOUD_PROJECT=aizu-connect-prod npm --prefix functions run admin:create -- admin@example.com
 ```
 
-本番環境では、作業後に認証情報を端末から削除し、管理者アカウントへ強いパスワードと多要素認証を設定してください。
+コマンドが成功したら、Authenticationの対象UIDとFirestoreの
+`users/{uid}`が一致し、`role: "admin"`、`status: "active"`になっていることを
+確認します。本番環境では、作業後に認証情報を端末から削除し、管理者アカウントへ
+強い固有パスワードと多要素認証を設定してください。
 
 ### Emulatorでの管理者ログイン
 
@@ -81,7 +113,7 @@ GCLOUD_PROJECT=aizu-connect-prod npm --prefix functions run admin:create -- admi
 ```bash
 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
-GCLOUD_PROJECT=aizu-connect-dev \
+GCLOUD_PROJECT=demo-aizu-connect-local \
 npm --prefix functions run admin:seed-emulator
 ```
 
@@ -91,7 +123,7 @@ npm --prefix functions run admin:seed-emulator
 
 ```bash
 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
-GCLOUD_PROJECT=aizu-connect-dev \
+GCLOUD_PROJECT=demo-aizu-connect-local \
 npm --prefix functions run emulator:verify-user -- student@example.com
 ```
 
@@ -116,7 +148,28 @@ npm --prefix functions run build
 
 ## Hostingへの公開
 
+Firebaseプロジェクト`aizu-connect-prod`を正式な本番環境として使用します。
+旧`aizu-connect-dev`は移行確認とロールバックのためだけに保持します。
+通常の開発と自動テストには`npm run dev:local`とEmulatorを使用し、本番データへ
+テストデータを投入しないでください。
+
 本番用設定は`.env.production`で管理し、`VITE_USE_FIREBASE_EMULATORS=false`を必須にします。`npm run build`は設定値と生成物を検査し、テストアカウント・Emulator接続先・仮画像サービスが混ざっている場合は失敗します。
+
+利用規約とプライバシーポリシーには、公開可能な正式情報として
+`VITE_LEGAL_OPERATOR_NAME`、`VITE_LEGAL_OPERATOR_ADDRESS`、
+`VITE_LEGAL_REPRESENTATIVE`、`VITE_LEGAL_CONTACT_EMAIL`を設定します。
+未入力、仮メールアドレス、プレースホルダーを含む場合、本番ビルドは失敗します。
+登録時と重要改定後の再ログイン時には規約同意が必須で、同意日時、規約版、
+年齢・法定代理人同意の確認をFirestoreの変更不可な同意記録へ保存します。
+参加申請時の主催者への第三者提供記録は原則3年間保存し、期限後は
+`purgeExpiredLegalRecords`が削除します。
+
+管理者Callable FunctionsでApp Checkを強制する場合は、Firebase Consoleで
+reCAPTCHA Enterpriseを登録し、`.env.production`へ
+`VITE_FIREBASE_APP_CHECK_SITE_KEY`を設定します。Functions側には
+`ENFORCE_ADMIN_APP_CHECK=true`を設定してください。クライアント設定前に
+Functions側だけを有効化すると管理者操作が拒否されるため、同じリリースで
+反映します。
 
 ```bash
 npm run release:check
@@ -125,15 +178,19 @@ npx -y firebase-tools@latest deploy \
   --only hosting,functions,firestore:rules,firestore:indexes,storage
 ```
 
-`aizu-connect-prod`は実際に公開するFirebaseプロジェクトIDへ置き換えます。デプロイ前に、Firebase ConsoleでAuthentication、Firestore、Storage、必要なBlazeプラン、承認済みドメインを確認してください。
+デプロイ前に、Firebase ConsoleでAuthentication、Firestore、Storage、必要なBlazeプラン、承認済みドメインを確認してください。
 
 ## リリース前チェック
 
-- 本番プロジェクトと開発プロジェクトを分離する
-- `.env.local`をGitへ追加しない
+- 開発・E2EテストはEmulatorだけで行い、`aizu-connect-prod`へテストデータを投入しない
+- 本番Authenticationに初期管理者を作成し、メール確認とMFAを完了する
+- `.env.production`と`functions/.env.*`をGitへ追加しない
 - Firestore Rulesを本番データで検証する
 - Authenticationのメール認証とパスワード再設定を確認する
 - Storageを使う場合はStorage Rulesを追加する
-- 主催者・学生の個人情報、チャット保存期間、通報対応を利用規約へ明記する
+- 運営者名、住所、代表者、問い合わせ先を本番環境変数へ設定する
+- 主催者契約・審査手順に、参加者情報の目的外利用禁止と事故・漏えい時の連絡義務を定める
+- 有料イベントの販売主体、住所、電話番号、責任者、支払・返金条件を実在情報で確認する
+- Cloud Schedulerで`purgeExpiredLegalRecords`が有効であることを確認する
 - Emulatorではなく本番Firebaseで学生・主催者・管理者の3導線をE2E確認する
-- アプリ内の利用規約・プライバシーポリシーを運営者情報付きの正式版へ差し替える
+- 個人情報の開示等請求、漏えい等報告、委託先管理の社内手順を整備する

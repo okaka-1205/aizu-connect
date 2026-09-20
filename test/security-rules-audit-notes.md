@@ -43,6 +43,7 @@ Attack cases covered:
 - Role escalation during user creation/update
 - Active student self-approval with a non-Aizu email
 - Access attempts from an unverified Aizu student token
+- Direct active registration and mixed-field approval escalation
 - Non-string values injected into interests and event tags
 - Invalid event and application state transitions
 - Schema pollution on saved events

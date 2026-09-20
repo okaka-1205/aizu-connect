@@ -8,15 +8,35 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes("node_modules/@firebase/auth")) return "firebase-auth";
-          if (id.includes("node_modules/@firebase/firestore")) {
+          if (
+            id.includes("node_modules/@firebase/auth") ||
+            id.includes("node_modules/firebase/auth")
+          ) {
+            return "firebase-auth";
+          }
+          if (
+            id.includes("node_modules/@firebase/firestore") ||
+            id.includes("node_modules/firebase/firestore")
+          ) {
             return "firebase-firestore";
           }
-          if (id.includes("node_modules/@firebase/functions")) {
+          if (
+            id.includes("node_modules/@firebase/functions") ||
+            id.includes("node_modules/firebase/functions")
+          ) {
             return "firebase-functions";
           }
-          if (id.includes("node_modules/@firebase/storage")) {
+          if (
+            id.includes("node_modules/@firebase/storage") ||
+            id.includes("node_modules/firebase/storage")
+          ) {
             return "firebase-storage";
+          }
+          if (
+            id.includes("node_modules/@firebase/app-check") ||
+            id.includes("node_modules/firebase/app-check")
+          ) {
+            return "firebase-app-check";
           }
           if (
             id.includes("node_modules/@firebase/") ||

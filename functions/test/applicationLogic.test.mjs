@@ -4,7 +4,9 @@ import { describe, it } from "node:test";
 import {
   applicationStatusMessage,
   isCheckInWindowOpen,
+  isEventPlanEditableStatus,
   isApplicationWindowOpen,
+  isMissingStorageBucketError,
   matchesSavedSearch,
   normalizeEventPlanInput,
   reminderBucketForHoursUntil,
@@ -14,6 +16,33 @@ import {
   shouldNotifyPublishedEventStudent,
   shouldSetChatRoomReadOnly,
 } from "../lib/applicationLogic.js";
+
+describe("administrative cleanup safeguards", () => {
+  it("continues only when the configured Storage bucket is missing", () => {
+    assert.equal(isMissingStorageBucketError({ code: 404 }), true);
+    assert.equal(
+      isMissingStorageBucketError({
+        message: "The specified bucket does not exist.",
+      }),
+      true,
+    );
+    assert.equal(isMissingStorageBucketError({ code: 403 }), false);
+    assert.equal(
+      isMissingStorageBucketError(new Error("network error")),
+      false,
+    );
+  });
+});
+
+describe("event plan editability", () => {
+  it("allows owners to resubmit reviewable event states", () => {
+    assert.equal(isEventPlanEditableStatus("pending_review"), true);
+    assert.equal(isEventPlanEditableStatus("published"), true);
+    assert.equal(isEventPlanEditableStatus("revision_required"), true);
+    assert.equal(isEventPlanEditableStatus("unpublished"), true);
+    assert.equal(isEventPlanEditableStatus("cancelled"), false);
+  });
+});
 
 describe("application status logic", () => {
   it("uses specific user-facing messages for known status changes", () => {
@@ -40,7 +69,10 @@ describe("application status logic", () => {
 
   it("increments applicant count when a waitlisted application is promoted", () => {
     assert.equal(shouldIncrementApplicantCount("waitlisted", "pending"), true);
-    assert.equal(shouldIncrementApplicantCount("waitlisted", "confirmed"), true);
+    assert.equal(
+      shouldIncrementApplicantCount("waitlisted", "confirmed"),
+      true,
+    );
     assert.equal(shouldIncrementApplicantCount("pending", "confirmed"), false);
   });
 
@@ -86,15 +118,15 @@ describe("saved search matching", () => {
   it("rejects full or mismatched events", () => {
     assert.equal(
       matchesSavedSearch(
-        {onlyAvailable: true},
-        {...event, applicantCount: 10},
+        { onlyAvailable: true },
+        { ...event, applicantCount: 10 },
         Date.parse("2026-07-20T00:00:00+09:00"),
       ),
       false,
     );
     assert.equal(
       matchesSavedSearch(
-        {feeFilter: "有料"},
+        { feeFilter: "有料" },
         event,
         Date.parse("2026-07-20T00:00:00+09:00"),
       ),
@@ -156,7 +188,6 @@ describe("event plan validation", () => {
     templateKey: "交流会",
     beginnerLevel: "初参加歓迎",
     takeaways: ["地域とつながる"],
-    atmosphere: "少人数で話しやすい雰囲気です。",
     organizerDescription: "地域交流を企画しています。",
     organizerExperience: "10回開催",
   };
@@ -168,6 +199,7 @@ describe("event plan validation", () => {
     );
     assert.equal(result?.feeAmount, 0);
     assert.equal(result?.title, validPlan.title);
+    assert.equal("atmosphere" in result, false);
   });
 
   it("rejects past, reversed, or incomplete event plans", () => {
@@ -175,14 +207,14 @@ describe("event plan validation", () => {
     assert.equal(normalizeEventPlanInput(validPlan, now), null);
     assert.equal(
       normalizeEventPlanInput(
-        {...validPlan, endAtMillis: validPlan.startAtMillis},
+        { ...validPlan, endAtMillis: validPlan.startAtMillis },
         Date.parse("2026-07-01T00:00:00.000Z"),
       ),
       null,
     );
     assert.equal(
       normalizeEventPlanInput(
-        {...validPlan, cancellationPolicy: ""},
+        { ...validPlan, cancellationPolicy: "" },
         Date.parse("2026-07-01T00:00:00.000Z"),
       ),
       null,
@@ -193,18 +225,46 @@ describe("event plan validation", () => {
     const now = Date.parse("2026-07-01T00:00:00.000Z");
     assert.equal(
       normalizeEventPlanInput(
-        {...validPlan, imageUrl: "http://example.com/event.png"},
+        { ...validPlan, imageUrl: "http://example.com/event.png" },
         now,
       ),
       null,
     );
     assert.equal(
       normalizeEventPlanInput(
-        {...validPlan, imageUrl: "http://127.0.0.1:9199/event.png"},
+        { ...validPlan, imageUrl: "http://127.0.0.1:9199/event.png" },
         now,
       )?.imageUrl,
       "http://127.0.0.1:9199/event.png",
     );
+  });
+
+  it("requires the statutory commerce disclosure for paid events", () => {
+    const now = Date.parse("2026-07-01T00:00:00.000Z");
+    assert.equal(
+      normalizeEventPlanInput(
+        { ...validPlan, feeType: "有料", feeAmount: 3000 },
+        now,
+      ),
+      null,
+    );
+    const paidPlan = normalizeEventPlanInput(
+      {
+        ...validPlan,
+        feeType: "有料",
+        feeAmount: 3000,
+        commercialSellerName: "会津イベント実行委員会",
+        commercialSellerAddress: "福島県会津若松市1-1",
+        commercialSellerPhone: "0242-00-0000",
+        commercialResponsiblePerson: "会津 太郎",
+        paymentMethod: "当日現金",
+        paymentTiming: "イベント当日の受付時",
+        additionalFees: "なし",
+      },
+      now,
+    );
+    assert.equal(paidPlan?.feeAmount, 3000);
+    assert.equal(paidPlan?.paymentMethod, "当日現金");
   });
 });
 

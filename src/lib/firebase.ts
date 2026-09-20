@@ -1,5 +1,17 @@
 import { initializeApp } from "firebase/app";
-import { connectAuthEmulator, getAuth } from "firebase/auth";
+import {
+  type AppCheck,
+  getToken,
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+} from "firebase/app-check";
+import {
+  browserLocalPersistence,
+  browserSessionPersistence,
+  connectAuthEmulator,
+  getAuth,
+  setPersistence,
+} from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
@@ -14,7 +26,44 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+const appCheckSiteKey = import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY;
+let appCheckInstance: AppCheck | null = null;
+let appCheckReady: Promise<void> | null = null;
+
+/**
+ * Start App Check only when a protected Firebase operation is about to run.
+ * This keeps the public sign-in screen lightweight while preserving enforced
+ * App Check for authentication and authenticated data access.
+ */
+export const ensureAppCheck = (): Promise<void> => {
+  if (
+    !import.meta.env.PROD ||
+    typeof appCheckSiteKey !== "string" ||
+    appCheckSiteKey.length === 0
+  ) {
+    return Promise.resolve();
+  }
+
+  if (!appCheckInstance) {
+    appCheckInstance = initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  }
+
+  if (!appCheckReady) {
+    appCheckReady = getToken(appCheckInstance, false)
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        appCheckReady = null;
+        throw error;
+      });
+  }
+
+  return appCheckReady;
+};
 export const auth = getAuth(app);
+auth.languageCode = "ja";
 export const db = getFirestore(app);
 export const functions = getFunctions(app, "asia-northeast1");
 export const storage = getStorage(app);
@@ -40,8 +89,7 @@ if (
 ) {
   connectAuthEmulator(
     auth,
-    import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_URL ??
-      "http://127.0.0.1:9099",
+    import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_URL ?? "http://127.0.0.1:9099",
     { disableWarnings: true },
   );
   connectFirestoreEmulator(db, "127.0.0.1", firestoreEmulatorPort);
@@ -49,3 +97,8 @@ if (
   connectStorageEmulator(storage, "127.0.0.1", storageEmulatorPort);
   emulatorState.__AIZU_CONNECT_EMULATORS_CONNECTED__ = true;
 }
+
+export const authPersistenceReady = setPersistence(
+  auth,
+  browserLocalPersistence,
+).catch(() => setPersistence(auth, browserSessionPersistence));

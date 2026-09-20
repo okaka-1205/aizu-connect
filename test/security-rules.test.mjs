@@ -14,6 +14,12 @@ const PROJECT_ID = "demo-aizu-connect-rules";
 const timestamp = firebase.firestore.Timestamp.fromDate(
   new Date("2026-01-01T00:00:00.000Z"),
 );
+const legalConsent = {
+  termsVersion: "2026-08-01",
+  privacyVersion: "2026-08-01",
+  legalAcceptedAt: timestamp,
+  eligibilityConfirmedAt: timestamp,
+};
 
 let testEnv;
 
@@ -181,6 +187,15 @@ const reportDoc = (overrides = {}) => ({
   description: "Please review.",
   status: "submitted",
   createdAt: timestamp,
+  ...overrides,
+});
+
+const deletionRequestDoc = (userId = "student-1", overrides = {}) => ({
+  userId,
+  status: "submitted",
+  reason: "サービス利用を終了するため削除を希望します。",
+  requestedAt: firebase.firestore.FieldValue.serverTimestamp(),
+  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
   ...overrides,
 });
 
@@ -381,9 +396,7 @@ const seedData = async () => {
       db.doc("reports/report-1").set(reportDoc()),
       db.doc("savedEvents/student-1_event-published").set(savedEventDoc()),
       db.doc("savedSearches/student-1_default").set(savedSearchDoc()),
-      db
-        .doc("chatPreferences/room-1_student-1")
-        .set(chatPreferenceDoc()),
+      db.doc("chatPreferences/room-1_student-1").set(chatPreferenceDoc()),
       db.doc("publicOrganizerProfiles/org-1").set({
         userId: "org-1",
         displayName: "Aizu Org",
@@ -394,6 +407,22 @@ const seedData = async () => {
         updatedAt: timestamp,
       }),
       db.doc("auditLogs/audit-1").set(auditLogDoc()),
+      db.doc("thirdPartyProvisionLogs/app-1").set({
+        applicationId: "app-1",
+        userId: "student-1",
+        userDisplayName: "Student One",
+        recipientId: "org-1",
+        recipientName: "Aizu Org",
+        eventId: "event-published",
+        legalBasis: "本人同意",
+        consentAccepted: true,
+        sensitiveInfoConsent: false,
+        dataCategories: ["表示名", "参加申請情報"],
+        providedAt: timestamp,
+        expiresAt: firebase.firestore.Timestamp.fromDate(
+          new Date("2029-01-01T00:00:00.000Z"),
+        ),
+      }),
       db.doc("eventCheckIns/event-published").set({
         eventId: "event-published",
         organizerId: "org-1",
@@ -468,6 +497,52 @@ describe("users and profiles", () => {
           userDoc({
             uid: "student-new",
             email: "student-new@u-aizu.ac.jp",
+            status: "pending_approval",
+            ...legalConsent,
+          }),
+        ),
+    );
+    const directActiveStudent = testEnv.authenticatedContext(
+      "student-new-active",
+      {
+        email: "student-new-active@u-aizu.ac.jp",
+        email_verified: true,
+      },
+    );
+    await assertFails(
+      directActiveStudent
+        .firestore()
+        .doc("users/student-new-active")
+        .set(
+          userDoc({
+            uid: "student-new-active",
+            email: "student-new-active@u-aizu.ac.jp",
+            status: "active",
+            ...legalConsent,
+          }),
+        ),
+    );
+    await assertFails(
+      newStudent
+        .firestore()
+        .doc("users/student-new-without-consent")
+        .set(
+          userDoc({
+            uid: "student-new-without-consent",
+            email: "student-new@u-aizu.ac.jp",
+          }),
+        ),
+    );
+    await assertFails(
+      newStudent
+        .firestore()
+        .doc("users/student-new-old-terms")
+        .set(
+          userDoc({
+            uid: "student-new-old-terms",
+            email: "student-new@u-aizu.ac.jp",
+            ...legalConsent,
+            termsVersion: "draft",
           }),
         ),
     );
@@ -480,6 +555,7 @@ describe("users and profiles", () => {
             uid: "student-new-admin",
             role: "admin",
             email: "student-new@u-aizu.ac.jp",
+            ...legalConsent,
           }),
         ),
     );
@@ -493,6 +569,7 @@ describe("users and profiles", () => {
             email: "student-new@u-aizu.ac.jp",
             organizationId: "org-1",
             organizationName: "Injected organization",
+            ...legalConsent,
           }),
         ),
     );
@@ -505,6 +582,7 @@ describe("users and profiles", () => {
             uid: "student-new-invalid-time",
             email: "student-new@u-aizu.ac.jp",
             createdAt: "not-a-timestamp",
+            ...legalConsent,
           }),
         ),
     );
@@ -522,6 +600,7 @@ describe("users and profiles", () => {
             uid: "student-external",
             email: "student@example.com",
             status: "active",
+            ...legalConsent,
           }),
         ),
     );
@@ -541,6 +620,7 @@ describe("users and profiles", () => {
             uid: "student-email-mismatch",
             email: "claimed@example.com",
             status: "pending_approval",
+            ...legalConsent,
           }),
         ),
     );
@@ -552,7 +632,7 @@ describe("users and profiles", () => {
         email_verified: false,
       },
     );
-    await assertSucceeds(
+    await assertFails(
       unverifiedAizuStudent
         .firestore()
         .doc("users/student-unverified")
@@ -561,11 +641,116 @@ describe("users and profiles", () => {
             uid: "student-unverified",
             email: "student-unverified@u-aizu.ac.jp",
             status: "active",
+            ...legalConsent,
+          }),
+        ),
+    );
+    await assertSucceeds(
+      unverifiedAizuStudent
+        .firestore()
+        .doc("users/student-unverified")
+        .set(
+          userDoc({
+            uid: "student-unverified",
+            email: "student-unverified@u-aizu.ac.jp",
+            status: "pending_approval",
+            ...legalConsent,
           }),
         ),
     );
     await assertFails(
       unverifiedAizuStudent.firestore().doc("events/event-published").get(),
+    );
+  });
+
+  it("allows only a verified Aizu student to self-approve from pending", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await Promise.all([
+        db.doc("users/student-auto-approve").set(
+          userDoc({
+            uid: "student-auto-approve",
+            email: "student-auto-approve@u-aizu.ac.jp",
+            status: "pending_approval",
+          }),
+        ),
+        db.doc("studentProfiles/student-auto-approve").set(
+          studentProfile({
+            uid: "student-auto-approve",
+            email: "student-auto-approve@u-aizu.ac.jp",
+            status: "pending_approval",
+          }),
+        ),
+        db.doc("users/student-auto-unverified").set(
+          userDoc({
+            uid: "student-auto-unverified",
+            email: "student-auto-unverified@u-aizu.ac.jp",
+            status: "pending_approval",
+          }),
+        ),
+        db.doc("users/student-auto-external").set(
+          userDoc({
+            uid: "student-auto-external",
+            email: "student-auto-external@example.com",
+            status: "pending_approval",
+          }),
+        ),
+      ]);
+    });
+
+    const verifiedAizu = testEnv.authenticatedContext("student-auto-approve", {
+      email: "student-auto-approve@u-aizu.ac.jp",
+      email_verified: true,
+    });
+    await assertFails(
+      verifiedAizu.firestore().doc("users/student-auto-approve").update({
+        status: "active",
+        displayName: "Changed during approval",
+        updatedAt: timestamp,
+      }),
+    );
+    await assertSucceeds(
+      verifiedAizu.firestore().doc("users/student-auto-approve").update({
+        status: "active",
+        updatedAt: timestamp,
+      }),
+    );
+    await assertSucceeds(
+      verifiedAizu
+        .firestore()
+        .doc("studentProfiles/student-auto-approve")
+        .update({
+          status: "active",
+          updatedAt: timestamp,
+        }),
+    );
+
+    const unverifiedAizu = testEnv.authenticatedContext(
+      "student-auto-unverified",
+      {
+        email: "student-auto-unverified@u-aizu.ac.jp",
+        email_verified: false,
+      },
+    );
+    await assertFails(
+      unverifiedAizu.firestore().doc("users/student-auto-unverified").update({
+        status: "active",
+        updatedAt: timestamp,
+      }),
+    );
+
+    const verifiedExternal = testEnv.authenticatedContext(
+      "student-auto-external",
+      {
+        email: "student-auto-external@example.com",
+        email_verified: true,
+      },
+    );
+    await assertFails(
+      verifiedExternal.firestore().doc("users/student-auto-external").update({
+        status: "active",
+        updatedAt: timestamp,
+      }),
     );
   });
 
@@ -580,6 +765,12 @@ describe("users and profiles", () => {
     await assertFails(
       student.firestore().doc("users/student-1").update({
         role: "admin",
+      }),
+    );
+    await assertFails(
+      student.firestore().doc("users/student-1").update({
+        termsVersion: "tampered",
+        legalAcceptedAt: timestamp,
       }),
     );
     await assertSucceeds(
@@ -606,6 +797,54 @@ describe("users and profiles", () => {
       admin.firestore().doc("users/student-1").update({
         status: "owner",
         updatedAt: timestamp,
+      }),
+    );
+  });
+
+  it("records current-document reconsent atomically and prevents tampering", async () => {
+    const { student, otherStudent, admin } = contexts();
+    const db = student.firestore();
+    const acceptedAt = firebase.firestore.FieldValue.serverTimestamp();
+    const consentRef = db.doc("legalConsents/student-1_2026-08-01_2026-08-01");
+    const batch = db.batch();
+    batch.update(db.doc("users/student-1"), {
+      termsVersion: "2026-08-01",
+      privacyVersion: "2026-08-01",
+      legalAcceptedAt: acceptedAt,
+      eligibilityConfirmedAt: acceptedAt,
+      updatedAt: acceptedAt,
+    });
+    batch.set(consentRef, {
+      userId: "student-1",
+      termsVersion: "2026-08-01",
+      privacyVersion: "2026-08-01",
+      acceptedAt,
+      eligibilityConfirmedAt: acceptedAt,
+      source: "reconsent",
+    });
+    await assertSucceeds(batch.commit());
+    await assertSucceeds(consentRef.get());
+    await assertSucceeds(
+      admin
+        .firestore()
+        .doc("legalConsents/student-1_2026-08-01_2026-08-01")
+        .get(),
+    );
+    await assertFails(
+      otherStudent
+        .firestore()
+        .doc("legalConsents/student-1_2026-08-01_2026-08-01")
+        .get(),
+    );
+    await assertFails(consentRef.update({ source: "registration" }));
+    await assertFails(
+      student.firestore().doc("legalConsents/arbitrary-id").set({
+        userId: "student-1",
+        termsVersion: "2026-08-01",
+        privacyVersion: "2026-08-01",
+        acceptedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        eligibilityConfirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        source: "reconsent",
       }),
     );
   });
@@ -676,6 +915,69 @@ describe("organizations", () => {
       admin.firestore().doc("organizations/org-1").update({
         contactEmail: "takeover@example.com",
       }),
+    );
+  });
+});
+
+describe("account deletion requests", () => {
+  it("allows active users to submit and cancel only their own request", async () => {
+    const { student, otherStudent, pendingStudent } = contexts();
+    const requestRef = student
+      .firestore()
+      .doc("accountDeletionRequests/student-1");
+    await assertSucceeds(requestRef.set(deletionRequestDoc()));
+    await assertSucceeds(requestRef.get());
+    await assertFails(
+      otherStudent.firestore().doc("accountDeletionRequests/student-1").get(),
+    );
+    await assertFails(
+      otherStudent
+        .firestore()
+        .doc("accountDeletionRequests/student-1")
+        .set(deletionRequestDoc("student-1")),
+    );
+    await assertFails(
+      pendingStudent
+        .firestore()
+        .doc("accountDeletionRequests/student-pending")
+        .set(deletionRequestDoc("student-pending")),
+    );
+    await assertSucceeds(
+      requestRef.update({
+        status: "cancelled",
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }),
+    );
+  });
+
+  it("blocks malformed transitions while allowing admins to list requests", async () => {
+    const { student, admin } = contexts();
+    const requestRef = student
+      .firestore()
+      .doc("accountDeletionRequests/student-1");
+    await assertFails(
+      requestRef.set(
+        deletionRequestDoc("student-1", {
+          reason: "短い",
+          unexpected: true,
+        }),
+      ),
+    );
+    await assertSucceeds(requestRef.set(deletionRequestDoc()));
+    await assertFails(
+      requestRef.update({
+        reason: "申請後に理由だけを書き換えることはできません。",
+        status: "cancelled",
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }),
+    );
+    await assertFails(requestRef.delete());
+    await assertSucceeds(
+      admin
+        .firestore()
+        .collection("accountDeletionRequests")
+        .where("status", "==", "submitted")
+        .get(),
     );
   });
 });
@@ -1153,6 +1455,22 @@ describe("saved searches and operational records", () => {
     );
   });
 
+  it("restricts third-party provision records to the data subject and admins", async () => {
+    const { student, otherStudent, organization, admin } = contexts();
+    const path = "thirdPartyProvisionLogs/app-1";
+    await assertSucceeds(student.firestore().doc(path).get());
+    await assertSucceeds(admin.firestore().doc(path).get());
+    await assertFails(otherStudent.firestore().doc(path).get());
+    await assertFails(organization.firestore().doc(path).get());
+    await assertFails(
+      student.firestore().doc("thirdPartyProvisionLogs/forged").set({
+        userId: "student-1",
+        recipientId: "org-1",
+      }),
+    );
+    await assertFails(student.firestore().doc(path).delete());
+  });
+
   it("exposes public organizer profiles but protects audits and check-in codes", async () => {
     const { anon, student, organization, otherOrganization, admin } =
       contexts();
@@ -1174,10 +1492,7 @@ describe("saved searches and operational records", () => {
       organization.firestore().doc("eventCheckIns/event-published").get(),
     );
     await assertFails(
-      otherOrganization
-        .firestore()
-        .doc("eventCheckIns/event-published")
-        .get(),
+      otherOrganization.firestore().doc("eventCheckIns/event-published").get(),
     );
     await assertFails(
       student.firestore().doc("eventCheckIns/event-published").get(),
@@ -1235,6 +1550,18 @@ describe("storage rules", () => {
         .storage()
         .ref("profile-images/student-pending/new.png")
         .putString("image", "raw", { contentType: "image/png" }),
+    );
+    await assertSucceeds(
+      organization
+        .storage()
+        .ref("profile-images/org-1/new.webp")
+        .putString("image", "raw", { contentType: "image/webp" }),
+    );
+    await assertFails(
+      unverifiedOrganization
+        .storage()
+        .ref("profile-images/org-1/unverified.webp")
+        .putString("image", "raw", { contentType: "image/webp" }),
     );
     await assertSucceeds(
       organization

@@ -54,9 +54,7 @@ export const validateImageFile = (file: ImageLike, label: string) => {
 
 export const validateChatAttachment = (file: ImageLike) => {
   if (!acceptedChatAttachmentTypes.includes(file.type)) {
-    throw new Error(
-      "添付できるのはJPEG、PNG、WebP、PDF、テキスト、CSVです。",
-    );
+    throw new Error("添付できるのはJPEG、PNG、WebP、PDF、テキスト、CSVです。");
   }
   if (file.size >= MAX_CHAT_ATTACHMENT_SIZE) {
     throw new Error("添付ファイルは10MB未満にしてください。");
@@ -71,12 +69,14 @@ const escapeCalendarText = (value: string) =>
     .replace(/;/g, "\\;");
 
 const toCalendarTimestamp = (date: Date) =>
-  date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  date
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
 
 export const toCalendarFile = (event: CalendarEventLike) => {
   const endAt =
-    event.endAt ??
-    new Date(event.startAt.getTime() + 2 * 60 * 60 * 1000);
+    event.endAt ?? new Date(event.startAt.getTime() + 2 * 60 * 60 * 1000);
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -109,11 +109,52 @@ export const matchesCategoryFilter = (category: string, filter: Filter) =>
 export const isAizuUniversityEmail = (email: string) =>
   email.trim().toLowerCase().endsWith("@u-aizu.ac.jp");
 
+export const shouldAutoApproveAizuStudent = ({
+  role,
+  status,
+  email,
+  emailVerified,
+}: {
+  role: string;
+  status: string;
+  email: string | null | undefined;
+  emailVerified: boolean;
+}) =>
+  role === "student" &&
+  status === "pending_approval" &&
+  Boolean(email && isAizuUniversityEmail(email)) &&
+  emailVerified;
+
 export const normalizeLoginEmail = (email: string, devAdminEmail = "") => {
   const normalizedEmail = email.trim().toLowerCase();
   return devAdminEmail && normalizedEmail === "admin"
     ? devAdminEmail
     : normalizedEmail;
+};
+
+export type AccountAccessGate =
+  | "email_verification"
+  | "admin_approval"
+  | "account_rejected"
+  | "account_setup"
+  | "active";
+
+export const resolveAccountAccessGate = ({
+  isProduction,
+  emailVerified,
+  status,
+}: {
+  isProduction: boolean;
+  emailVerified: boolean;
+  status: string;
+}): AccountAccessGate => {
+  if (isProduction && !emailVerified) return "email_verification";
+  if (status === "rejected" || status === "suspended")
+    return "account_rejected";
+  if (status === "pending_approval" || status === "pending")
+    return "admin_approval";
+  if (status === "active") return "active";
+  return "account_setup";
 };
 
 export const formatEventStart = (value: string) => {
@@ -151,12 +192,19 @@ export const getFirebaseErrorMessage = (error: unknown) => {
   if (error instanceof Error) {
     if (
       code === "functions/permission-denied" &&
+      error.message.includes("承認待ち")
+    )
+      return "メール認証は完了しています。現在は管理者の承認待ちです。";
+    if (
+      code === "functions/permission-denied" &&
       error.message.includes("管理者")
     )
       return "管理者権限を確認できませんでした。管理者アカウントで再ログインしてください。";
     if (
       code === "functions/failed-precondition" &&
-      error.message.includes("管理者")
+      (error.message.includes("管理者") ||
+        error.message.includes("審査済み") ||
+        error.message.includes("公開状態"))
     )
       return "この管理操作は実行できません。対象の状態を更新してから、もう一度お試しください。";
     if (
@@ -170,6 +218,18 @@ export const getFirebaseErrorMessage = (error: unknown) => {
       return "このイベントにはすでに参加申請済みです。";
     if (code === "functions/resource-exhausted")
       return "このイベントは定員に達しています。";
+    if (error.message.includes("Email verification is required."))
+      return "メールアドレスの確認が必要です。確認メールのリンクを開いてから、もう一度お試しください。";
+    if (
+      code === "functions/failed-precondition" &&
+      error.message.includes("編集できません")
+    )
+      return "このイベントは現在編集できません。画面を更新して状態を確認してください。";
+    if (
+      code === "functions/invalid-argument" &&
+      error.message.includes("Event details")
+    )
+      return "イベントの入力内容を確認してください。必須項目と開催日時を見直してください。";
     if (code === "functions/failed-precondition")
       return "このイベントは現在申し込めません。公開状態と受付期間を確認してください。";
     if (code === "functions/permission-denied")
@@ -194,8 +254,22 @@ export const getFirebaseErrorMessage = (error: unknown) => {
       error.message.includes("permission-denied")
     )
       return "この操作を行う権限がありません。アカウントの承認状態を確認してください。";
-    if (error.message.includes("Email verification is required."))
-      return "メールアドレスの確認が必要です。確認メールのリンクを開いてから、もう一度お試しください。";
+    if (
+      code === "storage/unauthorized" ||
+      error.message.includes("storage/unauthorized")
+    )
+      return "画像やファイルを保存する権限を確認できませんでした。メール認証とアカウントの承認状態を確認して、もう一度お試しください。";
+    if (
+      code === "storage/retry-limit-exceeded" ||
+      code === "storage/unknown" ||
+      error.message.includes("storage/retry-limit-exceeded")
+    )
+      return "ファイルの送信を完了できませんでした。通信状態を確認して、もう一度お試しください。";
+    if (
+      code === "storage/quota-exceeded" ||
+      error.message.includes("storage/quota-exceeded")
+    )
+      return "現在ファイルを保存できません。運営へお問い合わせください。";
     if (
       code === "failed-precondition" ||
       error.message.includes("failed-precondition")

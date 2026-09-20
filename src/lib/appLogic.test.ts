@@ -9,6 +9,8 @@ import {
   isFutureEventStart,
   matchesCategoryFilter,
   normalizeLoginEmail,
+  resolveAccountAccessGate,
+  shouldAutoApproveAizuStudent,
   toCalendarFile,
   toDateTimeInput,
   toDateTimeLocalValue,
@@ -24,15 +26,91 @@ describe("auth helpers", () => {
   });
 
   it("maps the dev admin shortcut only in dev mode", () => {
-    expect(
-      normalizeLoginEmail(" admin ", "admin@aizu-connect.local"),
-    ).toBe("admin@aizu-connect.local");
+    expect(normalizeLoginEmail(" admin ", "admin@aizu-connect.local")).toBe(
+      "admin@aizu-connect.local",
+    );
     expect(normalizeLoginEmail(" admin ")).toBe("admin");
   });
 
   it("recognizes Aizu University addresses case-insensitively", () => {
     expect(isAizuUniversityEmail(" Student@U-AIZU.AC.JP ")).toBe(true);
     expect(isAizuUniversityEmail("student@example.com")).toBe(false);
+  });
+
+  it("auto-approves only verified pending Aizu University students", () => {
+    expect(
+      shouldAutoApproveAizuStudent({
+        role: "student",
+        status: "pending_approval",
+        email: " Student@U-AIZU.AC.JP ",
+        emailVerified: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoApproveAizuStudent({
+        role: "student",
+        status: "pending_approval",
+        email: "student@u-aizu.ac.jp",
+        emailVerified: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoApproveAizuStudent({
+        role: "organization",
+        status: "pending_approval",
+        email: "organization@u-aizu.ac.jp",
+        emailVerified: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoApproveAizuStudent({
+        role: "student",
+        status: "pending_approval",
+        email: "student@example.com",
+        emailVerified: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("shows email verification before an admin approval wait", () => {
+    expect(
+      resolveAccountAccessGate({
+        isProduction: true,
+        emailVerified: false,
+        status: "pending_approval",
+      }),
+    ).toBe("email_verification");
+    expect(
+      resolveAccountAccessGate({
+        isProduction: true,
+        emailVerified: true,
+        status: "pending_approval",
+      }),
+    ).toBe("admin_approval");
+  });
+
+  it("only grants access to active accounts", () => {
+    expect(
+      resolveAccountAccessGate({
+        isProduction: true,
+        emailVerified: true,
+        status: "active",
+      }),
+    ).toBe("active");
+    expect(
+      resolveAccountAccessGate({
+        isProduction: true,
+        emailVerified: true,
+        status: "suspended",
+      }),
+    ).toBe("account_rejected");
+    expect(
+      resolveAccountAccessGate({
+        isProduction: true,
+        emailVerified: true,
+        status: "profile_incomplete",
+      }),
+    ).toBe("account_setup");
   });
 });
 
@@ -136,6 +214,28 @@ describe("firebase error messages", () => {
     ).toBe("このイベントにはすでに参加申請済みです。");
   });
 
+  it("explains when only administrator approval remains", () => {
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(new Error("管理者の承認待ちです。"), {
+          code: "functions/permission-denied",
+        }),
+      ),
+    ).toBe("メール認証は完了しています。現在は管理者の承認待ちです。");
+  });
+
+  it("keeps email verification errors distinct from event state errors", () => {
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(new Error("Email verification is required."), {
+          code: "functions/failed-precondition",
+        }),
+      ),
+    ).toBe(
+      "メールアドレスの確認が必要です。確認メールのリンクを開いてから、もう一度お試しください。",
+    );
+  });
+
   it("maps auth failures to user-friendly Japanese copy", () => {
     expect(
       getFirebaseErrorMessage(
@@ -144,6 +244,23 @@ describe("firebase error messages", () => {
         }),
       ),
     ).toBe("パスワードは6文字以上にしてください。");
+  });
+
+  it("maps storage failures without exposing Firebase internals", () => {
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(new Error("Firebase Storage: storage/unauthorized"), {
+          code: "storage/unauthorized",
+        }),
+      ),
+    ).toContain("メール認証とアカウントの承認状態");
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(new Error("storage/retry-limit-exceeded"), {
+          code: "storage/retry-limit-exceeded",
+        }),
+      ),
+    ).toContain("通信状態");
   });
 
   it("falls back for unknown non-error values", () => {
