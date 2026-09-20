@@ -4,6 +4,28 @@
 
 利益を目的とするのではなく、まだやりたいことが見つかっていない人や、何かに挑戦したい人が、気軽に活動へ参加できる場所を目指します。
 
+## 参加者向け画面
+
+以下はFirebase Emulatorの確認用データを使った参加者画面です。
+
+### デスクトップ
+
+| ホーム | イベントを探す |
+| --- | --- |
+| ![参加者ホーム](docs/screenshots/participant/01-desktop-home.png) | ![イベント検索](docs/screenshots/participant/02-desktop-search.png) |
+
+| イベント詳細 | メッセージ |
+| --- | --- |
+| ![イベント詳細](docs/screenshots/participant/03-desktop-event-detail.png) | ![メッセージ](docs/screenshots/participant/05-desktop-messages.png) |
+
+[参加履歴](docs/screenshots/participant/04-desktop-activity.png) / [プロフィール](docs/screenshots/participant/06-desktop-profile.png)
+
+### スマートフォン
+
+| ホーム | イベント詳細 | メッセージ |
+| --- | --- | --- |
+| ![スマートフォンのホーム](docs/screenshots/participant/07-mobile-home.png) | ![スマートフォンのイベント詳細](docs/screenshots/participant/08-mobile-event-detail.png) | ![スマートフォンのメッセージ](docs/screenshots/participant/09-mobile-messages.png) |
+
 ## 開発環境
 
 Node.js 24を使用します（`.nvmrc`対応環境では`nvm use`で切り替え）。
