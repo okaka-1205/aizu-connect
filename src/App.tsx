@@ -74,6 +74,8 @@ import {
   functions,
 } from "./lib/firebase";
 import {
+  didCompleteManualApproval,
+  getAuthFlowErrorMessage,
   getFirebaseErrorMessage,
   isAizuUniversityEmail,
   isFutureEventStart,
@@ -84,6 +86,7 @@ import {
   shouldAutoActivateVerifiedStudent,
   validateChatAttachment,
   validateImageFile,
+  type AuthFlowStage,
   type Filter,
 } from "./lib/appLogic";
 import { tabLabels } from "./config/events";
@@ -222,6 +225,10 @@ function App() {
     setNotice: setMessage,
   });
   const authenticatedUidRef = useRef<string | null>(null);
+  const accountStatusRef = useRef<{
+    uid: string;
+    status: AccountStatus;
+  } | null>(null);
   const verificationRefreshUidRef = useRef<string | null>(null);
   const shouldFocusSearchRef = useRef(false);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
@@ -527,6 +534,7 @@ function App() {
           unsubscribeProfile = null;
           if (authenticatedUidRef.current !== (user?.uid ?? null)) {
             authenticatedUidRef.current = user?.uid ?? null;
+            accountStatusRef.current = null;
             verificationRefreshUidRef.current = null;
             setIsAutoActivatingStudent(false);
             setActiveTab("home");
@@ -575,7 +583,27 @@ function App() {
                 doc(db, "users", user.uid),
                 (snapshot) => {
                   if (snapshot.exists()) {
-                    setAppUser(snapshot.data() as AppUser);
+                    const nextUser = snapshot.data() as AppUser;
+                    const previousAccount = accountStatusRef.current;
+                    if (
+                      previousAccount?.uid === user.uid &&
+                      didCompleteManualApproval({
+                        previousStatus: previousAccount.status,
+                        nextStatus: nextUser.status,
+                        role: nextUser.role,
+                        email: nextUser.email ?? "",
+                      })
+                    ) {
+                      setMessage(
+                        "管理者の承認が完了しました。Aizu Connectのすべての機能を利用できます。",
+                        "success",
+                      );
+                    }
+                    accountStatusRef.current = {
+                      uid: user.uid,
+                      status: nextUser.status,
+                    };
+                    setAppUser(nextUser);
                   } else {
                     // Registration creates the Auth user before its profile
                     // document. Do not sign the user out while that batch is
@@ -900,13 +928,16 @@ function App() {
     }
     setIsActionLoading(true);
     let createdUser: User | null = null;
+    let authFlowStage: AuthFlowStage = "persistence";
     try {
       // The persistence mode must be settled before sign-in/sign-up. Without
       // this await, a fast login can race the initial auth state observer and
       // appear to be lost after a reload.
       await authPersistenceReady;
+      authFlowStage = "app_check";
       await ensureAppCheck();
       if (authMode === "login") {
+        authFlowStage = "sign_in";
         await signInWithEmailAndPassword(
           auth,
           normalizedEmail,
@@ -915,6 +946,7 @@ function App() {
         setMessage("");
         return;
       }
+      authFlowStage = "create_account";
       const credential = await createUserWithEmailAndPassword(
         auth,
         normalizedEmail,
@@ -1012,6 +1044,7 @@ function App() {
           updatedAt: serverTimestamp(),
         });
       }
+      authFlowStage = "save_profile";
       await batch.commit();
       let registrationMessage =
         isStudent && isAizuStudent
@@ -1033,12 +1066,30 @@ function App() {
       });
       setMessage(registrationMessage, registrationTone);
     } catch (error) {
+      let rollbackFailed = false;
       if (createdUser) {
         await deleteUser(createdUser).catch(async () => {
+          rollbackFailed = true;
           await signOut(auth).catch(() => undefined);
         });
       }
-      setMessage(getFirebaseErrorMessage(error), "error");
+      const errorCode =
+        typeof error === "object" && error !== null && "code" in error
+          ? String(error.code)
+          : "unknown";
+      console.error("Authentication flow failed", {
+        stage: authFlowStage,
+        code: errorCode,
+        rollbackFailed,
+      });
+      setMessage(
+        getAuthFlowErrorMessage({
+          stage: authFlowStage,
+          error,
+          rollbackFailed,
+        }),
+        "error",
+      );
     } finally {
       setIsActionLoading(false);
     }

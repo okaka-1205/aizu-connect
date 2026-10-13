@@ -136,6 +136,64 @@ export const shouldAutoActivateVerifiedStudent = ({
   emailVerified &&
   isAizuUniversityEmail(email);
 
+export const didCompleteManualApproval = ({
+  previousStatus,
+  nextStatus,
+  role,
+  email,
+}: {
+  previousStatus: string | null;
+  nextStatus: string;
+  role: string;
+  email: string;
+}) =>
+  previousStatus !== null &&
+  ["pending", "pending_approval"].includes(previousStatus) &&
+  nextStatus === "active" &&
+  (role !== "student" || !isAizuUniversityEmail(email));
+
+export type AuthFlowStage =
+  "persistence" | "app_check" | "sign_in" | "create_account" | "save_profile";
+
+export const getAuthFlowErrorMessage = ({
+  stage,
+  error,
+  rollbackFailed = false,
+}: {
+  stage: AuthFlowStage;
+  error: unknown;
+  rollbackFailed?: boolean;
+}) => {
+  if (rollbackFailed) {
+    return "認証アカウントは作成されましたが、プロフィールを保存できませんでした。再登録せず、同じメールアドレスでログインしてください。";
+  }
+
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String(error.code)
+      : "";
+  const isNetworkFailure =
+    code === "auth/network-request-failed" ||
+    (error instanceof Error &&
+      error.message.includes("auth/network-request-failed"));
+
+  if (isNetworkFailure) {
+    if (stage === "app_check") {
+      return "安全性の確認サービスに接続できませんでした。通信状態を確認し、この画面を再読み込みしてからもう一度お試しください。";
+    }
+    if (stage === "save_profile") {
+      return "登録情報を保存できませんでした。作成途中のアカウントは取り消しました。通信状態を確認して、もう一度お試しください。";
+    }
+    return "認証サービスに接続できませんでした。通信状態を確認し、この画面を再読み込みしてからもう一度お試しください。";
+  }
+
+  if (stage === "save_profile") {
+    return "登録情報を保存できませんでした。作成途中のアカウントは取り消しました。時間を空けてもう一度お試しください。";
+  }
+
+  return getFirebaseErrorMessage(error);
+};
+
 export const normalizeLoginEmail = (email: string, devAdminEmail = "") => {
   const normalizedEmail = email.trim().toLowerCase();
   return devAdminEmail && normalizedEmail === "admin"

@@ -2,6 +2,54 @@
 
 確認日: 2026-10-13
 
+## 実装状況
+
+- [x] P0-1: 管理者操作時に `users` とロール別プロフィールをバッチ更新する。
+- [ ] P0-2: 認証メールの表示名・件名・本文を日本語化する。
+  - Identity Platform Admin API の更新は `EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED` で拒否された。
+  - 現在ログイン中のGoogleアカウントはIAM上 `roles/owner` だが、Firebase Consoleは「プロジェクト内のアプリを一覧表示する権限がありません」と表示して設定画面を開けなかった。
+  - API・Consoleともに変更は反映されておらず、本番のメール設定は従来のまま。
+- [x] P0-3: 手動承認による `pending` / `pending_approval` から `active` への遷移時に、登録直後の案内を承認完了メッセージへ置き換える。
+- [x] P0-4: 登録処理の失敗箇所を App Check、Firebase Auth、プロフィール保存に分け、安全な診断情報と再試行案内を表示する。
+- [ ] P1-5: 独自送信ドメインを設定する（ドメインと DNS 管理権限が必要）。
+- [ ] P1-6: 本番相当のメール送信・受信テストを追加する（P0-2 の設定完了後に実施）。
+- [x] P1-7: 承認前の利用制限、再ログインなしの画面遷移、`users` と `studentProfiles` の同期、通知・監査ログ、同一承認の再実行をエミュレータ E2E で確認する。
+
+## 本番反映・確認結果
+
+- 2026-10-13: コミット `dfab551` を `codex-release-readiness-updates` へプッシュした。
+- 2026-10-13: `aizu-connect-prod` のCloud Functions 12個を更新し、Firebase Hostingを公開した。
+- 本番URL: `https://aizu-connect-prod.web.app/`
+- Gmailの受信トレイで、`noreply@aizu-connect-prod.firebaseapp.com` から送信された既存の確認メールを確認できた。
+- Codex内蔵ブラウザではApp Checkトークン取得がネットワークエラーになり、本番ログイン後の確認は実施できなかった。
+- Authentication REST APIからの再送も `Firebase App Check token is invalid` で拒否され、新規メールは送信されなかった。
+- IAMポリシーでは現在のGoogleアカウントに `roles/owner` が付与済みであることを確認した。権限追加は不要で、Firebase Consoleまたはメールテンプレート更新API側の問題により変更できなかった。
+- 独自ドメインとDNS管理情報が未提供のため、SPF、DKIM、DMARCの設定は未実施。
+- 明示的な許可を得て本番Authユーザーを一時エクスポートし、`popppopo1205@gmail.com` のテストアカウントを削除した。
+- 同テストUIDに紐づくユーザー、学生プロフィール、同意記録、承認通知、監査ログ、管理操作記録を削除し、イベント、申込、チャット、保存、通報、Storageオブジェクトが残っていないことを確認した。
+- 一時エクスポートと確認・削除スクリプトは作業後に削除した。大学メールのアカウントは実利用の可能性があるため保持した。
+
+## 設定予定の認証メール文面
+
+表示名: `Aizu Connect`
+
+件名: `【Aizu Connect】メールアドレスを確認してください`
+
+本文:
+
+> Aizu Connectへのご登録ありがとうございます。
+>
+> 以下のボタンからメールアドレスの確認を完了してください。
+>
+> メールアドレスを確認する
+>
+> このメールに心当たりがない場合は、操作を行わず破棄してください。
+>
+> Aizu Connect 運営チーム
+
+送信元アドレスは、所有していない大学ドメインを偽装せず、現状の Firebase 既定アドレスを使用する。
+独自ドメインを取得・検証した後に、SPF、DKIM、DMARCを設定した専用アドレスへ切り替える。
+
 ## 確認できたこと
 
 - 本番環境で外部 Gmail アドレスの学生アカウントを作成できる。
@@ -14,7 +62,7 @@
 
 ### 1. 管理者承認状態を一貫して更新する
 
-現状の `approve_user` は `users/{uid}.status` を `active` に更新する一方、
+修正前の `approve_user` は `users/{uid}.status` を `active` に更新する一方、
 `studentProfiles/{uid}.status` は `pending_approval` のまま残る。
 
 対応方針:
