@@ -7,7 +7,7 @@
 - [x] P0-1: 管理者操作時に `users` とロール別プロフィールをバッチ更新する。
 - [ ] P0-2: 認証メールの表示名・件名・本文を日本語化する。
   - Identity Platform Admin API の更新は `EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED` で拒否された。
-  - Firebase Console は現在ログイン中の Google アカウントに対象プロジェクトの権限がなく、設定画面を開けなかった。
+  - 現在ログイン中のGoogleアカウントはIAM上 `roles/owner` だが、Firebase Consoleは「プロジェクト内のアプリを一覧表示する権限がありません」と表示して設定画面を開けなかった。
   - API・Consoleともに変更は反映されておらず、本番のメール設定は従来のまま。
 - [x] P0-3: 手動承認による `pending` / `pending_approval` から `active` への遷移時に、登録直後の案内を承認完了メッセージへ置き換える。
 - [x] P0-4: 登録処理の失敗箇所を App Check、Firebase Auth、プロフィール保存に分け、安全な診断情報と再試行案内を表示する。
@@ -23,7 +23,7 @@
 - Gmailの受信トレイで、`noreply@aizu-connect-prod.firebaseapp.com` から送信された既存の確認メールを確認できた。
 - Codex内蔵ブラウザではApp Checkトークン取得がネットワークエラーになり、本番ログイン後の確認は実施できなかった。
 - Authentication REST APIからの再送も `Firebase App Check token is invalid` で拒否され、新規メールは送信されなかった。
-- Firebase Consoleは、現在ログイン中のGoogleアカウントに対象プロジェクトの閲覧権限がなく、メールテンプレートを変更できなかった。
+- IAMポリシーでは現在のGoogleアカウントに `roles/owner` が付与済みであることを確認した。権限追加は不要で、Firebase Consoleまたはメールテンプレート更新API側の問題により変更できなかった。
 - 独自ドメインとDNS管理情報が未提供のため、SPF、DKIM、DMARCの設定は未実施。
 - 明示的な許可を得て本番Authユーザーを一時エクスポートし、`popppopo1205@gmail.com` のテストアカウントを削除した。
 - 同テストUIDに紐づくユーザー、学生プロフィール、同意記録、承認通知、監査ログ、管理操作記録を削除し、イベント、申込、チャット、保存、通報、Storageオブジェクトが残っていないことを確認した。
