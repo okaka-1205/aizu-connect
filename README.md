@@ -56,7 +56,24 @@ npm run dev:local
 | 学生         | `student-e2e@u-aizu.ac.jp` | `password123` |
 | 主催者・団体 | `org-e2e@example.com`      | `password123` |
 | 管理者       | `admin@aizu-connect.local` | `admin123`    |
-| 承認待ち     | `pending-e2e@example.com`  | `password123` |
+| 審査用個人   | `pending-e2e@example.com`  | `password123` |
+
+### E2Eテストの使い分け
+
+認証テストと全体テストは、用途に応じてシードデータを分けています。
+
+```bash
+# 登録・ログイン・メール認証後の有効化だけを高速に確認
+npm run test:e2e:auth:emulator
+
+# チャット、通知、ページング、Functionsを含む全体確認
+npm run test:e2e:full:emulator
+
+# 上記を順番に両方実行
+npm run test:e2e:emulator
+```
+
+軽量な認証テストではAuthとFirestoreだけを起動し、チャット履歴や通知トリガーを投入しません。リリース確認では`npm run test:e2e:emulator`を使い、軽量テストとフルテストの両方を実行します。
 
 ## Firebase設定
 

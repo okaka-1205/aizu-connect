@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { MobileMock } from "./MobileMock";
 
 const App = lazy(() => import("../App.tsx"));
 
@@ -62,6 +63,10 @@ function InitialAppShell() {
 }
 
 export function AppLoader() {
+  if (window.location.pathname === "/mobile-mock") {
+    return <MobileMock />;
+  }
+
   return (
     <Suspense fallback={<InitialAppShell />}>
       <App />

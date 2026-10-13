@@ -109,21 +109,26 @@ export const matchesCategoryFilter = (category: string, filter: Filter) =>
 export const isAizuUniversityEmail = (email: string) =>
   email.trim().toLowerCase().endsWith("@u-aizu.ac.jp");
 
-export const shouldAutoApproveAizuStudent = ({
+export const resolveInitialAccountStatus = ({
+  role,
+  email,
+}: {
+  role: "student" | "organization";
+  email: string;
+}) =>
+  role === "student" && isAizuUniversityEmail(email)
+    ? ("active" as const)
+    : ("pending_approval" as const);
+
+export const shouldAutoActivateVerifiedStudent = ({
   role,
   status,
-  email,
   emailVerified,
 }: {
   role: string;
   status: string;
-  email: string | null | undefined;
   emailVerified: boolean;
-}) =>
-  role === "student" &&
-  status === "pending_approval" &&
-  Boolean(email && isAizuUniversityEmail(email)) &&
-  emailVerified;
+}) => role === "student" && status === "pending_approval" && emailVerified;
 
 export const normalizeLoginEmail = (email: string, devAdminEmail = "") => {
   const normalizedEmail = email.trim().toLowerCase();
@@ -148,7 +153,8 @@ export const resolveAccountAccessGate = ({
   emailVerified: boolean;
   status: string;
 }): AccountAccessGate => {
-  if (isProduction && !emailVerified) return "email_verification";
+  if (!emailVerified && (isProduction || status === "active"))
+    return "email_verification";
   if (status === "rejected" || status === "suspended")
     return "account_rejected";
   if (status === "pending_approval" || status === "pending")

@@ -509,7 +509,7 @@ describe("users and profiles", () => {
         email_verified: true,
       },
     );
-    await assertFails(
+    await assertSucceeds(
       directActiveStudent
         .firestore()
         .doc("users/student-new-active")
@@ -519,6 +519,18 @@ describe("users and profiles", () => {
             email: "student-new-active@u-aizu.ac.jp",
             status: "active",
             ...legalConsent,
+          }),
+        ),
+    );
+    await assertSucceeds(
+      directActiveStudent
+        .firestore()
+        .doc("studentProfiles/student-new-active")
+        .set(
+          studentProfile({
+            uid: "student-new-active",
+            email: "student-new-active@u-aizu.ac.jp",
+            status: "active",
           }),
         ),
     );
@@ -604,6 +616,19 @@ describe("users and profiles", () => {
           }),
         ),
     );
+    await assertFails(
+      externalStudent
+        .firestore()
+        .doc("studentProfiles/student-external")
+        .set(
+          studentProfile({
+            uid: "student-external",
+            email: "student@example.com",
+            status: "active",
+            verificationMethod: "email_verification",
+          }),
+        ),
+    );
     const mismatchedStudent = testEnv.authenticatedContext(
       "student-email-mismatch",
       {
@@ -625,45 +650,67 @@ describe("users and profiles", () => {
         ),
     );
 
-    const unverifiedAizuStudent = testEnv.authenticatedContext(
-      "student-unverified",
+    const unverifiedActiveAizuStudent = testEnv.authenticatedContext(
+      "student-unverified-active",
       {
-        email: "student-unverified@u-aizu.ac.jp",
+        email: "student-unverified-active@u-aizu.ac.jp",
         email_verified: false,
       },
     );
-    await assertFails(
-      unverifiedAizuStudent
+    await assertSucceeds(
+      unverifiedActiveAizuStudent
         .firestore()
-        .doc("users/student-unverified")
+        .doc("users/student-unverified-active")
         .set(
           userDoc({
-            uid: "student-unverified",
-            email: "student-unverified@u-aizu.ac.jp",
+            uid: "student-unverified-active",
+            email: "student-unverified-active@u-aizu.ac.jp",
             status: "active",
             ...legalConsent,
           }),
         ),
     );
     await assertSucceeds(
-      unverifiedAizuStudent
+      unverifiedActiveAizuStudent
         .firestore()
-        .doc("users/student-unverified")
+        .doc("studentProfiles/student-unverified-active")
+        .set(
+          studentProfile({
+            uid: "student-unverified-active",
+            email: "student-unverified-active@u-aizu.ac.jp",
+            status: "active",
+          }),
+        ),
+    );
+    const unverifiedPendingAizuStudent = testEnv.authenticatedContext(
+      "student-unverified-pending",
+      {
+        email: "student-unverified-pending@u-aizu.ac.jp",
+        email_verified: false,
+      },
+    );
+    await assertSucceeds(
+      unverifiedPendingAizuStudent
+        .firestore()
+        .doc("users/student-unverified-pending")
         .set(
           userDoc({
-            uid: "student-unverified",
-            email: "student-unverified@u-aizu.ac.jp",
+            uid: "student-unverified-pending",
+            email: "student-unverified-pending@u-aizu.ac.jp",
             status: "pending_approval",
             ...legalConsent,
           }),
         ),
     );
     await assertFails(
-      unverifiedAizuStudent.firestore().doc("events/event-published").get(),
+      unverifiedActiveAizuStudent
+        .firestore()
+        .doc("events/event-published")
+        .get(),
     );
   });
 
-  it("allows only a verified Aizu student to self-approve from pending", async () => {
+  it("allows any verified student to activate from pending", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
       await Promise.all([
@@ -693,6 +740,14 @@ describe("users and profiles", () => {
             uid: "student-auto-external",
             email: "student-auto-external@example.com",
             status: "pending_approval",
+          }),
+        ),
+        db.doc("studentProfiles/student-auto-external").set(
+          studentProfile({
+            uid: "student-auto-external",
+            email: "student-auto-external@example.com",
+            status: "pending_approval",
+            verificationMethod: "manual_review",
           }),
         ),
       ]);
@@ -746,11 +801,20 @@ describe("users and profiles", () => {
         email_verified: true,
       },
     );
-    await assertFails(
+    await assertSucceeds(
       verifiedExternal.firestore().doc("users/student-auto-external").update({
         status: "active",
         updatedAt: timestamp,
       }),
+    );
+    await assertSucceeds(
+      verifiedExternal
+        .firestore()
+        .doc("studentProfiles/student-auto-external")
+        .update({
+          status: "active",
+          updatedAt: timestamp,
+        }),
     );
   });
 

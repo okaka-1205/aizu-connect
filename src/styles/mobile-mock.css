@@ -1,0 +1,204 @@
+.mobile-mock-page {
+  min-height: 100vh;
+  padding: 20px 16px 32px;
+  box-sizing: border-box;
+  background-color: #f7f7f7;
+  background-image: radial-gradient(#b9b9b9 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: #303030;
+  font-family: Arial, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+}
+
+.mobile-mock-device {
+  width: min(100%, 430px);
+  min-height: calc(100vh - 52px);
+  margin: 0 auto;
+}
+
+.mobile-mock-header {
+  height: 40px;
+  display: flex;
+  align-items: flex-start;
+}
+
+.mobile-mock-title-button,
+.mobile-mock-section-card h2 {
+  border: 1px solid #168f8c;
+  border-radius: 13px;
+  background: #53d0c9;
+  color: #111;
+  font: inherit;
+  font-weight: 700;
+}
+
+.mobile-mock-title-button {
+  min-width: 70px;
+  height: 38px;
+  padding: 0 14px;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.mobile-mock-panel {
+  box-sizing: border-box;
+  border: 1px solid #27c9c3;
+  border-radius: 9px;
+  background: #d7f8f7;
+}
+
+.mobile-mock-top-panel {
+  min-height: calc(100vh - 52px);
+  padding: 108px 0 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 96px;
+}
+
+.mobile-mock-menu-card,
+.mobile-mock-form-card,
+.mobile-mock-form-title,
+.mobile-mock-info-main,
+.mobile-mock-info-grid > div,
+.mobile-mock-before-harvest,
+.mobile-mock-size-list > div {
+  border: 2px solid #f0eeee;
+  border-radius: 5px;
+  background: #effcfc;
+  color: #303030;
+  box-sizing: border-box;
+}
+
+.mobile-mock-menu-card {
+  width: 230px;
+  height: 86px;
+  font: inherit;
+  font-size: 29px;
+  cursor: pointer;
+}
+
+.mobile-mock-form-panel {
+  min-height: calc(100vh - 52px);
+  padding: 116px 0 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+
+.mobile-mock-form-title {
+  width: 300px;
+  min-height: 66px;
+  padding: 19px 10px;
+  margin-bottom: 72px;
+  text-align: center;
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.mobile-mock-form-card {
+  width: 220px;
+  height: 58px;
+  font: inherit;
+  font-size: 25px;
+  font-weight: 700;
+}
+
+.mobile-mock-selection-panel {
+  min-height: calc(100vh - 52px);
+  padding: 108px 20px 82px;
+}
+
+.mobile-mock-section-card {
+  position: relative;
+  padding: 46px 20px 20px;
+  border: 1px solid #27c9c3;
+  border-radius: 9px;
+}
+
+.mobile-mock-section-card + .mobile-mock-section-card {
+  margin-top: 48px;
+}
+
+.mobile-mock-section-card h2 {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  margin: 0;
+  padding: 5px 12px;
+  font-size: 22px;
+  font-weight: 400;
+}
+
+.mobile-mock-info-main {
+  height: 70px;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.mobile-mock-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
+
+.mobile-mock-info-grid > div {
+  height: 72px;
+  display: grid;
+  place-items: center;
+  font-size: 23px;
+  font-weight: 700;
+}
+
+.mobile-mock-size-card {
+  padding: 80px 20px 20px;
+}
+
+.mobile-mock-before-harvest {
+  position: absolute;
+  top: 22px;
+  right: 20px;
+  width: 176px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.mobile-mock-size-list > div {
+  height: 58px;
+  display: grid;
+  grid-template-columns: 105px 1fr;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 0;
+  font-size: 25px;
+}
+
+.mobile-mock-size-list > div + div {
+  border-top: 0;
+}
+
+@media (max-width: 380px) {
+  .mobile-mock-top-panel {
+    gap: 62px;
+    padding-top: 72px;
+  }
+
+  .mobile-mock-form-title {
+    width: calc(100% - 24px);
+    font-size: 17px;
+  }
+
+  .mobile-mock-selection-panel {
+    padding-inline: 12px;
+  }
+
+  .mobile-mock-before-harvest {
+    width: 150px;
+    font-size: 17px;
+  }
+}

@@ -71,9 +71,9 @@ service cloud.firestore {
         && data.email.matches('^[^@]+@u-aizu\\.ac\\.jp$');
     }
 
-    function isVerifiedAizuStudentIdentity(data) {
+    function isVerifiedStudentIdentity(data) {
       return request.auth.token.email_verified == true
-        && isAizuStudentIdentity(data);
+        && request.auth.token.email == data.email;
     }
 
     function validLegalConsent(data) {
@@ -126,7 +126,10 @@ service cloud.firestore {
             data.status == 'pending_approval'
             || (
               data.status == 'active'
-              && isVerifiedAizuStudentIdentity(data)
+              && (
+                isAizuStudentIdentity(data)
+                || isVerifiedStudentIdentity(data)
+              )
             )
           )
         )
@@ -174,7 +177,13 @@ service cloud.firestore {
       && data.updatedAt is timestamp
       && (
         data.status == 'pending_approval'
-        || isVerifiedAizuStudentIdentity(data)
+        || (
+          data.status == 'active'
+          && (
+            isAizuStudentIdentity(data)
+            || isVerifiedStudentIdentity(data)
+          )
+        )
       );
     }
 
@@ -198,7 +207,14 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.auth.uid == userId
         && validUser(request.resource.data, userId)
-        && request.resource.data.status == 'pending_approval'
+        && (
+          request.resource.data.status == 'pending_approval'
+          || (
+            request.resource.data.role == 'student'
+            && request.resource.data.status == 'active'
+            && isAizuStudentIdentity(request.resource.data)
+          )
+        )
         && validLegalConsent(request.resource.data);
       allow update: if isAdmin()
         && request.resource.data.role == resource.data.role
@@ -230,7 +246,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status', 'updatedAt'
           ])
-          && isVerifiedAizuStudentIdentity(request.resource.data)
+          && isVerifiedStudentIdentity(request.resource.data)
           && validUser(request.resource.data, userId)
         )
         || (
@@ -273,7 +289,13 @@ service cloud.firestore {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
       allow create: if signedIn()
         && request.auth.uid == userId
-        && request.resource.data.status == 'pending_approval'
+        && (
+          request.resource.data.status == 'pending_approval'
+          || (
+            request.resource.data.status == 'active'
+            && isAizuStudentIdentity(request.resource.data)
+          )
+        )
         && validStudentProfile(request.resource.data, userId);
       allow update: if (
           signedIn()
@@ -296,7 +318,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status', 'updatedAt'
           ])
-          && isVerifiedAizuStudentIdentity(request.resource.data)
+          && isVerifiedStudentIdentity(request.resource.data)
           && validStudentProfile(request.resource.data, userId)
         );
       allow delete: if false;
