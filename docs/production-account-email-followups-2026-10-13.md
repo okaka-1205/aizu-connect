@@ -15,6 +15,18 @@
 - [ ] P1-6: 本番相当のメール送信・受信テストを追加する（P0-2 の設定完了後に実施）。
 - [x] P1-7: 承認前の利用制限、再ログインなしの画面遷移、`users` と `studentProfiles` の同期、通知・監査ログ、同一承認の再実行をエミュレータ E2E で確認する。
 
+## 本番反映・確認結果
+
+- 2026-10-13: コミット `dfab551` を `codex-release-readiness-updates` へプッシュした。
+- 2026-10-13: `aizu-connect-prod` のCloud Functions 12個を更新し、Firebase Hostingを公開した。
+- 本番URL: `https://aizu-connect-prod.web.app/`
+- Gmailの受信トレイで、`noreply@aizu-connect-prod.firebaseapp.com` から送信された既存の確認メールを確認できた。
+- Codex内蔵ブラウザではApp Checkトークン取得がネットワークエラーになり、本番ログイン後の確認は実施できなかった。
+- Authentication REST APIからの再送も `Firebase App Check token is invalid` で拒否され、新規メールは送信されなかった。
+- Firebase Consoleは、現在ログイン中のGoogleアカウントに対象プロジェクトの閲覧権限がなく、メールテンプレートを変更できなかった。
+- 独自ドメインとDNS管理情報が未提供のため、SPF、DKIM、DMARCの設定は未実施。
+- 本番Authユーザーの一括エクスポートはパスワードハッシュを含み得るため実施せず、テストアカウントは未削除。
+
 ## 設定予定の認証メール文面
 
 表示名: `Aizu Connect`
