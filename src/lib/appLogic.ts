@@ -165,7 +165,7 @@ export const getAuthFlowErrorMessage = ({
   rollbackFailed?: boolean;
 }) => {
   if (rollbackFailed) {
-    return "認証アカウントは作成されましたが、プロフィールを保存できませんでした。再登録せず、同じメールアドレスでログインしてください。";
+    return "認証アカウントは作成されましたが、プロフィールを保存できませんでした。再登録せず、管理者へお問い合わせください。";
   }
 
   const code =
