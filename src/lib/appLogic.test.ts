@@ -10,7 +10,8 @@ import {
   matchesCategoryFilter,
   normalizeLoginEmail,
   resolveAccountAccessGate,
-  shouldAutoApproveAizuStudent,
+  resolveInitialAccountStatus,
+  shouldAutoActivateVerifiedStudent,
   toCalendarFile,
   toDateTimeInput,
   toDateTimeLocalValue,
@@ -37,37 +38,66 @@ describe("auth helpers", () => {
     expect(isAizuUniversityEmail("student@example.com")).toBe(false);
   });
 
-  it("auto-approves only verified pending Aizu University students", () => {
+  it("activates Aizu students at registration and leaves other accounts pending", () => {
     expect(
-      shouldAutoApproveAizuStudent({
+      resolveInitialAccountStatus({
+        role: "student",
+        email: "Student@U-AIZU.AC.JP",
+      }),
+    ).toBe("active");
+    expect(
+      resolveInitialAccountStatus({
+        role: "student",
+        email: "student@example.com",
+      }),
+    ).toBe("pending_approval");
+    expect(
+      resolveInitialAccountStatus({
+        role: "organization",
+        email: "club@u-aizu.ac.jp",
+      }),
+    ).toBe("pending_approval");
+  });
+
+  it("auto-activates only verified pending Aizu University students", () => {
+    expect(
+      shouldAutoActivateVerifiedStudent({
         role: "student",
         status: "pending_approval",
-        email: " Student@U-AIZU.AC.JP ",
         emailVerified: true,
+        email: "student@u-aizu.ac.jp",
       }),
     ).toBe(true);
     expect(
-      shouldAutoApproveAizuStudent({
+      shouldAutoActivateVerifiedStudent({
         role: "student",
         status: "pending_approval",
-        email: "student@u-aizu.ac.jp",
         emailVerified: false,
+        email: "student@u-aizu.ac.jp",
       }),
     ).toBe(false);
     expect(
-      shouldAutoApproveAizuStudent({
+      shouldAutoActivateVerifiedStudent({
+        role: "student",
+        status: "pending_approval",
+        emailVerified: true,
+        email: "student@example.com",
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoActivateVerifiedStudent({
         role: "organization",
         status: "pending_approval",
-        email: "organization@u-aizu.ac.jp",
         emailVerified: true,
+        email: "club@u-aizu.ac.jp",
       }),
     ).toBe(false);
     expect(
-      shouldAutoApproveAizuStudent({
+      shouldAutoActivateVerifiedStudent({
         role: "student",
-        status: "pending_approval",
-        email: "student@example.com",
+        status: "active",
         emailVerified: true,
+        email: "student@u-aizu.ac.jp",
       }),
     ).toBe(false);
   });
@@ -78,6 +108,13 @@ describe("auth helpers", () => {
         isProduction: true,
         emailVerified: false,
         status: "pending_approval",
+      }),
+    ).toBe("email_verification");
+    expect(
+      resolveAccountAccessGate({
+        isProduction: false,
+        emailVerified: false,
+        status: "active",
       }),
     ).toBe("email_verification");
     expect(

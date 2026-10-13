@@ -1,5 +1,18 @@
 {
-  "score": 5,
-  "summary": "Default-deny rules now enforce owner and role boundaries, prevent student self-approval outside the verified Aizu flow, validate writable schemas and bounded list contents, and keep server-owned collections client-write protected.",
-  "findings": []
+  "score": 4,
+  "summary": "Default-deny rules enforce verified-email role boundaries, restrict self-activation to verified Aizu University identities, bind chat sender names to trusted profiles, protect check-in attempts as server-only data, and validate writable schemas. The remaining findings are defense-in-depth improvements rather than direct privilege-escalation paths.",
+  "findings": [
+    {
+      "severity": "moderate",
+      "area": "chatRooms/{roomId}/messages/{messageId}",
+      "issue": "Attachment URLs are length-checked but are not constrained to the project's Firebase Storage origin or the sender's room-scoped object path.",
+      "recommendation": "Create attachment messages through a callable function, or validate a server-issued Storage object identifier instead of accepting an arbitrary HTTPS URL."
+    },
+    {
+      "severity": "minor",
+      "area": "reports/{reportId}",
+      "issue": "Any signed-in account can create a report, including an unverified or inactive account.",
+      "recommendation": "Require an active verified role if anonymous-style reporting is not an intentional product requirement."
+    }
+  ]
 }

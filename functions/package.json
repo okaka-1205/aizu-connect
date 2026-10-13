@@ -6,14 +6,15 @@
     "build:watch": "tsc --watch",
     "test": "npm run build && node --test test/*.test.mjs",
     "coverage": "npm run build && node --test --experimental-test-coverage test/*.test.mjs",
-    "serve": "npm run build && firebase emulators:start --only functions",
-    "shell": "npm run build && firebase functions:shell",
+    "serve": "npm run build && npx -y firebase-tools@latest emulators:start --only functions",
+    "shell": "npm run build && npx -y firebase-tools@latest functions:shell",
     "start": "npm run shell",
     "admin:create": "node scripts/create-admin.mjs",
+    "admin:reset-non-admin": "node scripts/reset-non-admin-accounts.mjs",
     "admin:seed-emulator": "node scripts/seed-emulator-admin.mjs",
     "emulator:verify-user": "node scripts/verify-emulator-user.mjs",
-    "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "deploy": "npx -y firebase-tools@latest deploy --only functions",
+    "logs": "npx -y firebase-tools@latest functions:log"
   },
   "engines": {
     "node": "24"

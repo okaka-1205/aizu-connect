@@ -209,11 +209,6 @@ await Promise.all(
       email: `admin-review-${variant}@example.com`,
       displayName: `E2E 審査対象 ${variant}`,
     }),
-    ensureUser({
-      uid: `student-auto-approve-${variant}`,
-      email: `student-auto-approve-${variant}@u-aizu.ac.jp`,
-      displayName: `E2E 自動承認 ${variant}`,
-    }),
   ]),
 );
 
@@ -387,34 +382,7 @@ for (const variant of ["desktop", "mobile", "tablet"]) {
         ? "Mobile"
         : "Tablet";
   const profileUserId = `student-profile-${variant}`;
-  const autoApproveUserId = `student-auto-approve-${variant}`;
   const profileEventId = `event-e2e-open-${variant === "desktop" ? "chromium" : variant}`;
-  batch.set(
-    db.doc(`users/${autoApproveUserId}`),
-    {
-      ...userDoc({
-        uid: autoApproveUserId,
-        email: `${autoApproveUserId}@u-aizu.ac.jp`,
-        displayName: `E2E 自動承認 ${displayVariant}`,
-        status: "pending_approval",
-      }),
-      termsVersion: "2026-08-01",
-      privacyVersion: "2026-08-01",
-      legalAcceptedAt: timestamp,
-      eligibilityConfirmedAt: timestamp,
-    },
-  );
-  batch.set(db.doc(`studentProfiles/${autoApproveUserId}`), {
-    ...userDoc({
-      uid: autoApproveUserId,
-      email: `${autoApproveUserId}@u-aizu.ac.jp`,
-      displayName: `E2E 自動承認 ${displayVariant}`,
-      status: "pending_approval",
-    }),
-    verificationMethod: "university_email",
-    profileCompletionRate: 80,
-    activityCount: 0,
-  });
   batch.set(
     db.doc(`users/${profileUserId}`),
     userDoc({

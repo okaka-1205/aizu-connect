@@ -32,6 +32,13 @@ service firebase.storage {
       return activeStudent(uid) || activeOrganization(uid);
     }
 
+    function activeAdmin() {
+      return signedIn()
+        && userRef(request.auth.uid).data.role == 'admin'
+        && userRef(request.auth.uid).data.status == 'active'
+        && request.auth.token.email_verified == true;
+    }
+
     function validImage() {
       return request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp)');
@@ -51,12 +58,12 @@ service firebase.storage {
     }
 
     match /profile-images/{userId}/{fileName} {
-      allow read: if signedIn();
+      allow read: if activeCreator(request.auth.uid) || activeAdmin();
       allow write: if activeCreator(userId) && validImage();
     }
 
     match /event-images/{organizationId}/{eventId}/{fileName} {
-      allow read: if signedIn();
+      allow read: if activeCreator(request.auth.uid) || activeAdmin();
       allow write: if activeCreator(organizationId) && validImage();
     }
 

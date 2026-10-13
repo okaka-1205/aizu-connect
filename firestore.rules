@@ -1,5 +1,17 @@
 rules_version = '2';
 
+// Assumed data model and trust boundaries:
+// - users/studentProfiles/organizations: private identity and review records.
+// - legalConsents/thirdPartyProvisionLogs: immutable compliance records.
+// - events/eventApplications/activities: server-created workflow records.
+// - chatRooms/{roomId}/messages|reads: participant-scoped communication.
+// - notifications/preferences/savedEvents/savedSearches: owner-scoped data.
+// - reports/auditLogs/accountDeletionRequests: moderated operational records.
+// - publicOrganizerProfiles: authenticated public projection without private PII.
+// - eventCheckIns/checkInAttempts/functionReceipts/adminOperations:
+//   server-owned operational state; clients cannot write attempt/receipt data.
+// All unmatched paths are denied at the end of this file.
+
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
@@ -20,7 +32,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return hasUser() && userData().role == 'admin'
-        && userData().status == 'active';
+        && userData().status == 'active'
+        && request.auth.token.email_verified == true;
     }
 
     function isActiveStudent() {
@@ -71,9 +84,13 @@ service cloud.firestore {
         && data.email.matches('^[^@]+@u-aizu\\.ac\\.jp$');
     }
 
-    function isVerifiedAizuStudentIdentity(data) {
+    function isVerifiedStudentIdentity(data) {
       return request.auth.token.email_verified == true
-        && isAizuStudentIdentity(data);
+        && request.auth.token.email == data.email;
+    }
+
+    function isVerifiedAizuStudentIdentity(data) {
+      return isVerifiedStudentIdentity(data) && isAizuStudentIdentity(data);
     }
 
     function validLegalConsent(data) {
@@ -126,7 +143,10 @@ service cloud.firestore {
             data.status == 'pending_approval'
             || (
               data.status == 'active'
-              && isVerifiedAizuStudentIdentity(data)
+              && (
+                isAizuStudentIdentity(data)
+                || isVerifiedStudentIdentity(data)
+              )
             )
           )
         )
@@ -174,7 +194,13 @@ service cloud.firestore {
       && data.updatedAt is timestamp
       && (
         data.status == 'pending_approval'
-        || isVerifiedAizuStudentIdentity(data)
+        || (
+          data.status == 'active'
+          && (
+            isAizuStudentIdentity(data)
+            || isVerifiedStudentIdentity(data)
+          )
+        )
       );
     }
 
@@ -198,7 +224,14 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.auth.uid == userId
         && validUser(request.resource.data, userId)
-        && request.resource.data.status == 'pending_approval'
+        && (
+          request.resource.data.status == 'pending_approval'
+          || (
+            request.resource.data.role == 'student'
+            && request.resource.data.status == 'active'
+            && isAizuStudentIdentity(request.resource.data)
+          )
+        )
         && validLegalConsent(request.resource.data);
       allow update: if isAdmin()
         && request.resource.data.role == resource.data.role
@@ -273,7 +306,13 @@ service cloud.firestore {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
       allow create: if signedIn()
         && request.auth.uid == userId
-        && request.resource.data.status == 'pending_approval'
+        && (
+          request.resource.data.status == 'pending_approval'
+          || (
+            request.resource.data.status == 'active'
+            && isAizuStudentIdentity(request.resource.data)
+          )
+        )
         && validStudentProfile(request.resource.data, userId);
       allow update: if (
           signedIn()
@@ -505,6 +544,7 @@ service cloud.firestore {
             /databases/$(database)/documents/chatRooms/$(roomId)
           ).data.status == 'active'
           && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.senderName == userData().displayName
           && request.resource.data.roomId == roomId
           && validString(request.resource.data.text, 1, 2000)
           && validString(request.resource.data.senderName, 1, 80)

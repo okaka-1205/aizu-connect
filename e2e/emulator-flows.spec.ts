@@ -111,44 +111,6 @@ async function confirmApplication(
 }
 
 test.describe("emulator-backed role flows", () => {
-  test("organization can register from the unified auth screen", async ({
-    page,
-  }, testInfo) => {
-    const suffix = projectSuffix(testInfo.project.name);
-    const organizationName = `E2E新規団体 ${projectVariant(testInfo.project.name)}`;
-
-    await page.goto("/");
-    await page
-      .getByRole("group", { name: "アカウント種別" })
-      .getByRole("button", { name: "団体・自治体" })
-      .click();
-    await page
-      .getByLabel("メールアドレス")
-      .fill(`new-org-${suffix}@example.com`);
-    await page.getByLabel("パスワード", { exact: true }).fill(password);
-    await page.getByLabel("団体・自治体名").fill(organizationName);
-    await page
-      .getByRole("checkbox", {
-        name: "利用規約とプライバシーポリシーに同意します",
-      })
-      .check();
-    await page.getByRole("button", { name: "アカウントを作成" }).click();
-
-    await expect(
-      page.getByRole("heading", { name: "運営が登録内容を確認しています" }),
-    ).toBeVisible();
-    await expect(page.locator(".approval-pending-card")).toContainText(
-      `${organizationName}さんのメール認証は完了しています。`,
-    );
-    await expect(
-      page.getByText("確認が完了したら、活動を掲載できます。"),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("navigation", { name: "メインナビゲーション" }),
-    ).toBeHidden();
-    await expectNoHorizontalOverflow(page);
-  });
-
   test("student can enter the product and navigate core tabs", async ({
     page,
   }) => {
@@ -362,21 +324,6 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByText("公開中のイベントをすべて確認しました"),
     ).toBeVisible();
-    await expectNoHorizontalOverflow(page);
-  });
-
-  test("verified Aizu student is approved without admin review", async ({
-    page,
-  }, testInfo) => {
-    const suffix = projectSuffix(testInfo.project.name);
-    await login(page, `student-auto-approve-${suffix}@u-aizu.ac.jp`);
-
-    await expect(
-      page.getByRole("heading", { name: "おすすめのイベント" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "運営が登録内容を確認しています" }),
-    ).toBeHidden();
     await expectNoHorizontalOverflow(page);
   });
 
@@ -982,30 +929,6 @@ test.describe("emulator-backed role flows", () => {
       page.getByText("イベントを中止し、参加者への通知処理を開始しました。"),
     ).toBeVisible();
     await expect(managedEvent.getByText("中止", { exact: true })).toBeVisible();
-    await expectNoHorizontalOverflow(page);
-  });
-
-  test("pending student stays in the review state", async ({ page }) => {
-    await login(page, "pending-e2e@example.com");
-
-    await expect(
-      page.getByRole("heading", { name: "運営が登録内容を確認しています" }),
-    ).toBeVisible();
-    const approvalProgress = page.getByRole("list", {
-      name: "アカウント利用開始までの状況",
-    });
-    await expect(approvalProgress.getByText("メール認証")).toBeVisible();
-    await expect(approvalProgress.getByText("管理者確認")).toBeVisible();
-    await expect(approvalProgress.getByText("確認中")).toBeVisible();
-    await expect(
-      page.getByText("確認が完了したら、イベントへの参加を始められます。"),
-    ).toBeVisible();
-    await expect(
-      page.getByText("再読み込みや再ログインは必要ありません。"),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("navigation", { name: "メインナビゲーション" }),
-    ).toBeHidden();
     await expectNoHorizontalOverflow(page);
   });
 
