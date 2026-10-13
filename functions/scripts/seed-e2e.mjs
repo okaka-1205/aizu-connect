@@ -467,6 +467,17 @@ for (const variant of ["desktop", "mobile", "tablet"]) {
       displayName: `E2E 審査対象 ${displayVariant}`,
     }),
   );
+  batch.set(db.doc(`studentProfiles/${reviewUserId}`), {
+    ...userDoc({
+      uid: reviewUserId,
+      status: "pending_approval",
+      email: `admin-review-${variant}@example.com`,
+      displayName: `E2E 審査対象 ${displayVariant}`,
+    }),
+    verificationMethod: "manual_review",
+    profileCompletionRate: 80,
+    activityCount: 0,
+  });
   batch.set(
     db.doc(`events/${reviewEventId}`),
     eventDoc({

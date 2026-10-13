@@ -559,6 +559,15 @@ export const adminManageResource = onCall(
           );
         }
         const title = String(userData?.displayName || "ユーザー");
+        const relatedAccountRef =
+          userData?.role === "student" ?
+            db.doc(`studentProfiles/${targetId}`) :
+            userData?.role === "organization" ?
+              db.doc(`organizations/${targetId}`) :
+              null;
+        const relatedAccount = relatedAccountRef ?
+          await relatedAccountRef.get() :
+          null;
         if (action === "delete_user") {
           await deleteUserData(
             targetId,
@@ -578,22 +587,18 @@ export const adminManageResource = onCall(
         }
         if (["approve_user", "reject_user"].includes(action)) {
           const status = action === "approve_user" ? "active" : "rejected";
-          await userRef.update({
+          const accountBatch = db.batch();
+          const accountUpdate = {
             status,
             reviewReason: status === "rejected" ? reason : FieldValue.delete(),
             moderationReason: FieldValue.delete(),
             updatedAt: FieldValue.serverTimestamp(),
-          });
-          if (userData?.role === "organization") {
-            const organizationRef = db.doc(`organizations/${targetId}`);
-            const organization = await organizationRef.get();
-            if (organization.exists) {
-              await organizationRef.update({
-                status,
-                updatedAt: FieldValue.serverTimestamp(),
-              });
-            }
+          };
+          accountBatch.update(userRef, accountUpdate);
+          if (relatedAccountRef && relatedAccount?.exists) {
+            accountBatch.update(relatedAccountRef, accountUpdate);
           }
+          await accountBatch.commit();
           await createNotificationOnce(
             `notifications/account_review_${operationId}`,
             {
@@ -626,13 +631,19 @@ export const adminManageResource = onCall(
           return await completeOperation(status);
         }
         const status = action === "suspend_user" ? "suspended" : "active";
-        await userRef.update({
+        const accountBatch = db.batch();
+        const accountUpdate = {
           status,
           moderationReason:
             status === "suspended" ? reason : FieldValue.delete(),
           ...(status === "active" ? {reviewReason: FieldValue.delete()} : {}),
           updatedAt: FieldValue.serverTimestamp(),
-        });
+        };
+        accountBatch.update(userRef, accountUpdate);
+        if (relatedAccountRef && relatedAccount?.exists) {
+          accountBatch.update(relatedAccountRef, accountUpdate);
+        }
+        await accountBatch.commit();
         if (status === "suspended") {
           await db.collection("notifications").add({
             recipientId: targetId,

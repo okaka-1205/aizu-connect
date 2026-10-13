@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_CHAT_ATTACHMENT_SIZE,
   MAX_IMAGE_SIZE,
+  didCompleteManualApproval,
   formatEventStart,
+  getAuthFlowErrorMessage,
   getFirebaseErrorMessage,
   isAizuUniversityEmail,
   isFutureEventStart,
@@ -98,6 +100,33 @@ describe("auth helpers", () => {
         status: "active",
         emailVerified: true,
         email: "student@u-aizu.ac.jp",
+      }),
+    ).toBe(false);
+  });
+
+  it("detects a completed manual approval without treating Aizu auto-activation as one", () => {
+    expect(
+      didCompleteManualApproval({
+        previousStatus: "pending_approval",
+        nextStatus: "active",
+        role: "student",
+        email: "student@example.com",
+      }),
+    ).toBe(true);
+    expect(
+      didCompleteManualApproval({
+        previousStatus: "pending_approval",
+        nextStatus: "active",
+        role: "student",
+        email: "student@u-aizu.ac.jp",
+      }),
+    ).toBe(false);
+    expect(
+      didCompleteManualApproval({
+        previousStatus: "active",
+        nextStatus: "active",
+        role: "organization",
+        email: "club@example.com",
       }),
     ).toBe(false);
   });
@@ -241,6 +270,32 @@ describe("chat attachment validation", () => {
 });
 
 describe("firebase error messages", () => {
+  it("identifies which registration stage could not reach Firebase", () => {
+    const networkError = Object.assign(
+      new Error("Firebase: auth/network-request-failed"),
+      { code: "auth/network-request-failed" },
+    );
+    expect(
+      getAuthFlowErrorMessage({ stage: "app_check", error: networkError }),
+    ).toContain("安全性の確認サービス");
+    expect(
+      getAuthFlowErrorMessage({ stage: "create_account", error: networkError }),
+    ).toContain("認証サービス");
+    expect(
+      getAuthFlowErrorMessage({ stage: "save_profile", error: networkError }),
+    ).toContain("作成途中のアカウントは取り消しました");
+  });
+
+  it("prevents re-registration when profile rollback fails", () => {
+    expect(
+      getAuthFlowErrorMessage({
+        stage: "save_profile",
+        error: new Error("profile write failed"),
+        rollbackFailed: true,
+      }),
+    ).toContain("再登録せず");
+  });
+
   it("prioritizes callable function errors", () => {
     expect(
       getFirebaseErrorMessage(
