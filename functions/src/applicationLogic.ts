@@ -88,6 +88,54 @@ export const isCheckInWindowOpen = (
   );
 };
 
+export const CHECK_IN_MAX_FAILURES = 5;
+export const CHECK_IN_LOCKOUT_MILLIS = 15 * 60 * 1000;
+
+export type CheckInAttemptDecision = {
+  allowed: boolean;
+  locked: boolean;
+  failedAttempts: number;
+  lockedUntilMillis?: number;
+};
+
+export const evaluateCheckInAttempt = ({
+  failedAttempts,
+  lockedUntilMillis,
+  nowMillis,
+  codeMatches,
+}: {
+  failedAttempts: number;
+  lockedUntilMillis?: number;
+  nowMillis: number;
+  codeMatches: boolean;
+}): CheckInAttemptDecision => {
+  if (lockedUntilMillis !== undefined && lockedUntilMillis > nowMillis) {
+    return {
+      allowed: false,
+      locked: true,
+      failedAttempts,
+      lockedUntilMillis,
+    };
+  }
+  if (codeMatches) {
+    return {allowed: true, locked: false, failedAttempts: 0};
+  }
+  const previousFailures =
+    lockedUntilMillis !== undefined && lockedUntilMillis <= nowMillis ?
+      0 :
+      Math.max(0, Math.floor(failedAttempts));
+  const nextFailures = previousFailures + 1;
+  if (nextFailures >= CHECK_IN_MAX_FAILURES) {
+    return {
+      allowed: false,
+      locked: true,
+      failedAttempts: nextFailures,
+      lockedUntilMillis: nowMillis + CHECK_IN_LOCKOUT_MILLIS,
+    };
+  }
+  return {allowed: false, locked: false, failedAttempts: nextFailures};
+};
+
 export type EventPlanInput = {
   title: string;
   summary: string;

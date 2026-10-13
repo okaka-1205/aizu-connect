@@ -60,20 +60,18 @@ test.describe("lightweight emulator auth flows", () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  test("verified external student is activated without admin review", async ({
+  test("verified external student waits for admin review", async ({
     page,
   }, testInfo) => {
     const suffix = projectSuffix(testInfo.project.name);
     await login(page, `student-auth-${suffix}@example.com`);
 
     await expect(
-      page.getByRole("heading", {
-        name: `こんにちは、 認証テスト学生 ${suffix}さん`,
-      }),
-    ).toBeVisible();
-    await expect(
       page.getByRole("heading", { name: "運営が登録内容を確認しています" }),
-    ).toBeHidden();
+    ).toBeVisible();
+    await expect(page.locator(".approval-pending-card")).toContainText(
+      `認証テスト学生 ${suffix}`,
+    );
     await expect(page.getByRole("alert")).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
   });

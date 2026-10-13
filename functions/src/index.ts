@@ -1,8 +1,4 @@
-import {
-  FieldPath,
-  FieldValue,
-  Timestamp,
-} from "firebase-admin/firestore";
+import {FieldPath, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {randomInt} from "node:crypto";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import {logger, setGlobalOptions} from "firebase-functions";
@@ -12,6 +8,7 @@ import {
   isCheckInWindowOpen,
   isApplicationWindowOpen,
   isMissingStorageBucketError,
+  evaluateCheckInAttempt,
   normalizeEventPlanInput,
   shouldDecrementApplicantCount,
 } from "./applicationLogic";
@@ -20,8 +17,10 @@ import {adminAuth, adminStorage, db} from "./lib/firebaseAdmin";
 
 setGlobalOptions({maxInstances: 10, region: "asia-northeast1"});
 const isFunctionsEmulator = process.env.FUNCTIONS_EMULATOR === "true";
-const enforceAdminAppCheck =
-  !isFunctionsEmulator && process.env.ENFORCE_ADMIN_APP_CHECK === "true";
+const enforceCallableAppCheck =
+  !isFunctionsEmulator &&
+  (process.env.ENFORCE_CALLABLE_APP_CHECK ??
+    process.env.ENFORCE_ADMIN_APP_CHECK) === "true";
 
 const eventChatRoomId = (eventId: string) => `event_${eventId}`;
 const createCheckInCode = () =>
@@ -56,8 +55,9 @@ type AdminActor = {
 
 const requireAdmin = async (
   userId: string | undefined,
+  emailVerified: boolean,
 ): Promise<AdminActor> => {
-  if (!userId) {
+  if (!userId || !emailVerified) {
     throw new HttpsError("unauthenticated", "ログインが必要です。");
   }
   const snapshot = await db.doc(`users/${userId}`).get();
@@ -323,6 +323,7 @@ const deleteEventData = async (
       storagePrefixes.push(`chat-attachments/${roomId}/`);
     }),
     deleteMatchingDocuments("savedEvents", "eventId", eventId),
+    deleteMatchingDocuments("checkInAttempts", "eventId", eventId),
     deleteMatchingDocuments("notifications", "targetId", eventId),
     db.recursiveDelete(db.doc(`eventCheckIns/${eventId}`)),
   ]);
@@ -432,6 +433,7 @@ const deleteUserData = async (
     deleteMatchingDocuments("notifications", "recipientId", userId),
     deleteMatchingDocuments("savedEvents", "userId", userId),
     deleteMatchingDocuments("chatPreferences", "userId", userId),
+    deleteMatchingDocuments("checkInAttempts", "userId", userId),
     db.recursiveDelete(db.doc(`notificationPreferences/${userId}`)),
     db.recursiveDelete(db.doc(`savedSearches/${userId}_default`)),
     db.recursiveDelete(db.doc(`studentProfiles/${userId}`)),
@@ -452,12 +454,15 @@ const deleteUserData = async (
 
 export const adminManageResource = onCall(
   {
-    enforceAppCheck: enforceAdminAppCheck,
+    enforceAppCheck: enforceCallableAppCheck,
     timeoutSeconds: 540,
     memory: "512MiB",
   },
   async (request) => {
-    const actor = await requireAdmin(request.auth?.uid);
+    const actor = await requireAdmin(
+      request.auth?.uid,
+      request.auth?.token.email_verified === true,
+    );
     const action = String(request.data?.action ?? "");
     const targetId = requiredDocumentId(request.data?.targetId);
     const reason = requiredAdminText(request.data?.reason, "対応理由");
@@ -814,344 +819,352 @@ export const adminManageResource = onCall(
   },
 );
 
-export const saveEventPlan = onCall(async (request) => {
-  const userId = request.auth?.uid;
-  const eventId = request.data?.eventId;
-  const mode = request.data?.mode;
-  if (!userId) throw new HttpsError("unauthenticated", "Login required.");
-  if (
-    typeof eventId !== "string" ||
-    !/^[A-Za-z0-9_-]{1,200}$/.test(eventId) ||
-    !["create", "update"].includes(mode)
-  ) {
-    throw new HttpsError("invalid-argument", "Event request is invalid.");
-  }
-  const plan = normalizeEventPlanInput(request.data?.event, Date.now());
-  if (!plan) {
-    throw new HttpsError("invalid-argument", "Event details are invalid.");
-  }
-  const userSnapshot = await db.doc(`users/${userId}`).get();
-  const userData = userSnapshot.data();
-  if (!userSnapshot.exists) {
-    throw new HttpsError(
-      "failed-precondition",
-      "アカウント情報を確認できませんでした。",
-    );
-  }
-  if (userData?.status !== "active") {
-    const isAwaitingApproval = ["pending", "pending_approval"].includes(
-      String(userData?.status),
-    );
-    throw new HttpsError(
-      "permission-denied",
-      isAwaitingApproval ?
-        "管理者の承認待ちです。" :
-        "このアカウントではイベントを企画できません。",
-    );
-  }
-  if (!["student", "organization"].includes(userData?.role)) {
-    throw new HttpsError(
-      "permission-denied",
-      "学生または団体アカウントでイベントを企画できます。",
-    );
-  }
-  if (!isFunctionsEmulator && request.auth?.token.email_verified !== true) {
-    throw new HttpsError(
-      "failed-precondition",
-      "Email verification is required.",
-    );
-  }
-  const organizationName = String(
-    userData?.organizationName ?? userData?.displayName ?? "",
-  ).trim();
-  if (!organizationName || organizationName.length > 100) {
-    throw new HttpsError(
-      "failed-precondition",
-      "Organizer profile is incomplete.",
-    );
-  }
-  const eventRef = db.doc(`events/${eventId}`);
-  await db.runTransaction(async (transaction) => {
-    const eventSnapshot = await transaction.get(eventRef);
-    if (mode === "create" && eventSnapshot.exists) {
-      throw new HttpsError("already-exists", "Event already exists.");
-    }
+export const saveEventPlan = onCall(
+  {enforceAppCheck: enforceCallableAppCheck},
+  async (request) => {
+    const userId = request.auth?.uid;
+    const eventId = request.data?.eventId;
+    const mode = request.data?.mode;
+    if (!userId) throw new HttpsError("unauthenticated", "Login required.");
     if (
-      mode === "update" &&
-      (!eventSnapshot.exists ||
-        eventSnapshot.data()?.createdBy !== userId ||
-        !isEventPlanEditableStatus(eventSnapshot.data()?.status))
+      typeof eventId !== "string" ||
+      !/^[A-Za-z0-9_-]{1,200}$/.test(eventId) ||
+      !["create", "update"].includes(mode)
     ) {
+      throw new HttpsError("invalid-argument", "Event request is invalid.");
+    }
+    const plan = normalizeEventPlanInput(request.data?.event, Date.now());
+    if (!plan) {
+      throw new HttpsError("invalid-argument", "Event details are invalid.");
+    }
+    const userSnapshot = await db.doc(`users/${userId}`).get();
+    const userData = userSnapshot.data();
+    if (!userSnapshot.exists) {
       throw new HttpsError(
         "failed-precondition",
-        "このイベントは現在編集できません。",
+        "アカウント情報を確認できませんでした。",
       );
     }
-    const startAt = Timestamp.fromMillis(plan.startAtMillis);
-    const endAt = Timestamp.fromMillis(plan.endAtMillis);
-    const eventData = {
-      ...plan,
-      startAt,
-      endAt,
-      startAtLabel: new Intl.DateTimeFormat("ja-JP", {
-        timeZone: "Asia/Tokyo",
-        year: "numeric",
-        month: "numeric",
-        day: "numeric",
-        weekday: "short",
-        hour: "numeric",
-        minute: "2-digit",
-      }).format(startAt.toDate()),
-      endAtLabel: new Intl.DateTimeFormat("ja-JP", {
-        timeZone: "Asia/Tokyo",
-        hour: "numeric",
-        minute: "2-digit",
-      }).format(endAt.toDate()),
-      organizationName,
-      organizationId: userId,
-      organizationVerified: userData?.role === "organization",
-      status: "pending_review",
-      imageUrl: plan.imageUrl,
-      tags: [
-        plan.category,
-        "学生歓迎",
-        ...(plan.beginnerLevel === "初参加歓迎" ? ["初心者歓迎"] : []),
-      ],
-      createdBy: userId,
-      updatedAt: FieldValue.serverTimestamp(),
-    };
-    delete (eventData as Record<string, unknown>).startAtMillis;
-    delete (eventData as Record<string, unknown>).endAtMillis;
-    if (mode === "create") {
-      transaction.create(eventRef, {
-        ...eventData,
-        applicantCount: 0,
-        createdAt: FieldValue.serverTimestamp(),
-      });
-    } else {
-      transaction.update(eventRef, {
-        ...eventData,
-        revisionReason: FieldValue.delete(),
-        reviewNote: FieldValue.delete(),
-        reviewedBy: FieldValue.delete(),
-        reviewedAt: FieldValue.delete(),
-        moderationReason: FieldValue.delete(),
-      });
+    if (userData?.status !== "active") {
+      const isAwaitingApproval = ["pending", "pending_approval"].includes(
+        String(userData?.status),
+      );
+      throw new HttpsError(
+        "permission-denied",
+        isAwaitingApproval ?
+          "管理者の承認待ちです。" :
+          "このアカウントではイベントを企画できません。",
+      );
     }
-  });
-  return {eventId, status: "pending_review"};
-});
-
-export const submitApplication = onCall(async (request) => {
-  const userId = request.auth?.uid;
-  const eventId = request.data?.eventId;
-  const participantMessage = String(
-    request.data?.participantMessage ?? "",
-  ).trim();
-  const accessibilityNeeds = String(
-    request.data?.accessibilityNeeds ?? "",
-  ).trim();
-  const emergencyContact = String(request.data?.emergencyContact ?? "").trim();
-  const consentAccepted = request.data?.consentAccepted === true;
-  const sensitiveInfoConsent = request.data?.sensitiveInfoConsent === true;
-  const emergencyContactAuthorityConfirmed =
-    request.data?.emergencyContactAuthorityConfirmed === true;
-  if (!userId) throw new HttpsError("unauthenticated", "Login required.");
-  if (!isFunctionsEmulator && request.auth?.token.email_verified !== true) {
-    throw new HttpsError(
-      "failed-precondition",
-      "Email verification is required.",
-    );
-  }
-  if (typeof eventId !== "string" || eventId.length < 3) {
-    throw new HttpsError("invalid-argument", "Event ID is required.");
-  }
-  if (
-    !consentAccepted ||
-    (accessibilityNeeds.length > 0 && !sensitiveInfoConsent) ||
-    (emergencyContact.length > 0 && !emergencyContactAuthorityConfirmed) ||
-    participantMessage.length > 500 ||
-    accessibilityNeeds.length > 500 ||
-    emergencyContact.length > 200
-  ) {
-    throw new HttpsError(
-      "invalid-argument",
-      "Application details are invalid.",
-    );
-  }
-
-  const applicationId = `${eventId}_${userId}`;
-  const applicationRef = db.doc(`eventApplications/${applicationId}`);
-  const eventRef = db.doc(`events/${eventId}`);
-  const userRef = db.doc(`users/${userId}`);
-  const roomRef = db.doc(`chatRooms/${applicationId}`);
-  const messageRef = roomRef.collection("messages").doc();
-  const eventRoomRef = db.doc(`chatRooms/${eventChatRoomId(eventId)}`);
-  const provisionLogRef = db.doc(`thirdPartyProvisionLogs/${applicationId}`);
-  let applicationStatus: "pending" | "waitlisted" = "pending";
-  let waitlistPosition = 0;
-
-  await db.runTransaction(async (transaction) => {
-    applicationStatus = "pending";
-    waitlistPosition = 0;
-    const [userSnapshot, eventSnapshot, applicationSnapshot] =
-      await transaction.getAll(userRef, eventRef, applicationRef);
-    if (!userSnapshot.exists || userSnapshot.data()?.role !== "student") {
-      throw new HttpsError("permission-denied", "Student account required.");
+    if (!["student", "organization"].includes(userData?.role)) {
+      throw new HttpsError(
+        "permission-denied",
+        "学生または団体アカウントでイベントを企画できます。",
+      );
     }
-    if (userSnapshot.data()?.status !== "active") {
-      throw new HttpsError("permission-denied", "Account is not active.");
-    }
-    if (!eventSnapshot.exists) {
-      throw new HttpsError("failed-precondition", "Event is not available.");
-    }
-    if (applicationSnapshot.exists) {
-      throw new HttpsError("already-exists", "Already applied.");
-    }
-
-    const eventData = eventSnapshot.data() ?? {};
-    if (!hasRequiredCommerceDisclosure(eventData)) {
+    if (!isFunctionsEmulator && request.auth?.token.email_verified !== true) {
       throw new HttpsError(
         "failed-precondition",
-        "有料イベントの法定表示を確認できないため申込みできません。",
+        "Email verification is required.",
       );
     }
-    const startAtMillis =
-      eventData.startAt instanceof Timestamp ?
-        eventData.startAt.toMillis() :
-        Number.NaN;
-    if (
-      !isApplicationWindowOpen(
-        String(eventData.status ?? ""),
-        startAtMillis,
-        Date.now(),
-      )
-    ) {
+    const organizationName = String(
+      userData?.organizationName ?? userData?.displayName ?? "",
+    ).trim();
+    if (!organizationName || organizationName.length > 100) {
       throw new HttpsError(
         "failed-precondition",
-        "Event application period has ended.",
+        "Organizer profile is incomplete.",
       );
     }
-    const currentCount = Number(eventData.applicantCount ?? 0);
-    const capacity = Number(eventData.capacity ?? 0);
-    if (capacity > 0 && currentCount >= capacity) {
-      applicationStatus = "waitlisted";
-      const waitlistSnapshot = await transaction.get(
-        db
-          .collection("eventApplications")
-          .where("eventId", "==", eventId)
-          .where("status", "==", "waitlisted")
-          .limit(500),
-      );
-      waitlistPosition = waitlistSnapshot.size + 1;
-    }
-    const organizationId = eventData.createdBy;
-    if (typeof organizationId !== "string" || !organizationId) {
-      throw new HttpsError("failed-precondition", "Organizer is missing.");
-    }
-
-    transaction.create(applicationRef, {
-      id: applicationId,
-      eventId,
-      eventTitle: eventData.title,
-      studentId: userId,
-      studentName: userSnapshot.data()?.displayName ?? "学生",
-      studentProfileImageUrl: userSnapshot.data()?.profileImageUrl ?? null,
-      organizationName: eventData.organizationName,
-      organizationId,
-      status: applicationStatus,
-      participantMessage,
-      accessibilityNeeds,
-      emergencyContact,
-      consentAccepted,
-      sensitiveInfoConsent,
-      emergencyContactAuthorityConfirmed,
-      ...(applicationStatus === "waitlisted" ? {waitlistPosition} : {}),
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    if (applicationStatus === "pending") {
-      transaction.update(eventRef, {
-        applicantCount: FieldValue.increment(1),
+    const eventRef = db.doc(`events/${eventId}`);
+    await db.runTransaction(async (transaction) => {
+      const eventSnapshot = await transaction.get(eventRef);
+      if (mode === "create" && eventSnapshot.exists) {
+        throw new HttpsError("already-exists", "Event already exists.");
+      }
+      if (
+        mode === "update" &&
+        (!eventSnapshot.exists ||
+          eventSnapshot.data()?.createdBy !== userId ||
+          !isEventPlanEditableStatus(eventSnapshot.data()?.status))
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "このイベントは現在編集できません。",
+        );
+      }
+      const startAt = Timestamp.fromMillis(plan.startAtMillis);
+      const endAt = Timestamp.fromMillis(plan.endAtMillis);
+      const eventData = {
+        ...plan,
+        startAt,
+        endAt,
+        startAtLabel: new Intl.DateTimeFormat("ja-JP", {
+          timeZone: "Asia/Tokyo",
+          year: "numeric",
+          month: "numeric",
+          day: "numeric",
+          weekday: "short",
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(startAt.toDate()),
+        endAtLabel: new Intl.DateTimeFormat("ja-JP", {
+          timeZone: "Asia/Tokyo",
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(endAt.toDate()),
+        organizationName,
+        organizationId: userId,
+        organizationVerified: userData?.role === "organization",
+        status: "pending_review",
+        imageUrl: plan.imageUrl,
+        tags: [
+          plan.category,
+          "学生歓迎",
+          ...(plan.beginnerLevel === "初参加歓迎" ? ["初心者歓迎"] : []),
+        ],
+        createdBy: userId,
         updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-    transaction.create(roomRef, {
-      id: applicationId,
-      roomType: "application",
-      applicationId,
-      eventId,
-      eventTitle: eventData.title,
-      studentId: userId,
-      studentName: userSnapshot.data()?.displayName ?? "学生",
-      organizationName: eventData.organizationName,
-      organizationId,
-      participantIds: [userId, organizationId],
-      status: "active",
-      lastMessageText:
-        applicationStatus === "waitlisted" ?
-          "キャンセル待ちに登録しました。" :
-          "参加申請を送信しました。主催者からの連絡をお待ちください。",
-      lastMessageAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
+      };
+      delete (eventData as Record<string, unknown>).startAtMillis;
+      delete (eventData as Record<string, unknown>).endAtMillis;
+      if (mode === "create") {
+        transaction.create(eventRef, {
+          ...eventData,
+          applicantCount: 0,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        transaction.update(eventRef, {
+          ...eventData,
+          revisionReason: FieldValue.delete(),
+          reviewNote: FieldValue.delete(),
+          reviewedBy: FieldValue.delete(),
+          reviewedAt: FieldValue.delete(),
+          moderationReason: FieldValue.delete(),
+        });
+      }
     });
-    transaction.set(
-      eventRoomRef,
-      {
-        id: eventChatRoomId(eventId),
-        roomType: "event",
-        applicationId: eventChatRoomId(eventId),
+    return {eventId, status: "pending_review"};
+  },
+);
+
+export const submitApplication = onCall(
+  {enforceAppCheck: enforceCallableAppCheck},
+  async (request) => {
+    const userId = request.auth?.uid;
+    const eventId = request.data?.eventId;
+    const participantMessage = String(
+      request.data?.participantMessage ?? "",
+    ).trim();
+    const accessibilityNeeds = String(
+      request.data?.accessibilityNeeds ?? "",
+    ).trim();
+    const emergencyContact = String(
+      request.data?.emergencyContact ?? "",
+    ).trim();
+    const consentAccepted = request.data?.consentAccepted === true;
+    const sensitiveInfoConsent = request.data?.sensitiveInfoConsent === true;
+    const emergencyContactAuthorityConfirmed =
+      request.data?.emergencyContactAuthorityConfirmed === true;
+    if (!userId) throw new HttpsError("unauthenticated", "Login required.");
+    if (!isFunctionsEmulator && request.auth?.token.email_verified !== true) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Email verification is required.",
+      );
+    }
+    if (typeof eventId !== "string" || eventId.length < 3) {
+      throw new HttpsError("invalid-argument", "Event ID is required.");
+    }
+    if (
+      !consentAccepted ||
+      (accessibilityNeeds.length > 0 && !sensitiveInfoConsent) ||
+      (emergencyContact.length > 0 && !emergencyContactAuthorityConfirmed) ||
+      participantMessage.length > 500 ||
+      accessibilityNeeds.length > 500 ||
+      emergencyContact.length > 200
+    ) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Application details are invalid.",
+      );
+    }
+
+    const applicationId = `${eventId}_${userId}`;
+    const applicationRef = db.doc(`eventApplications/${applicationId}`);
+    const eventRef = db.doc(`events/${eventId}`);
+    const userRef = db.doc(`users/${userId}`);
+    const roomRef = db.doc(`chatRooms/${applicationId}`);
+    const messageRef = roomRef.collection("messages").doc();
+    const eventRoomRef = db.doc(`chatRooms/${eventChatRoomId(eventId)}`);
+    const provisionLogRef = db.doc(`thirdPartyProvisionLogs/${applicationId}`);
+    let applicationStatus: "pending" | "waitlisted" = "pending";
+    let waitlistPosition = 0;
+
+    await db.runTransaction(async (transaction) => {
+      applicationStatus = "pending";
+      waitlistPosition = 0;
+      const [userSnapshot, eventSnapshot, applicationSnapshot] =
+        await transaction.getAll(userRef, eventRef, applicationRef);
+      if (!userSnapshot.exists || userSnapshot.data()?.role !== "student") {
+        throw new HttpsError("permission-denied", "Student account required.");
+      }
+      if (userSnapshot.data()?.status !== "active") {
+        throw new HttpsError("permission-denied", "Account is not active.");
+      }
+      if (!eventSnapshot.exists) {
+        throw new HttpsError("failed-precondition", "Event is not available.");
+      }
+      if (applicationSnapshot.exists) {
+        throw new HttpsError("already-exists", "Already applied.");
+      }
+
+      const eventData = eventSnapshot.data() ?? {};
+      if (!hasRequiredCommerceDisclosure(eventData)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "有料イベントの法定表示を確認できないため申込みできません。",
+        );
+      }
+      const startAtMillis =
+        eventData.startAt instanceof Timestamp ?
+          eventData.startAt.toMillis() :
+          Number.NaN;
+      if (
+        !isApplicationWindowOpen(
+          String(eventData.status ?? ""),
+          startAtMillis,
+          Date.now(),
+        )
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Event application period has ended.",
+        );
+      }
+      const currentCount = Number(eventData.applicantCount ?? 0);
+      const capacity = Number(eventData.capacity ?? 0);
+      if (capacity > 0 && currentCount >= capacity) {
+        applicationStatus = "waitlisted";
+        const waitlistSnapshot = await transaction.get(
+          db
+            .collection("eventApplications")
+            .where("eventId", "==", eventId)
+            .where("status", "==", "waitlisted")
+            .limit(500),
+        );
+        waitlistPosition = waitlistSnapshot.size + 1;
+      }
+      const organizationId = eventData.createdBy;
+      if (typeof organizationId !== "string" || !organizationId) {
+        throw new HttpsError("failed-precondition", "Organizer is missing.");
+      }
+
+      transaction.create(applicationRef, {
+        id: applicationId,
         eventId,
         eventTitle: eventData.title,
-        studentId: "",
-        studentName: "",
+        studentId: userId,
+        studentName: userSnapshot.data()?.displayName ?? "学生",
+        studentProfileImageUrl: userSnapshot.data()?.profileImageUrl ?? null,
         organizationName: eventData.organizationName,
         organizationId,
-        participantIds: FieldValue.arrayUnion(userId, organizationId),
+        status: applicationStatus,
+        participantMessage,
+        accessibilityNeeds,
+        emergencyContact,
+        consentAccepted,
+        sensitiveInfoConsent,
+        emergencyContactAuthorityConfirmed,
+        ...(applicationStatus === "waitlisted" ? {waitlistPosition} : {}),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      if (applicationStatus === "pending") {
+        transaction.update(eventRef, {
+          applicantCount: FieldValue.increment(1),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      transaction.create(roomRef, {
+        id: applicationId,
+        roomType: "application",
+        applicationId,
+        eventId,
+        eventTitle: eventData.title,
+        studentId: userId,
+        studentName: userSnapshot.data()?.displayName ?? "学生",
+        organizationName: eventData.organizationName,
+        organizationId,
+        participantIds: [userId, organizationId],
         status: "active",
         lastMessageText:
-          "イベント全体チャットに参加しました。過去のやり取りも確認できます。",
+          applicationStatus === "waitlisted" ?
+            "キャンセル待ちに登録しました。" :
+            "参加申請を送信しました。主催者からの連絡をお待ちください。",
         lastMessageAt: FieldValue.serverTimestamp(),
         createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      {merge: true},
-    );
-    transaction.create(messageRef, {
-      roomId: applicationId,
-      senderId: userId,
-      senderName: "Aizu Connect",
-      type: "text",
-      text: "参加申請を送信しました。主催者からの連絡をお待ちください。",
-      createdAt: FieldValue.serverTimestamp(),
+      });
+      transaction.set(
+        eventRoomRef,
+        {
+          id: eventChatRoomId(eventId),
+          roomType: "event",
+          applicationId: eventChatRoomId(eventId),
+          eventId,
+          eventTitle: eventData.title,
+          studentId: "",
+          studentName: "",
+          organizationName: eventData.organizationName,
+          organizationId,
+          participantIds: FieldValue.arrayUnion(userId, organizationId),
+          status: "active",
+          lastMessageText:
+            "イベント全体チャットに参加しました。過去のやり取りも確認できます。",
+          lastMessageAt: FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+      );
+      transaction.create(messageRef, {
+        roomId: applicationId,
+        senderId: userId,
+        senderName: "Aizu Connect",
+        type: "text",
+        text: "参加申請を送信しました。主催者からの連絡をお待ちください。",
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      transaction.create(provisionLogRef, {
+        applicationId,
+        userId,
+        userDisplayName: userSnapshot.data()?.displayName ?? "学生",
+        recipientId: organizationId,
+        recipientName: eventData.organizationName,
+        eventId,
+        legalBasis: "本人同意",
+        consentAccepted: true,
+        sensitiveInfoConsent,
+        emergencyContactAuthorityConfirmed,
+        dataCategories: [
+          "表示名",
+          ...(userSnapshot.data()?.profileImageUrl ? ["プロフィール画像"] : []),
+          "参加申請情報",
+          ...(accessibilityNeeds ? ["必要な配慮"] : []),
+          ...(emergencyContact ? ["緊急連絡先"] : []),
+        ],
+        providedAt: FieldValue.serverTimestamp(),
+        expiresAt: thirdPartyRecordExpiry(),
+      });
     });
-    transaction.create(provisionLogRef, {
-      applicationId,
-      userId,
-      userDisplayName: userSnapshot.data()?.displayName ?? "学生",
-      recipientId: organizationId,
-      recipientName: eventData.organizationName,
-      eventId,
-      legalBasis: "本人同意",
-      consentAccepted: true,
-      sensitiveInfoConsent,
-      emergencyContactAuthorityConfirmed,
-      dataCategories: [
-        "表示名",
-        ...(userSnapshot.data()?.profileImageUrl ? ["プロフィール画像"] : []),
-        "参加申請情報",
-        ...(accessibilityNeeds ? ["必要な配慮"] : []),
-        ...(emergencyContact ? ["緊急連絡先"] : []),
-      ],
-      providedAt: FieldValue.serverTimestamp(),
-      expiresAt: thirdPartyRecordExpiry(),
-    });
-  });
 
-  return {applicationId, status: applicationStatus, waitlistPosition};
-});
+    return {applicationId, status: applicationStatus, waitlistPosition};
+  },
+);
 
 export const createEventChatRoom = onDocumentCreated(
-  "events/{eventId}",
+  {document: "events/{eventId}", retry: true},
   async (event) => {
     const eventData = event.data?.data();
     if (!eventData || typeof eventData.createdBy !== "string") return;
@@ -1198,64 +1211,128 @@ export const createEventChatRoom = onDocumentCreated(
   },
 );
 
-export const checkInToEvent = onCall(async (request) => {
-  const userId = request.auth?.uid;
-  const eventId = request.data?.eventId;
-  const code = String(request.data?.code ?? "").trim();
-  if (!userId) throw new HttpsError("unauthenticated", "Login required.");
-  if (typeof eventId !== "string" || !/^\d{6}$/.test(code)) {
-    throw new HttpsError("invalid-argument", "Check-in details are invalid.");
-  }
-  const applicationId = `${eventId}_${userId}`;
-  const [applicationSnapshot, checkInSnapshot, eventSnapshot] =
-    await Promise.all([
-      db.doc(`eventApplications/${applicationId}`).get(),
-      db.doc(`eventCheckIns/${eventId}`).get(),
-      db.doc(`events/${eventId}`).get(),
-    ]);
-  if (
-    !applicationSnapshot.exists ||
-    applicationSnapshot.data()?.studentId !== userId ||
-    applicationSnapshot.data()?.status !== "confirmed"
-  ) {
-    throw new HttpsError(
-      "failed-precondition",
-      "Confirmed application required.",
-    );
-  }
-  if (!checkInSnapshot.exists || checkInSnapshot.data()?.code !== code) {
-    throw new HttpsError("permission-denied", "Check-in code is incorrect.");
-  }
-  const eventData = eventSnapshot.data();
-  const startAt =
-    eventData?.startAt instanceof Timestamp ?
-      eventData.startAt.toMillis() :
-      Number.NaN;
-  const endAt =
-    eventData?.endAt instanceof Timestamp ?
-      eventData.endAt.toMillis() :
-      undefined;
-  if (
-    !eventSnapshot.exists ||
-    !isCheckInWindowOpen(
-      String(eventData?.status ?? ""),
-      startAt,
-      endAt,
-      Date.now(),
-    )
-  ) {
-    throw new HttpsError(
-      "failed-precondition",
-      "Check-in is not available at this time.",
-    );
-  }
-  await applicationSnapshot.ref.update({
-    status: "attended",
-    checkedInAt: FieldValue.serverTimestamp(),
-    checkInMethod: "event_code",
-  });
-  return {status: "attended"};
-});
+export const checkInToEvent = onCall(
+  {enforceAppCheck: enforceCallableAppCheck},
+  async (request) => {
+    const userId = request.auth?.uid;
+    const eventId = request.data?.eventId;
+    const code = String(request.data?.code ?? "").trim();
+    if (!userId) throw new HttpsError("unauthenticated", "Login required.");
+    if (!isFunctionsEmulator && request.auth?.token.email_verified !== true) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Email verification is required.",
+      );
+    }
+    if (typeof eventId !== "string" || !/^\d{6}$/.test(code)) {
+      throw new HttpsError("invalid-argument", "Check-in details are invalid.");
+    }
+    const applicationId = `${eventId}_${userId}`;
+    const applicationRef = db.doc(`eventApplications/${applicationId}`);
+    const checkInRef = db.doc(`eventCheckIns/${eventId}`);
+    const eventRef = db.doc(`events/${eventId}`);
+    const attemptRef = db.doc(`checkInAttempts/${applicationId}`);
+    const outcome = await db.runTransaction(async (transaction) => {
+      const [
+        applicationSnapshot,
+        checkInSnapshot,
+        eventSnapshot,
+        attemptSnapshot,
+      ] = await transaction.getAll(
+        applicationRef,
+        checkInRef,
+        eventRef,
+        attemptRef,
+      );
+      if (
+        !applicationSnapshot.exists ||
+        applicationSnapshot.data()?.studentId !== userId ||
+        applicationSnapshot.data()?.status !== "confirmed"
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Confirmed application required.",
+        );
+      }
+      const eventData = eventSnapshot.data();
+      const startAt =
+        eventData?.startAt instanceof Timestamp ?
+          eventData.startAt.toMillis() :
+          Number.NaN;
+      const endAt =
+        eventData?.endAt instanceof Timestamp ?
+          eventData.endAt.toMillis() :
+          undefined;
+      const nowMillis = Date.now();
+      if (
+        !eventSnapshot.exists ||
+        !isCheckInWindowOpen(
+          String(eventData?.status ?? ""),
+          startAt,
+          endAt,
+          nowMillis,
+        )
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Check-in is not available at this time.",
+        );
+      }
+      const attemptData = attemptSnapshot.data();
+      const lockedUntil = attemptData?.lockedUntil;
+      const decision = evaluateCheckInAttempt({
+        failedAttempts: Number(attemptData?.failedAttempts ?? 0),
+        lockedUntilMillis:
+          lockedUntil instanceof Timestamp ? lockedUntil.toMillis() : undefined,
+        nowMillis,
+        codeMatches:
+          checkInSnapshot.exists && checkInSnapshot.data()?.code === code,
+      });
+      if (!decision.allowed) {
+        if (
+          !(lockedUntil instanceof Timestamp) ||
+          lockedUntil.toMillis() <= nowMillis
+        ) {
+          transaction.set(
+            attemptRef,
+            {
+              eventId,
+              userId,
+              failedAttempts: decision.failedAttempts,
+              lockedUntil:
+                decision.lockedUntilMillis === undefined ?
+                  FieldValue.delete() :
+                  Timestamp.fromMillis(decision.lockedUntilMillis),
+              lastAttemptAt: FieldValue.serverTimestamp(),
+              expiresAt: Timestamp.fromMillis(
+                nowMillis + 30 * 24 * 60 * 60 * 1000,
+              ),
+            },
+            {merge: true},
+          );
+        }
+        return decision;
+      }
+      transaction.update(applicationRef, {
+        status: "attended",
+        checkedInAt: FieldValue.serverTimestamp(),
+        checkInMethod: "event_code",
+      });
+      if (attemptSnapshot.exists) transaction.delete(attemptRef);
+      return decision;
+    });
+    if (!outcome.allowed) {
+      if (outcome.locked) {
+        throw new HttpsError(
+          "resource-exhausted",
+          "入力回数が上限に達しました。15分後にもう一度お試しください。",
+        );
+      }
+      throw new HttpsError("permission-denied", "Check-in code is incorrect.");
+    }
+    return {status: "attended"};
+  },
+);
 
 export {
   notifyApplicationCreated,

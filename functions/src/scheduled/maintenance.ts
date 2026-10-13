@@ -1,8 +1,4 @@
-import {
-  FieldPath,
-  FieldValue,
-  Timestamp,
-} from "firebase-admin/firestore";
+import {FieldPath, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import {
   reminderBucketForHoursUntil,
@@ -30,6 +26,19 @@ export const purgeExpiredLegalRecords = onSchedule(
         .limit(200)
         .get();
       hasExpiredRecords = !snapshot.empty;
+      if (snapshot.empty) continue;
+      const batch = db.batch();
+      snapshot.docs.forEach((document) => batch.delete(document.ref));
+      await batch.commit();
+    }
+    let hasExpiredAttempts = true;
+    while (hasExpiredAttempts) {
+      const snapshot = await db
+        .collection("checkInAttempts")
+        .where("expiresAt", "<=", Timestamp.now())
+        .limit(200)
+        .get();
+      hasExpiredAttempts = !snapshot.empty;
       if (snapshot.empty) continue;
       const batch = db.batch();
       snapshot.docs.forEach((document) => batch.delete(document.ref));

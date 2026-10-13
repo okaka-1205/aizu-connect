@@ -60,7 +60,7 @@ for (const variant of ["desktop", "mobile", "tablet"]) {
   });
   batch.set(db.doc(`studentProfiles/${uid}`), {
     ...userData,
-    verificationMethod: "email_verification",
+    verificationMethod: "manual_review",
     profileCompletionRate: 80,
     activityCount: 0,
   });

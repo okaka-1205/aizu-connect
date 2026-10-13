@@ -46,6 +46,9 @@ Attack cases covered:
 - Active Aizu registration with protected-data denial before email verification
 - Rejection of direct active registration for non-Aizu students
 - Mixed-field activation and role escalation attempts
+- Unverified administrator access to audit logs
+- Chat sender-name impersonation
+- Client reads and writes against check-in attempt records
 - Non-string values injected into interests and event tags
 - Invalid event and application state transitions
 - Schema pollution on saved events
@@ -53,3 +56,4 @@ Attack cases covered:
 - Invalid notification preference and notification read-state types
 - Client writes to server-owned collections
 - Invalid Storage owner scope and MIME type
+- Pending and unverified account reads of profile and event images

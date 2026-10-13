@@ -1,5 +1,17 @@
 rules_version = '2';
 
+// Assumed data model and trust boundaries:
+// - users/studentProfiles/organizations: private identity and review records.
+// - legalConsents/thirdPartyProvisionLogs: immutable compliance records.
+// - events/eventApplications/activities: server-created workflow records.
+// - chatRooms/{roomId}/messages|reads: participant-scoped communication.
+// - notifications/preferences/savedEvents/savedSearches: owner-scoped data.
+// - reports/auditLogs/accountDeletionRequests: moderated operational records.
+// - publicOrganizerProfiles: authenticated public projection without private PII.
+// - eventCheckIns/checkInAttempts/functionReceipts/adminOperations:
+//   server-owned operational state; clients cannot write attempt/receipt data.
+// All unmatched paths are denied at the end of this file.
+
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
@@ -20,7 +32,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return hasUser() && userData().role == 'admin'
-        && userData().status == 'active';
+        && userData().status == 'active'
+        && request.auth.token.email_verified == true;
     }
 
     function isActiveStudent() {
@@ -74,6 +87,10 @@ service cloud.firestore {
     function isVerifiedStudentIdentity(data) {
       return request.auth.token.email_verified == true
         && request.auth.token.email == data.email;
+    }
+
+    function isVerifiedAizuStudentIdentity(data) {
+      return isVerifiedStudentIdentity(data) && isAizuStudentIdentity(data);
     }
 
     function validLegalConsent(data) {
@@ -246,7 +263,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status', 'updatedAt'
           ])
-          && isVerifiedStudentIdentity(request.resource.data)
+          && isVerifiedAizuStudentIdentity(request.resource.data)
           && validUser(request.resource.data, userId)
         )
         || (
@@ -318,7 +335,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status', 'updatedAt'
           ])
-          && isVerifiedStudentIdentity(request.resource.data)
+          && isVerifiedAizuStudentIdentity(request.resource.data)
           && validStudentProfile(request.resource.data, userId)
         );
       allow delete: if false;
@@ -527,6 +544,7 @@ service cloud.firestore {
             /databases/$(database)/documents/chatRooms/$(roomId)
           ).data.status == 'active'
           && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.senderName == userData().displayName
           && request.resource.data.roomId == roomId
           && validString(request.resource.data.text, 1, 2000)
           && validString(request.resource.data.senderName, 1, 80)

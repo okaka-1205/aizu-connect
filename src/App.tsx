@@ -269,6 +269,7 @@ function App() {
           role: appUser.role,
           status: appUser.status,
           emailVerified: isEmailVerified,
+          email: appUser.email ?? "",
         });
       const accessGate = resolveAccountAccessGate({
         isProduction: import.meta.env.PROD,
@@ -654,6 +655,7 @@ function App() {
         role: appUser.role,
         status: appUser.status,
         emailVerified: isEmailVerified,
+        email: appUser.email ?? "",
       })
     ) {
       return;
@@ -992,7 +994,7 @@ function App() {
           ...userData,
           verificationMethod: isAizuStudent
             ? "university_email"
-            : "email_verification",
+            : "manual_review",
           profileCompletionRate: 80,
           activityCount: 0,
           createdAt: serverTimestamp(),
@@ -1011,9 +1013,10 @@ function App() {
         });
       }
       await batch.commit();
-      let registrationMessage = isStudent
-        ? "登録しました。メール認証が完了すると、すぐに利用できます。"
-        : "登録しました。メール認証と管理者の承認後に利用できます。";
+      let registrationMessage =
+        isStudent && isAizuStudent
+          ? "登録しました。メール認証が完了すると、すぐに利用できます。"
+          : "登録しました。メール認証と管理者の承認後に利用できます。";
       let registrationTone: NoticeTone = "success";
       try {
         await sendEmailVerification(credential.user);
@@ -1382,6 +1385,7 @@ function App() {
     role: appUser.role,
     status: appUser.status,
     emailVerified: isEmailVerified,
+    email: appUser.email ?? "",
   });
   if (shouldAutoActivateCurrentUser || isAutoActivatingStudent) {
     return <LoadingScreen />;

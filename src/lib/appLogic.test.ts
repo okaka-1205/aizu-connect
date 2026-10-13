@@ -59,12 +59,13 @@ describe("auth helpers", () => {
     ).toBe("pending_approval");
   });
 
-  it("auto-activates any verified pending student", () => {
+  it("auto-activates only verified pending Aizu University students", () => {
     expect(
       shouldAutoActivateVerifiedStudent({
         role: "student",
         status: "pending_approval",
         emailVerified: true,
+        email: "student@u-aizu.ac.jp",
       }),
     ).toBe(true);
     expect(
@@ -72,6 +73,15 @@ describe("auth helpers", () => {
         role: "student",
         status: "pending_approval",
         emailVerified: false,
+        email: "student@u-aizu.ac.jp",
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoActivateVerifiedStudent({
+        role: "student",
+        status: "pending_approval",
+        emailVerified: true,
+        email: "student@example.com",
       }),
     ).toBe(false);
     expect(
@@ -79,6 +89,7 @@ describe("auth helpers", () => {
         role: "organization",
         status: "pending_approval",
         emailVerified: true,
+        email: "club@u-aizu.ac.jp",
       }),
     ).toBe(false);
     expect(
@@ -86,6 +97,7 @@ describe("auth helpers", () => {
         role: "student",
         status: "active",
         emailVerified: true,
+        email: "student@u-aizu.ac.jp",
       }),
     ).toBe(false);
   });

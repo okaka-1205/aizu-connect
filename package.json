@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "npm run dev:local",
-    "dev:local": "npm --prefix functions run build && firebase emulators:exec --config firebase.e2e.json --project demo-aizu-connect-e2e --only auth,firestore,storage,functions \"node functions/scripts/seed-e2e.mjs && vite --host 127.0.0.1 --port 5173 --strictPort --mode emulator\"",
+    "dev:local": "npm --prefix functions run build && npx -y firebase-tools@latest emulators:exec --config firebase.e2e.json --project demo-aizu-connect-e2e --only auth,firestore,storage,functions \"node functions/scripts/seed-e2e.mjs && vite --host 127.0.0.1 --port 5173 --strictPort --mode emulator\"",
     "dev:test": "vite --mode emulator",
     "build": "npm run build:production",
     "build:production": "node scripts/validate-production-env.mjs && tsc -b && vite build --mode production && node scripts/validate-production-bundle.mjs",
@@ -16,15 +16,15 @@
     "lint": "oxlint",
     "test:unit": "vitest run src/lib/appLogic.test.ts",
     "test:e2e": "playwright test e2e/auth-smoke.spec.ts",
-    "test:e2e:auth:emulator": "firebase emulators:exec --config firebase.e2e.json --project demo-aizu-connect-auth-e2e --only auth,firestore \"node functions/scripts/seed-auth-e2e.mjs && PLAYWRIGHT_TEST_PORT=15174 VITE_USE_FIREBASE_EMULATORS=true VITE_FIREBASE_API_KEY=demo VITE_FIREBASE_AUTH_DOMAIN=demo-aizu-connect-auth-e2e.firebaseapp.com VITE_FIREBASE_PROJECT_ID=demo-aizu-connect-auth-e2e VITE_FIREBASE_STORAGE_BUCKET=demo-aizu-connect-auth-e2e.appspot.com VITE_FIREBASE_MESSAGING_SENDER_ID=0 VITE_FIREBASE_APP_ID=demo VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:19099 VITE_FIREBASE_FIRESTORE_EMULATOR_PORT=18082 VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT=15001 VITE_FIREBASE_STORAGE_EMULATOR_PORT=19197 playwright test e2e/auth-emulator.spec.ts\"",
-    "test:e2e:full:emulator": "npm --prefix functions run build && firebase emulators:exec --config firebase.e2e.json --project demo-aizu-connect-e2e --only auth,firestore,storage,functions \"node functions/scripts/seed-e2e.mjs && PLAYWRIGHT_TEST_PORT=15173 VITE_USE_FIREBASE_EMULATORS=true VITE_FIREBASE_API_KEY=demo VITE_FIREBASE_AUTH_DOMAIN=demo-aizu-connect-e2e.firebaseapp.com VITE_FIREBASE_PROJECT_ID=demo-aizu-connect-e2e VITE_FIREBASE_STORAGE_BUCKET=demo-aizu-connect-e2e.appspot.com VITE_FIREBASE_MESSAGING_SENDER_ID=0 VITE_FIREBASE_APP_ID=demo VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:19099 VITE_FIREBASE_FIRESTORE_EMULATOR_PORT=18082 VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT=15001 VITE_FIREBASE_STORAGE_EMULATOR_PORT=19197 VITE_DEV_ADMIN_EMAIL=admin@aizu-connect.local VITE_DEV_ADMIN_PASSWORD=admin123 playwright test e2e/emulator-flows.spec.ts && node functions/scripts/verify-admin-cleanup.mjs\"",
+    "test:e2e:auth:emulator": "npx -y firebase-tools@latest emulators:exec --config firebase.e2e.json --project demo-aizu-connect-auth-e2e --only auth,firestore \"node functions/scripts/seed-auth-e2e.mjs && PLAYWRIGHT_TEST_PORT=15174 VITE_USE_FIREBASE_EMULATORS=true VITE_FIREBASE_API_KEY=demo VITE_FIREBASE_AUTH_DOMAIN=demo-aizu-connect-auth-e2e.firebaseapp.com VITE_FIREBASE_PROJECT_ID=demo-aizu-connect-auth-e2e VITE_FIREBASE_STORAGE_BUCKET=demo-aizu-connect-auth-e2e.appspot.com VITE_FIREBASE_MESSAGING_SENDER_ID=0 VITE_FIREBASE_APP_ID=demo VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:19099 VITE_FIREBASE_FIRESTORE_EMULATOR_PORT=18082 VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT=15001 VITE_FIREBASE_STORAGE_EMULATOR_PORT=19197 playwright test e2e/auth-emulator.spec.ts\"",
+    "test:e2e:full:emulator": "npm --prefix functions run build && npx -y firebase-tools@latest emulators:exec --config firebase.e2e.json --project demo-aizu-connect-e2e --only auth,firestore,storage,functions \"node functions/scripts/seed-e2e.mjs && PLAYWRIGHT_TEST_PORT=15173 VITE_USE_FIREBASE_EMULATORS=true VITE_FIREBASE_API_KEY=demo VITE_FIREBASE_AUTH_DOMAIN=demo-aizu-connect-e2e.firebaseapp.com VITE_FIREBASE_PROJECT_ID=demo-aizu-connect-e2e VITE_FIREBASE_STORAGE_BUCKET=demo-aizu-connect-e2e.appspot.com VITE_FIREBASE_MESSAGING_SENDER_ID=0 VITE_FIREBASE_APP_ID=demo VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:19099 VITE_FIREBASE_FIRESTORE_EMULATOR_PORT=18082 VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT=15001 VITE_FIREBASE_STORAGE_EMULATOR_PORT=19197 VITE_DEV_ADMIN_EMAIL=admin@aizu-connect.local VITE_DEV_ADMIN_PASSWORD=admin123 playwright test e2e/emulator-flows.spec.ts && node functions/scripts/verify-admin-cleanup.mjs\"",
     "test:e2e:emulator": "npm run test:e2e:auth:emulator && npm run test:e2e:full:emulator",
-    "test:scale:emulator": "npm --prefix functions run build && firebase emulators:exec --config firebase.e2e.json --project demo-aizu-connect-pagination --only firestore,functions \"node functions/scripts/verify-notification-pagination.mjs\"",
+    "test:scale:emulator": "npm --prefix functions run build && npx -y firebase-tools@latest emulators:exec --config firebase.e2e.json --project demo-aizu-connect-pagination --only firestore,functions \"node functions/scripts/verify-notification-pagination.mjs\"",
     "check": "npm run lint && npm run build && npm --prefix functions run lint && npm --prefix functions run build",
     "verify": "npm run check && npm run test:unit && npm --prefix functions test && npm run test:rules && npm run test:e2e && npm run test:e2e:emulator",
     "release:check": "npm run verify",
-    "test:rules": "firebase emulators:exec --config firebase.rules-test.json --project demo-aizu-connect-rules --only firestore,storage \"node --test test/security-rules.test.mjs\"",
-    "test:reset:emulator": "firebase emulators:exec --config firebase.reset-test.json --project demo-aizu-connect-reset --only auth,firestore,storage \"node functions/scripts/verify-reset-non-admin.mjs\"",
+    "test:rules": "npx -y firebase-tools@latest emulators:exec --config firebase.rules-test.json --project demo-aizu-connect-rules --only firestore,storage \"node --test test/security-rules.test.mjs\"",
+    "test:reset:emulator": "npx -y firebase-tools@latest emulators:exec --config firebase.reset-test.json --project demo-aizu-connect-reset --only auth,firestore,storage \"node functions/scripts/verify-reset-non-admin.mjs\"",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -49,7 +49,6 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "eslint-config-prettier": "^10.1.8",
-    "firebase-tools": "^15.24.0",
     "oxlint": "^1.71.0",
     "prettier": "^3.9.6",
     "typescript": "~6.0.2",
@@ -57,8 +56,12 @@
     "vitest": "^4.1.10"
   },
   "allowScripts": {
-    "@firebase/util@1.15.1": true,
+    "@firebase/util@1.15.3": true,
     "fsevents@2.3.3": true,
-    "protobufjs@7.6.5": true
+    "protobufjs@7.6.6": true,
+    "re2@1.27.0": true
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.6"
   }
 }

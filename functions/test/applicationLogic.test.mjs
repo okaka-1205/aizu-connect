@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 
 import {
   applicationStatusMessage,
+  CHECK_IN_LOCKOUT_MILLIS,
+  evaluateCheckInAttempt,
   isCheckInWindowOpen,
   isEventPlanEditableStatus,
   isApplicationWindowOpen,
@@ -291,6 +293,55 @@ describe("event check-in window logic", () => {
       false,
     );
     assert.equal(isCheckInWindowOpen("cancelled", start, end, start), false);
+  });
+});
+
+describe("event check-in attempt throttling", () => {
+  it("locks the fifth invalid attempt for fifteen minutes", () => {
+    const now = Date.parse("2026-08-01T09:00:00.000Z");
+    const decision = evaluateCheckInAttempt({
+      failedAttempts: 4,
+      nowMillis: now,
+      codeMatches: false,
+    });
+    assert.equal(decision.allowed, false);
+    assert.equal(decision.locked, true);
+    assert.equal(decision.failedAttempts, 5);
+    assert.equal(decision.lockedUntilMillis, now + CHECK_IN_LOCKOUT_MILLIS);
+  });
+
+  it("keeps a lock active and resets failures after it expires", () => {
+    const now = Date.parse("2026-08-01T09:00:00.000Z");
+    const activeLock = evaluateCheckInAttempt({
+      failedAttempts: 5,
+      lockedUntilMillis: now + 1,
+      nowMillis: now,
+      codeMatches: true,
+    });
+    assert.equal(activeLock.allowed, false);
+    assert.equal(activeLock.locked, true);
+
+    const expiredLock = evaluateCheckInAttempt({
+      failedAttempts: 5,
+      lockedUntilMillis: now - 1,
+      nowMillis: now,
+      codeMatches: false,
+    });
+    assert.equal(expiredLock.failedAttempts, 1);
+    assert.equal(expiredLock.locked, false);
+  });
+
+  it("clears prior failures when the code is valid", () => {
+    const decision = evaluateCheckInAttempt({
+      failedAttempts: 3,
+      nowMillis: Date.now(),
+      codeMatches: true,
+    });
+    assert.deepEqual(decision, {
+      allowed: true,
+      locked: false,
+      failedAttempts: 0,
+    });
   });
 });
 

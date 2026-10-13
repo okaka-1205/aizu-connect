@@ -271,6 +271,10 @@ const contexts = () => ({
     email: "admin@example.com",
     email_verified: true,
   }),
+  unverifiedAdmin: testEnv.authenticatedContext("admin-1", {
+    email: "admin@example.com",
+    email_verified: false,
+  }),
 });
 
 const seedData = async () => {
@@ -710,7 +714,7 @@ describe("users and profiles", () => {
     );
   });
 
-  it("allows any verified student to activate from pending", async () => {
+  it("allows only verified Aizu students to self-activate from pending", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
       await Promise.all([
@@ -801,13 +805,13 @@ describe("users and profiles", () => {
         email_verified: true,
       },
     );
-    await assertSucceeds(
+    await assertFails(
       verifiedExternal.firestore().doc("users/student-auto-external").update({
         status: "active",
         updatedAt: timestamp,
       }),
     );
-    await assertSucceeds(
+    await assertFails(
       verifiedExternal
         .firestore()
         .doc("studentProfiles/student-auto-external")
@@ -1299,6 +1303,17 @@ describe("chat rooms and messages", () => {
     await assertFails(
       student
         .firestore()
+        .doc("chatRooms/room-1/messages/message-impersonation")
+        .set(
+          messageDoc({
+            senderId: "student-1",
+            senderName: "Aizu Org",
+          }),
+        ),
+    );
+    await assertFails(
+      student
+        .firestore()
         .doc("chatRooms/room-readonly/messages/message-2")
         .set(
           messageDoc({
@@ -1536,8 +1551,14 @@ describe("saved searches and operational records", () => {
   });
 
   it("exposes public organizer profiles but protects audits and check-in codes", async () => {
-    const { anon, student, organization, otherOrganization, admin } =
-      contexts();
+    const {
+      anon,
+      student,
+      organization,
+      otherOrganization,
+      admin,
+      unverifiedAdmin,
+    } = contexts();
     await assertSucceeds(
       student.firestore().doc("publicOrganizerProfiles/org-1").get(),
     );
@@ -1546,6 +1567,9 @@ describe("saved searches and operational records", () => {
     );
     await assertFails(student.firestore().doc("auditLogs/audit-1").get());
     await assertSucceeds(admin.firestore().doc("auditLogs/audit-1").get());
+    await assertFails(
+      unverifiedAdmin.firestore().doc("auditLogs/audit-1").get(),
+    );
     await assertSucceeds(
       admin.firestore().doc("auditLogs/audit-new").set(auditLogDoc()),
     );
@@ -1566,12 +1590,30 @@ describe("saved searches and operational records", () => {
         code: "000000",
       }),
     );
+    await assertFails(
+      student
+        .firestore()
+        .doc("checkInAttempts/event-published_student-1")
+        .get(),
+    );
+    await assertFails(
+      student
+        .firestore()
+        .doc("checkInAttempts/event-published_student-1")
+        .set({ failedAttempts: 0 }),
+    );
   });
 });
 
 describe("storage rules", () => {
-  it("allows signed-in reads but blocks public reads", async () => {
-    const { anon, student, organization } = contexts();
+  it("allows active verified account reads and blocks inactive reads", async () => {
+    const {
+      anon,
+      student,
+      pendingStudent,
+      organization,
+      unverifiedOrganization,
+    } = contexts();
     await assertFails(
       anon.storage().ref("profile-images/student-1/avatar.png").getMetadata(),
     );
@@ -1583,6 +1625,18 @@ describe("storage rules", () => {
     );
     await assertSucceeds(
       organization
+        .storage()
+        .ref("event-images/org-1/event-published/cover.png")
+        .getMetadata(),
+    );
+    await assertFails(
+      pendingStudent
+        .storage()
+        .ref("profile-images/student-1/avatar.png")
+        .getMetadata(),
+    );
+    await assertFails(
+      unverifiedOrganization
         .storage()
         .ref("event-images/org-1/event-published/cover.png")
         .getMetadata(),

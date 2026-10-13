@@ -1,8 +1,4 @@
-import {
-  FieldPath,
-  FieldValue,
-  Timestamp,
-} from "firebase-admin/firestore";
+import {FieldPath, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {
   onDocumentCreated,
   onDocumentUpdated,
@@ -23,7 +19,7 @@ import {db} from "../lib/firebaseAdmin";
 const eventChatRoomId = (eventId: string) => `event_${eventId}`;
 
 export const notifyApplicationCreated = onDocumentCreated(
-  "eventApplications/{applicationId}",
+  {document: "eventApplications/{applicationId}", retry: true},
   async (event) => {
     const application = event.data?.data();
     if (
@@ -62,7 +58,7 @@ export const notifyApplicationCreated = onDocumentCreated(
 );
 
 export const notifyApplicationUpdated = onDocumentUpdated(
-  "eventApplications/{applicationId}",
+  {document: "eventApplications/{applicationId}", retry: true},
   async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
@@ -213,6 +209,7 @@ export const notifyApplicationUpdated = onDocumentUpdated(
 export const notifyEventPublished = onDocumentUpdated(
   {
     document: "events/{eventId}",
+    retry: true,
     timeoutSeconds: 540,
     memory: "512MiB",
   },
@@ -361,6 +358,7 @@ export const notifyEventPublished = onDocumentUpdated(
 export const notifyEventUnavailable = onDocumentUpdated(
   {
     document: "events/{eventId}",
+    retry: true,
     timeoutSeconds: 540,
     memory: "512MiB",
   },
@@ -464,7 +462,7 @@ export const notifyEventUnavailable = onDocumentUpdated(
 );
 
 export const notifyChatMessageCreated = onDocumentCreated(
-  "chatRooms/{roomId}/messages/{messageId}",
+  {document: "chatRooms/{roomId}/messages/{messageId}", retry: true},
   async (event) => {
     const message = event.data?.data();
     if (!message || message.type === "system" || !message.senderId) return;

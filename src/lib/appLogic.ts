@@ -124,11 +124,17 @@ export const shouldAutoActivateVerifiedStudent = ({
   role,
   status,
   emailVerified,
+  email,
 }: {
   role: string;
   status: string;
   emailVerified: boolean;
-}) => role === "student" && status === "pending_approval" && emailVerified;
+  email: string;
+}) =>
+  role === "student" &&
+  status === "pending_approval" &&
+  emailVerified &&
+  isAizuUniversityEmail(email);
 
 export const normalizeLoginEmail = (email: string, devAdminEmail = "") => {
   const normalizedEmail = email.trim().toLowerCase();
