@@ -526,10 +526,18 @@ function App() {
     let disposed = false;
     let unsubscribeProfile: (() => void) | null = null;
     let unsubscribeAuth: () => void = () => {};
+    let missingProfileTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearMissingProfileTimer = () => {
+      if (missingProfileTimer !== null) {
+        clearTimeout(missingProfileTimer);
+        missingProfileTimer = null;
+      }
+    };
     void authPersistenceReady
       .then(() => {
         if (disposed) return;
         unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+          clearMissingProfileTimer();
           unsubscribeProfile?.();
           unsubscribeProfile = null;
           if (authenticatedUidRef.current !== (user?.uid ?? null)) {
@@ -583,6 +591,7 @@ function App() {
                 doc(db, "users", user.uid),
                 (snapshot) => {
                   if (snapshot.exists()) {
+                    clearMissingProfileTimer();
                     const nextUser = snapshot.data() as AppUser;
                     const previousAccount = accountStatusRef.current;
                     if (
@@ -613,10 +622,28 @@ function App() {
                       "アカウント情報を準備しています。しばらくお待ちください。",
                       "info",
                     );
+                    missingProfileTimer ??= setTimeout(() => {
+                      missingProfileTimer = null;
+                      if (disposed || auth.currentUser?.uid !== user.uid) return;
+                      void signOut(auth)
+                        .then(() => {
+                          setMessage(
+                            "アカウント情報が見つかりませんでした。削除済みのアカウント、または登録が完了していない可能性があります。管理者へお問い合わせください。",
+                            "error",
+                          );
+                        })
+                        .catch((error: unknown) => {
+                          setMessage(
+                            `無効なログイン状態を解除できませんでした。ブラウザを再読み込みしてください。${getFirebaseErrorMessage(error)}`,
+                            "error",
+                          );
+                        });
+                    }, 8_000);
                   }
                   setIsAuthLoading(false);
                 },
                 (error) => {
+                  clearMissingProfileTimer();
                   setMessage(
                     `アカウント情報を読み込めませんでした。通信状態を確認して、もう一度お試しください。${getFirebaseErrorMessage(error)}`,
                     "error",
@@ -645,6 +672,7 @@ function App() {
       });
     return () => {
       disposed = true;
+      clearMissingProfileTimer();
       unsubscribeProfile?.();
       unsubscribeAuth();
     };

@@ -65,6 +65,14 @@ for (const variant of ["desktop", "mobile", "tablet"]) {
     activityCount: 0,
   });
   await batch.commit();
+
+  await auth.createUser({
+    uid: `orphan-auth-${variant}`,
+    email: `orphan-auth-${variant}@example.com`,
+    password,
+    emailVerified: true,
+    displayName: `削除済みテスト ${variant}`,
+  });
 }
 
 console.log("Lightweight auth E2E seed complete.");

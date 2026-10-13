@@ -76,6 +76,30 @@ test.describe("lightweight emulator auth flows", () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test("an auth session without a profile is signed out safely", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+
+    await page.goto("/");
+    await page.getByRole("button", { name: "ログイン" }).click();
+    await page
+      .getByLabel("メールアドレス")
+      .fill(`orphan-auth-${suffix}@example.com`);
+    await page.getByLabel("パスワード", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "ログインする" }).click();
+
+    await expect(
+      page.getByText("アカウント情報を準備しています。しばらくお待ちください。"),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "アカウント情報が見つかりませんでした。削除済みのアカウント、または登録が完了していない可能性があります。管理者へお問い合わせください。",
+      ),
+    ).toBeVisible({ timeout: 12_000 });
+    await expect(page.getByRole("heading", { name: "ログイン" })).toBeVisible();
+  });
+
   test("organization registration keeps the admin review flow", async ({
     page,
   }, testInfo) => {
