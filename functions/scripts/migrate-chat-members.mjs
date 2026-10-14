@@ -121,7 +121,7 @@ while (true) {
     }
   });
 
-  candidates.forEach(({room, data, userId}, index) => {
+  candidates.forEach(({data, userId}, index) => {
     const memberRef = memberRefs[index];
     if (existingPaths.has(memberRef.path)) return;
     const user = users.get(userId);
