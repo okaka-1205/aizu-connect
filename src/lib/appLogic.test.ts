@@ -355,6 +355,21 @@ describe("firebase error messages", () => {
     ).toContain("通信状態");
   });
 
+  it("identifies a missing Firestore index without claiming Firebase is disabled", () => {
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(
+          new Error(
+            "The query requires a COLLECTION_GROUP_ASC index for collection members.",
+          ),
+          {code: "failed-precondition"},
+        ),
+      ),
+    ).toBe(
+      "検索・チャット用データの準備が完了していません。運営へお問い合わせください。",
+    );
+  });
+
   it("falls back for unknown non-error values", () => {
     expect(getFirebaseErrorMessage(null)).toBe(
       "問題が発生しました。もう一度試してください。",

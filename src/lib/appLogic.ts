@@ -341,6 +341,13 @@ export const getFirebaseErrorMessage = (error: unknown) => {
     )
       return "現在ファイルを保存できません。運営へお問い合わせください。";
     if (
+      code === "failed-precondition" &&
+      /(?:query requires|collection_group).*(?:index)|(?:index).*(?:query requires|collection_group)/i.test(
+        error.message,
+      )
+    )
+      return "検索・チャット用データの準備が完了していません。運営へお問い合わせください。";
+    if (
       code === "failed-precondition" ||
       error.message.includes("failed-precondition")
     )
