@@ -17,6 +17,7 @@ import {
 } from "../services/notifications";
 import {db} from "../lib/firebaseAdmin";
 const eventChatRoomId = (eventId: string) => `event_${eventId}`;
+const isFunctionsEmulator = process.env.FUNCTIONS_EMULATOR === "true";
 
 export const notifyApplicationCreated = onDocumentCreated(
   {document: "eventApplications/{applicationId}", retry: true},
@@ -148,13 +149,21 @@ export const notifyApplicationUpdated = onDocumentUpdated(
                 .collection("eventApplications")
                 .where("eventId", "==", after.eventId)
                 .where("status", "==", "waitlisted")
-                .limit(100),
+                .orderBy("waitlistSequence", "asc")
+                .limit(1),
             );
-            nextWaitlisted = [...waitlistSnapshot.docs].sort(
-              (left, right) =>
-                (left.data().createdAt?.toMillis?.() ?? 0) -
-                (right.data().createdAt?.toMillis?.() ?? 0),
-            )[0];
+            nextWaitlisted = waitlistSnapshot.docs[0];
+            if (!nextWaitlisted) {
+              const legacyWaitlist = await transaction.get(
+                db
+                  .collection("eventApplications")
+                  .where("eventId", "==", after.eventId)
+                  .where("status", "==", "waitlisted")
+                  .orderBy("createdAt", "asc")
+                  .limit(1),
+              );
+              nextWaitlisted = legacyWaitlist.docs[0];
+            }
           }
           if (
             availabilityEvent.exists &&
@@ -168,6 +177,7 @@ export const notifyApplicationUpdated = onDocumentUpdated(
               transaction.update(nextWaitlisted.ref, {
                 status: "pending",
                 waitlistPosition: FieldValue.delete(),
+                waitlistSequence: FieldValue.delete(),
                 promotedFromWaitlist: true,
               });
             } else if (shouldDecrement) {
@@ -262,14 +272,18 @@ export const notifyEventPublished = onDocumentUpdated(
         }
         const preferences = await Promise.all(
           students.docs.map(async (student) => {
-            const [enabled, savedSearch] = await Promise.all([
+            const [enabled, savedSearches] = await Promise.all([
               notificationEnabled(student.id, "newEvents"),
-              db.doc(`savedSearches/${student.id}_default`).get(),
+              db
+                .collection("savedSearches")
+                .where("userId", "==", student.id)
+                .limit(10)
+                .get(),
             ]);
             return {
               id: student.id,
               enabled,
-              savedSearch: savedSearch.data(),
+              savedSearches: savedSearches.docs.map((search) => search.data()),
             };
           }),
         );
@@ -281,16 +295,21 @@ export const notifyEventPublished = onDocumentUpdated(
                 after.createdBy,
                 preference.enabled,
               ) ||
-              !matchesSavedSearch(
-                preference.savedSearch,
-                {
-                  ...after,
-                  startAtMillis:
-                    after.startAt instanceof Timestamp ?
-                      after.startAt.toMillis() :
-                      Number.NaN,
-                },
-                Date.now(),
+              !(
+                preference.savedSearches.length === 0 ||
+                preference.savedSearches.some((savedSearch) =>
+                  matchesSavedSearch(
+                    savedSearch,
+                    {
+                      ...after,
+                      startAtMillis:
+                        after.startAt instanceof Timestamp ?
+                          after.startAt.toMillis() :
+                          Number.NaN,
+                    },
+                    Date.now(),
+                  ),
+                )
               )
             ) {
               return;
@@ -465,17 +484,51 @@ export const notifyChatMessageCreated = onDocumentCreated(
   {document: "chatRooms/{roomId}/messages/{messageId}", retry: true},
   async (event) => {
     const message = event.data?.data();
-    if (!message || message.type === "system" || !message.senderId) return;
+    if (
+      !message ||
+      message.type === "system" ||
+      !message.senderId ||
+      (isFunctionsEmulator && message.suppressNotification === true)
+    ) {
+      return;
+    }
 
     const room = await db.doc(`chatRooms/${event.params.roomId}`).get();
     const roomData = room.data();
-    if (!roomData?.participantIds) return;
-
-    const recipients = roomData.participantIds.filter(
-      (participantId: string) => participantId !== message.senderId,
-    );
+    if (!roomData) return;
+    const recipients = new Set<string>();
+    let lastMember: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+    let hasMembers = true;
+    while (hasMembers) {
+      let memberQuery = db
+        .collection(`chatRooms/${event.params.roomId}/members`)
+        .orderBy(FieldPath.documentId())
+        .limit(200);
+      if (lastMember) memberQuery = memberQuery.startAfter(lastMember);
+      const memberSnapshot = await memberQuery.get();
+      memberSnapshot.docs.forEach((member) => {
+        const userId = String(member.data().userId ?? member.id);
+        if (userId && userId !== message.senderId) recipients.add(userId);
+      });
+      lastMember = memberSnapshot.docs[memberSnapshot.docs.length - 1];
+      hasMembers = memberSnapshot.size === 200;
+    }
+    if (recipients.size === 0 && Array.isArray(roomData.participantIds)) {
+      roomData.participantIds.forEach((participantId: unknown) => {
+        if (
+          typeof participantId === "string" &&
+          participantId !== message.senderId
+        ) {
+          recipients.add(participantId);
+        }
+      });
+    }
     await Promise.all(
-      recipients.map(async (recipientId: string) => {
+      [...recipients].map(async (recipientId: string) => {
+        const block = await db
+          .doc(`userBlocks/${recipientId}_${message.senderId}`)
+          .get();
+        if (block.exists) return;
         if (!(await notificationEnabled(recipientId, "chatMessages"))) return;
         const chatPreference = await db
           .doc(`chatPreferences/${event.params.roomId}_${recipientId}`)

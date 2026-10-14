@@ -12,11 +12,13 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { BrandMark, SectionHeading } from "../../components/ui/AppPrimitives";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
 import { getFirebaseErrorMessage } from "../../lib/appLogic";
+import { downloadActivityPortfolioPdf } from "../../lib/eventUtils";
+import { saveEventSurvey } from "../../repositories/engagementRepository";
 import type {
   ActivityRecord,
   AizuEvent,
@@ -75,6 +77,10 @@ export function ActivityTab(props: {
   onOpenMessages: (eventId: string) => void;
   onCancelApplication: (application: EventApplication) => void;
   onCheckIn: (application: EventApplication, code: string) => Promise<void>;
+  hasMoreApplications?: boolean;
+  onLoadMoreApplications?: () => void;
+  hasMoreActivities?: boolean;
+  onLoadMoreActivities?: () => void;
 }) {
   const [selectedCertificate, setSelectedCertificate] =
     useState<ActivityRecord | null>(null);
@@ -82,6 +88,22 @@ export function ActivityTab(props: {
   const [checkingInId, setCheckingInId] = useState<string | null>(null);
   const [checkInError, setCheckInError] = useState("");
   const [checkInErrorId, setCheckInErrorId] = useState<string | null>(null);
+  const [surveyDrafts, setSurveyDrafts] = useState<
+    Record<string, { rating: number; comment: string; recommend: boolean }>
+  >({});
+  const [savedSurveyIds, setSavedSurveyIds] = useState<string[]>([]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get("checkInEvent");
+    const code = params.get("checkInCode");
+    if (!eventId || !code || !/^\d{6}$/.test(code)) return;
+    const application = props.applications.find(
+      (item) => item.eventId === eventId && item.status === "confirmed",
+    );
+    if (!application) return;
+    setCheckInCodes((current) => ({ ...current, [application.id]: code }));
+    window.history.replaceState({}, "", window.location.pathname);
+  }, [props.applications]);
   const verifiedActivities = props.activities.filter(
     (activity) => activity.verificationStatus === "verified",
   );
@@ -226,6 +248,96 @@ export function ActivityTab(props: {
                   {checkInError && checkInErrorId === application.id && (
                     <small className="inline-error">{checkInError}</small>
                   )}
+                  {application.status === "attended" && (
+                    <div className="event-survey-form">
+                      <strong>開催後アンケート</strong>
+                      <select
+                        aria-label={`${application.eventTitle}の満足度`}
+                        value={surveyDrafts[application.id]?.rating ?? 5}
+                        onChange={(event) =>
+                          setSurveyDrafts((current) => ({
+                            ...current,
+                            [application.id]: {
+                              rating: Number(event.target.value),
+                              comment: current[application.id]?.comment ?? "",
+                              recommend:
+                                current[application.id]?.recommend ?? true,
+                            },
+                          }))
+                        }
+                      >
+                        {[5, 4, 3, 2, 1].map((rating) => (
+                          <option key={rating} value={rating}>
+                            満足度 {rating}
+                          </option>
+                        ))}
+                      </select>
+                      <textarea
+                        aria-label={`${application.eventTitle}の感想`}
+                        maxLength={1000}
+                        placeholder="感想や改善してほしい点"
+                        value={surveyDrafts[application.id]?.comment ?? ""}
+                        onChange={(event) =>
+                          setSurveyDrafts((current) => ({
+                            ...current,
+                            [application.id]: {
+                              rating: current[application.id]?.rating ?? 5,
+                              comment: event.target.value,
+                              recommend:
+                                current[application.id]?.recommend ?? true,
+                            },
+                          }))
+                        }
+                      />
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={
+                            surveyDrafts[application.id]?.recommend ?? true
+                          }
+                          onChange={(event) =>
+                            setSurveyDrafts((current) => ({
+                              ...current,
+                              [application.id]: {
+                                rating: current[application.id]?.rating ?? 5,
+                                comment:
+                                  current[application.id]?.comment ?? "",
+                                recommend: event.target.checked,
+                              },
+                            }))
+                          }
+                        />
+                        友人にもおすすめしたい
+                      </label>
+                      <button
+                        type="button"
+                        disabled={savedSurveyIds.includes(application.id)}
+                        onClick={() => {
+                          const survey = surveyDrafts[application.id] ?? {
+                            rating: 5,
+                            comment: "",
+                            recommend: true,
+                          };
+                          void saveEventSurvey(
+                            application.studentId,
+                            application.eventId,
+                            survey.rating,
+                            survey.comment,
+                            survey.recommend,
+                          ).then(() =>
+                            setSavedSurveyIds((current) => [
+                              ...current,
+                              application.id,
+                            ]),
+                          );
+                        }}
+                      >
+                        {savedSurveyIds.includes(application.id)
+                          ? "回答済み"
+                          : "アンケートを送信"}
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <span className="status-chip">
                   {applicationStatusLabel(application.status)}
@@ -246,6 +358,16 @@ export function ActivityTab(props: {
           })
         )}
       </div>
+      {props.hasMoreApplications && (
+        <button
+          className="secondary-action"
+          type="button"
+          onClick={props.onLoadMoreApplications}
+        >
+          <History size={15} />
+          過去の申請をさらに50件読み込む
+        </button>
+      )}
       <div className="activity-card activity-overview">
         <div className="activity-card-head">
           <div>
@@ -301,6 +423,26 @@ export function ActivityTab(props: {
           </span>
         </div>
       </div>
+      <button
+        className="secondary-action"
+        type="button"
+        disabled={verifiedActivities.length === 0}
+        onClick={() =>
+          void downloadActivityPortfolioPdf(props.userName, verifiedActivities)
+        }
+      >
+        <FileText size={15} />
+        活動実績をPDFで保存
+      </button>
+      {props.hasMoreActivities && (
+        <button
+          className="secondary-action"
+          type="button"
+          onClick={props.onLoadMoreActivities}
+        >
+          <History size={15} />過去の活動実績をさらに50件読み込む
+        </button>
+      )}
       <SectionHeading
         className="activity-completed-heading"
         title="参加したイベント"

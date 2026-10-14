@@ -13,18 +13,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import {
-  createUserWithEmailAndPassword,
-  deleteUser,
-  getIdToken,
-  onAuthStateChanged,
-  reload,
-  sendEmailVerification,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  signOut,
-  type User,
-} from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
 import { httpsCallable } from "firebase/functions";
 import {
   Bell,
@@ -51,7 +40,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { ConfirmDialog } from "./components/ConfirmDialog";
 import { Field } from "./components/Field";
 import { LegalDialog } from "./components/LegalDialog";
 import {
@@ -100,14 +88,33 @@ import {
 } from "./lib/eventUtils";
 import { uploadImage } from "./lib/storage";
 import { fetchPublishedEventPage } from "./repositories/eventsRepository";
+import { subscribeChatRoomsForUser } from "./repositories/chatRepository";
 import {
+  deleteChatMessage,
+  editChatMessage,
+  saveUserBlock,
+} from "./repositories/engagementRepository";
+import {
+  loadStudentActivities,
   loadStudentDashboardData,
+  loadStudentNotifications,
   subscribeStudentApplications,
 } from "./repositories/studentRepository";
+import {
+  deleteAuthUser,
+  loginWithEmail,
+  logout,
+  refreshAuthToken,
+  registerWithEmail,
+  reloadAuthUser,
+  requestPasswordReset,
+  resendVerificationEmail,
+} from "./services/authService";
 import { AdminDashboard } from "./screens/admin/AdminDashboard";
 import { OrganizationDashboard } from "./screens/organization/OrganizationDashboard";
 import { MessagesTab } from "./screens/shared/MessagesTab";
 import { EmptyRoleState } from "./screens/shared/RoleScreenPrimitives";
+import { ActionReasonDialog } from "./screens/shared/RoleScreenPrimitives";
 import { ActivityTab } from "./screens/student/ActivityTab";
 import { ApplicationDialog } from "./screens/student/ApplicationDialog";
 import { HomeTab, SearchTab } from "./screens/student/DiscoverTabs";
@@ -160,6 +167,8 @@ function App() {
   const [hasMoreEvents, setHasMoreEvents] = useState(false);
   const [isLoadingMoreEvents, setIsLoadingMoreEvents] = useState(false);
   const [applications, setApplications] = useState<EventApplication[]>([]);
+  const [applicationQueryLimit, setApplicationQueryLimit] = useState(50);
+  const [hasMoreApplications, setHasMoreApplications] = useState(false);
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState("");
@@ -182,15 +191,21 @@ function App() {
   const [onlyAvailableEvents, setOnlyAvailableEvents] = useState(false);
   const [onlyBeginnerEvents, setOnlyBeginnerEvents] = useState(false);
   const [savedSearch, setSavedSearch] = useState<SavedSearch | null>(null);
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [savedEventIds, setSavedEventIds] = useState<string[]>([]);
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [isAutoActivatingStudent, setIsAutoActivatingStudent] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [message, messageTone, setMessage] = useNoticeState();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationQueryLimit, setNotificationQueryLimit] = useState(30);
+  const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
+  const [activityQueryLimit, setActivityQueryLimit] = useState(50);
+  const [hasMoreActivities, setHasMoreActivities] = useState(false);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
   const [applicationToCancel, setApplicationToCancel] =
     useState<EventApplication | null>(null);
@@ -570,12 +585,20 @@ function App() {
             setHasMoreEvents(false);
             setIsLoadingMoreEvents(false);
             setApplications([]);
+            setApplicationQueryLimit(50);
+            setHasMoreApplications(false);
             setChatRooms([]);
             setChatPreferences([]);
             setNotifications([]);
+            setNotificationQueryLimit(30);
+            setHasMoreNotifications(false);
             setActivities([]);
+            setActivityQueryLimit(50);
+            setHasMoreActivities(false);
             setSavedEventIds([]);
+            setBlockedUserIds([]);
             setSavedSearch(null);
+            setSavedSearches([]);
           }
           setFirebaseUser(user);
           setIsEmailVerified(Boolean(user?.emailVerified));
@@ -625,7 +648,7 @@ function App() {
                     missingProfileTimer ??= setTimeout(() => {
                       missingProfileTimer = null;
                       if (disposed || auth.currentUser?.uid !== user.uid) return;
-                      void signOut(auth)
+                      void logout()
                         .then(() => {
                           setMessage(
                             "アカウント情報が見つかりませんでした。削除済みのアカウント、または登録が完了していない可能性があります。管理者へお問い合わせください。",
@@ -659,7 +682,7 @@ function App() {
                 "error",
               );
               setIsAuthLoading(false);
-              void signOut(auth);
+              void logout();
             });
         });
       })
@@ -691,10 +714,10 @@ function App() {
     }
 
     verificationRefreshUidRef.current = firebaseUser.uid;
-    void reload(firebaseUser)
+    void reloadAuthUser(firebaseUser)
       .then(async () => {
         if (firebaseUser.emailVerified) {
-          await getIdToken(firebaseUser, true);
+          await refreshAuthToken(firebaseUser);
         }
         setIsEmailVerified(firebaseUser.emailVerified);
       })
@@ -721,7 +744,7 @@ function App() {
     setIsAutoActivatingStudent(true);
     void (async () => {
       try {
-        await getIdToken(firebaseUser, true);
+        await refreshAuthToken(firebaseUser);
         const profileRef = doc(db, "studentProfiles", firebaseUser.uid);
         const profileSnapshot = await getDoc(profileRef);
         const batch = writeBatch(db);
@@ -784,6 +807,25 @@ function App() {
   useEffect(() => {
     if (
       !appUser ||
+      appUser.role !== "student" ||
+      appUser.status !== "active" ||
+      !isEmailVerified
+    ) {
+      return;
+    }
+    return subscribeChatRoomsForUser(
+      appUser.uid,
+      (rooms) => {
+        setChatRooms(rooms);
+        setActiveRoomId((current) => current ?? rooms[0]?.id ?? null);
+      },
+      (error) => setMessage(getFirebaseErrorMessage(error), "error"),
+    );
+  }, [appUser, isEmailVerified, setMessage]);
+
+  useEffect(() => {
+    if (
+      !appUser ||
       !isEmailVerified ||
       isAutoActivatingStudent ||
       appUser.status !== "active" ||
@@ -791,16 +833,26 @@ function App() {
     ) {
       return;
     }
-    return subscribeStudentApplications(appUser.uid, setApplications, (error) =>
-      setMessage(getFirebaseErrorMessage(error), "error"),
+    return subscribeStudentApplications(
+      appUser.uid,
+      setApplications,
+      (error) => setMessage(getFirebaseErrorMessage(error), "error"),
+      applicationQueryLimit,
+      setHasMoreApplications,
     );
-  }, [appUser, isAutoActivatingStudent, isEmailVerified, setMessage]);
+  }, [
+    appUser,
+    applicationQueryLimit,
+    isAutoActivatingStudent,
+    isEmailVerified,
+    setMessage,
+  ]);
 
   const loadMoreEvents = async () => {
     if (!eventPageCursor || !hasMoreEvents || isLoadingMoreEvents) return;
     setIsLoadingMoreEvents(true);
     try {
-      const page = await fetchPublishedEventPage(eventPageCursor);
+      const page = await fetchPublishedEventPage(eventPageCursor, searchSort);
       setEvents((current) => {
         const knownIds = new Set(current.map((event) => event.id));
         return [
@@ -838,16 +890,24 @@ function App() {
     void (async () => {
       try {
         let cursor: QueryDocumentSnapshot<DocumentData> | null =
-          eventPageCursor;
-        let hasNextPage: boolean = hasMoreEvents;
+          searchSort === "開催が近い順" ? eventPageCursor : null;
+        let hasNextPage: boolean =
+          searchSort === "開催が近い順" ? hasMoreEvents : true;
         const searchEvents: AizuEvent[] = [];
+
+        if (searchSort !== "開催が近い順") {
+          const firstPage = await fetchPublishedEventPage(null, searchSort);
+          searchEvents.push(...firstPage.events);
+          cursor = firstPage.cursor;
+          hasNextPage = firstPage.hasMore;
+        }
 
         while (
           cursor &&
           hasNextPage &&
           exhaustiveSearchRequestRef.current === requestId
         ) {
-          const page = await fetchPublishedEventPage(cursor);
+          const page = await fetchPublishedEventPage(cursor, searchSort);
           searchEvents.push(...page.events);
           cursor = page.cursor;
           hasNextPage = page.hasMore;
@@ -855,6 +915,7 @@ function App() {
 
         if (exhaustiveSearchRequestRef.current !== requestId) return;
         setEvents((current) => {
+          if (searchSort !== "開催が近い順") return searchEvents;
           const knownIds = new Set(current.map((event) => event.id));
           return [
             ...current,
@@ -887,6 +948,7 @@ function App() {
     eventPageCursor,
     hasActiveSearchCriteria,
     hasMoreEvents,
+    searchSort,
     setMessage,
   ]);
 
@@ -902,14 +964,34 @@ function App() {
         : null,
     );
 
-    setChatRooms(data.chatRooms);
-    setActiveRoomId((current) => current ?? data.chatRooms[0]?.id ?? null);
     setChatPreferences(data.chatPreferences);
     setSavedEventIds(data.savedEventIds);
+    setBlockedUserIds(data.blockedUserIds);
     setNotifications(data.notifications);
+    setHasMoreNotifications(data.hasMoreNotifications);
     setActivities(data.activities);
+    setHasMoreActivities(data.hasMoreActivities);
     setNotificationPreferences(data.notificationPreferences);
     setSavedSearch(data.savedSearch);
+    setSavedSearches(data.savedSearches);
+  };
+
+  const loadMoreNotifications = async () => {
+    if (!appUser || !hasMoreNotifications) return;
+    const nextLimit = notificationQueryLimit + 30;
+    const page = await loadStudentNotifications(appUser.uid, nextLimit);
+    setNotificationQueryLimit(nextLimit);
+    setNotifications(page.items);
+    setHasMoreNotifications(page.hasMore);
+  };
+
+  const loadMoreActivities = async () => {
+    if (!appUser || !hasMoreActivities) return;
+    const nextLimit = activityQueryLimit + 50;
+    const page = await loadStudentActivities(appUser.uid, nextLimit);
+    setActivityQueryLimit(nextLimit);
+    setActivities(page.items);
+    setHasMoreActivities(page.hasMore);
   };
 
   const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -966,20 +1048,12 @@ function App() {
       await ensureAppCheck();
       if (authMode === "login") {
         authFlowStage = "sign_in";
-        await signInWithEmailAndPassword(
-          auth,
-          normalizedEmail,
-          normalizedPassword,
-        );
+        await loginWithEmail(normalizedEmail, normalizedPassword);
         setMessage("");
         return;
       }
       authFlowStage = "create_account";
-      const credential = await createUserWithEmailAndPassword(
-        auth,
-        normalizedEmail,
-        password,
-      );
+      const credential = await registerWithEmail(normalizedEmail, password);
       createdUser = credential.user;
       const interests = interestText
         .split(",")
@@ -1080,7 +1154,7 @@ function App() {
           : "登録しました。メール認証と管理者の承認後に利用できます。";
       let registrationTone: NoticeTone = "success";
       try {
-        await sendEmailVerification(credential.user);
+        await resendVerificationEmail(credential.user);
       } catch (verificationError) {
         registrationTone = "info";
         registrationMessage = `登録は完了しましたが、確認メールを送信できませんでした。${getFirebaseErrorMessage(verificationError)}`;
@@ -1096,9 +1170,9 @@ function App() {
     } catch (error) {
       let rollbackFailed = false;
       if (createdUser) {
-        await deleteUser(createdUser).catch(async () => {
+        await deleteAuthUser(createdUser).catch(async () => {
           rollbackFailed = true;
-          await signOut(auth).catch(() => undefined);
+          await logout().catch(() => undefined);
         });
       }
       const errorCode =
@@ -1155,7 +1229,6 @@ function App() {
       });
       const applicationId = result.data.applicationId;
       const applicationStatus = result.data.status;
-      await loadProductData(appUser.uid);
       setActiveRoomId(applicationId);
       setActiveTab(
         applicationStatus === "waitlisted" ? "activity" : "messages",
@@ -1290,11 +1363,25 @@ function App() {
     }
   };
 
-  const cancelApplication = async (application: EventApplication) => {
+  const cancelApplication = async (
+    application: EventApplication,
+    cancellationReason: string,
+  ) => {
     if (
       !appUser ||
       !["pending", "waitlisted", "confirmed"].includes(application.status)
     ) {
+      return;
+    }
+    const relatedEvent = events.find((event) => event.id === application.eventId);
+    if (
+      relatedEvent?.cancellationDeadline &&
+      relatedEvent.cancellationDeadline.toMillis() < Date.now()
+    ) {
+      setMessage(
+        "キャンセル期限を過ぎています。主催者へチャットでご連絡ください。",
+        "error",
+      );
       return;
     }
     setIsActionLoading(true);
@@ -1302,8 +1389,9 @@ function App() {
     try {
       await updateDoc(doc(db, "eventApplications", application.id), {
         status: "cancelled",
+        cancellationReason: cancellationReason.trim().slice(0, 300),
+        cancelledAt: serverTimestamp(),
       });
-      await loadProductData(appUser.uid);
       setMessage("参加申請をキャンセルしました。", "success");
     } catch (error) {
       setMessage(getFirebaseErrorMessage(error), "error");
@@ -1322,7 +1410,6 @@ function App() {
       { status: "attended" }
     >(functions, "checkInToEvent");
     await checkIn({ eventId: application.eventId, code });
-    await loadProductData(appUser.uid);
     setMessage("受付が完了しました。活動実績へ反映します。", "success");
   };
 
@@ -1383,7 +1470,7 @@ function App() {
     setMessageDraft("");
     setIsEmailVerified(false);
     verificationRefreshUidRef.current = null;
-    await signOut(auth);
+    await logout();
   };
 
   const acceptUpdatedLegalDocuments = async () => {
@@ -1479,9 +1566,9 @@ function App() {
       <VerifyEmailScreen
         firebaseUser={firebaseUser}
         onVerified={async () => {
-          await reload(firebaseUser);
+          await reloadAuthUser(firebaseUser);
           if (firebaseUser.emailVerified) {
-            await getIdToken(firebaseUser, true);
+            await refreshAuthToken(firebaseUser);
           }
           setIsEmailVerified(firebaseUser.emailVerified);
         }}
@@ -1560,7 +1647,9 @@ function App() {
   };
   const saveCurrentSearch = async () => {
     const nextSearch: SavedSearch = {
+      id: `${appUser.uid}_${Date.now()}`,
       userId: appUser.uid,
+      name: searchText.trim() || `${filter}・${searchDateFilter}`,
       searchText,
       category: filter,
       dateFilter: searchDateFilter,
@@ -1571,28 +1660,31 @@ function App() {
       onlyAvailable: onlyAvailableEvents,
       onlyBeginner: onlyBeginnerEvents,
     };
+    const { id: savedSearchId, ...savedSearchData } = nextSearch;
     await setDoc(
-      doc(db, "savedSearches", `${appUser.uid}_default`),
-      { ...nextSearch, updatedAt: serverTimestamp() },
+      doc(db, "savedSearches", savedSearchId ?? `${appUser.uid}_default`),
+      { ...savedSearchData, updatedAt: serverTimestamp() },
       { merge: true },
     );
     setSavedSearch(nextSearch);
+    setSavedSearches((current) => [nextSearch, ...current].slice(0, 10));
     setMessage(
       "検索条件を保存しました。条件に合う新着イベントを通知します。",
       "success",
     );
   };
-  const applySavedSearch = () => {
-    if (!savedSearch) return;
-    setSearchText(savedSearch.searchText);
-    setFilter(savedSearch.category);
-    setSearchDateFilter(savedSearch.dateFilter);
-    setSearchDayFilter(savedSearch.dayFilter);
-    setSearchTimeFilter(savedSearch.timeFilter);
-    setSearchFeeFilter(savedSearch.feeFilter);
-    setSearchFormatFilter(savedSearch.formatFilter);
-    setOnlyAvailableEvents(savedSearch.onlyAvailable);
-    setOnlyBeginnerEvents(savedSearch.onlyBeginner);
+  const applySavedSearch = (selectedSearch?: SavedSearch) => {
+    const search = selectedSearch ?? savedSearch;
+    if (!search) return;
+    setSearchText(search.searchText);
+    setFilter(search.category);
+    setSearchDateFilter(search.dateFilter);
+    setSearchDayFilter(search.dayFilter);
+    setSearchTimeFilter(search.timeFilter);
+    setSearchFeeFilter(search.feeFilter);
+    setSearchFormatFilter(search.formatFilter);
+    setOnlyAvailableEvents(search.onlyAvailable);
+    setOnlyBeginnerEvents(search.onlyBeginner);
   };
   const toggleSaved = (eventId: string) => {
     if (!appUser) return;
@@ -1729,6 +1821,8 @@ function App() {
         {isNotificationOpen && (
           <NotificationPanel
             notifications={notifications}
+            hasMore={hasMoreNotifications}
+            onLoadMore={() => void loadMoreNotifications()}
             onClose={() => {
               setIsNotificationOpen(false);
               window.requestAnimationFrame(() =>
@@ -1763,7 +1857,6 @@ function App() {
                   setActiveTab("messages");
                   setIsNotificationOpen(false);
                 } else if (notification.targetType === "application") {
-                  await loadProductData(appUser.uid);
                   setActiveTab("activity");
                   setIsNotificationOpen(false);
                 }
@@ -1863,6 +1956,7 @@ function App() {
               searchView,
               setSearchView,
               savedSearch,
+              savedSearches,
               onSaveSearch: () =>
                 void saveCurrentSearch().catch((error) =>
                   setMessage(getFirebaseErrorMessage(error), "error"),
@@ -1918,6 +2012,11 @@ function App() {
               onCancelApplication: setApplicationToCancel,
               onCheckIn: (application: EventApplication, code: string) =>
                 checkInApplication(application, code),
+              hasMoreApplications,
+              onLoadMoreApplications: () =>
+                setApplicationQueryLimit((current) => current + 50),
+              hasMoreActivities,
+              onLoadMoreActivities: () => void loadMoreActivities(),
             }}
           />
         )}
@@ -1925,7 +2024,9 @@ function App() {
           <MessagesTab
             rooms={chatRooms}
             activeRoomId={activeRoomId}
-            messages={chatMessages}
+            messages={chatMessages.filter(
+              (chatMessage) => !blockedUserIds.includes(chatMessage.senderId),
+            )}
             hasOlderMessages={hasOlderChatMessages}
             onLoadOlder={loadOlderMessages}
             draft={messageDraft}
@@ -1952,6 +2053,22 @@ function App() {
                 title: `${chatMessage.senderName}さんのメッセージ`,
               })
             }
+            onEditMessage={(chatMessage, text) =>
+              editChatMessage(activeRoomId ?? chatMessage.roomId, chatMessage.id, text)
+            }
+            onDeleteMessage={(chatMessage) =>
+              deleteChatMessage(
+                activeRoomId ?? chatMessage.roomId,
+                chatMessage.id,
+              )
+            }
+            onBlockUser={async (chatMessage) => {
+              await saveUserBlock(appUser.uid, chatMessage.senderId);
+              setBlockedUserIds((current) => [
+                ...new Set([...current, chatMessage.senderId]),
+              ]);
+              setMessage(`${chatMessage.senderName}さんをブロックしました。`, "success");
+            }}
             currentUserId={appUser.uid}
             currentUserRole="student"
             onOpenActivity={() => setActiveTab("activity")}
@@ -2055,16 +2172,18 @@ function App() {
         />
       )}
       {applicationToCancel && (
-        <ConfirmDialog
+        <ActionReasonDialog
           title="参加申請をキャンセルしますか？"
           description={`「${applicationToCancel.eventTitle}」の申請を取り消します。取り消した申請は元に戻せません。`}
+          label="キャンセル理由"
+          placeholder="主催者に伝える理由を入力してください"
           confirmLabel="申請を取り消す"
           danger
           onClose={() => setApplicationToCancel(null)}
-          onConfirm={() => {
+          onConfirm={async (reason) => {
             const application = applicationToCancel;
             setApplicationToCancel(null);
-            void cancelApplication(application);
+            await cancelApplication(application, reason);
           }}
         />
       )}
@@ -2192,7 +2311,7 @@ function AuthScreen(props: {
     setResetMessage("");
     try {
       await ensureAppCheck();
-      await sendPasswordResetEmail(auth, resetEmail.trim());
+      await requestPasswordReset(resetEmail.trim());
       setResetMessage(
         "パスワード再設定メールを送信しました。メールを確認してください。",
         "success",
@@ -2558,7 +2677,7 @@ function VerifyEmailScreen({
     setIsSending(true);
     setNotice("");
     try {
-      await sendEmailVerification(firebaseUser);
+      await resendVerificationEmail(firebaseUser);
       setNotice(
         "確認メールを再送しました。メール内のリンクを開いてください。",
         "success",
@@ -2754,10 +2873,14 @@ function AccountRejectedScreen({
 
 function NotificationPanel({
   notifications,
+  hasMore,
+  onLoadMore,
   onClose,
   onRead,
 }: {
   notifications: NotificationItem[];
+  hasMore?: boolean;
+  onLoadMore?: () => void;
   onClose: () => void;
   onRead: (notification: NotificationItem) => Promise<void>;
 }) {
@@ -2815,6 +2938,11 @@ function NotificationPanel({
               </span>
             </button>
           ))}
+          {hasMore && onLoadMore && (
+            <button type="button" onClick={onLoadMore}>
+              過去の通知をさらに30件読み込む
+            </button>
+          )}
         </div>
       )}
     </aside>

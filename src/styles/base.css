@@ -1867,6 +1867,7 @@ kbd {
 }
 .chat-messages {
   display: flex;
+  min-height: 0;
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
@@ -1932,6 +1933,8 @@ kbd {
   font-size: 11px;
 }
 .chat-composer {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 8px;
   padding: 12px;

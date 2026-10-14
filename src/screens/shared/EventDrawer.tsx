@@ -1,4 +1,17 @@
-import { doc, getDoc } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  Timestamp,
+  where,
+} from "firebase/firestore";
 import {
   CalendarDays,
   CalendarPlus,
@@ -8,6 +21,7 @@ import {
   ExternalLink,
   FileText,
   Flag,
+  Heart,
   Loader2,
   Map,
   MapPin,
@@ -19,13 +33,17 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
 import { defaultTakeaways } from "../../config/events";
-import { db } from "../../lib/firebase";
+import { auth, db } from "../../lib/firebase";
 import {
   downloadEventCalendar,
   googleCalendarUrl,
   hasRequiredCommerceDisclosure,
 } from "../../lib/eventUtils";
-import type { AizuEvent, PublicOrganizerProfile } from "../../types/domain";
+import type {
+  AizuEvent,
+  EventReport,
+  PublicOrganizerProfile,
+} from "../../types/domain";
 
 export function EventDrawer({
   event,
@@ -53,6 +71,9 @@ export function EventDrawer({
     event.organizationVerified ?? Boolean(event.createdBy);
   const [organizerProfile, setOrganizerProfile] =
     useState<PublicOrganizerProfile | null>(null);
+  const [pastEvents, setPastEvents] = useState<AizuEvent[]>([]);
+  const [eventReport, setEventReport] = useState<EventReport | null>(null);
+  const [organizerSaved, setOrganizerSaved] = useState(false);
   const dialogRef = useDialogAccessibility<HTMLElement>(onClose, () => {
     const activeTabButton = document.querySelector<HTMLElement>(
       '.bottom-nav [aria-current="page"]',
@@ -74,6 +95,66 @@ export function EventDrawer({
       )
       .catch(() => setOrganizerProfile(null));
   }, [event.createdBy]);
+  useEffect(() => {
+    if (!event.createdBy || previewMode) return;
+    const userId = auth.currentUser?.uid;
+    void Promise.all([
+      getDocs(
+        query(
+          collection(db, "events"),
+          where("createdBy", "==", event.createdBy),
+          where("status", "==", "published"),
+          where("startAt", "<", Timestamp.now()),
+          orderBy("startAt", "desc"),
+          limit(6),
+        ),
+      ),
+      getDoc(doc(db, "eventReports", event.id)).catch(() => null),
+      userId
+        ? getDoc(
+            doc(db, "savedOrganizers", `${userId}_${event.createdBy}`),
+          ).catch(() => null)
+        : Promise.resolve(null),
+    ]).then(([eventSnapshot, reportSnapshot, favoriteSnapshot]) => {
+      setPastEvents(
+        eventSnapshot.docs
+          .filter((eventDocument) => eventDocument.id !== event.id)
+          .map(
+            (eventDocument) =>
+              ({ id: eventDocument.id, ...eventDocument.data() }) as AizuEvent,
+          )
+          .slice(0, 5),
+      );
+      setEventReport(
+        reportSnapshot?.exists() && reportSnapshot.data().status === "published"
+          ? (reportSnapshot.data() as EventReport)
+          : null,
+      );
+      setOrganizerSaved(Boolean(favoriteSnapshot?.exists()));
+    });
+  }, [event.createdBy, event.id, previewMode]);
+
+  const toggleOrganizerSaved = async () => {
+    const userId = auth.currentUser?.uid;
+    if (!userId || !event.createdBy) return;
+    const favoriteRef = doc(
+      db,
+      "savedOrganizers",
+      `${userId}_${event.createdBy}`,
+    );
+    if (organizerSaved) {
+      await deleteDoc(favoriteRef);
+      setOrganizerSaved(false);
+      return;
+    }
+    await setDoc(favoriteRef, {
+      userId,
+      organizationId: event.createdBy,
+      organizationName: event.organizationName,
+      createdAt: serverTimestamp(),
+    });
+    setOrganizerSaved(true);
+  };
 
   return createPortal(
     <div className="detail-overlay" role="presentation" onClick={onClose}>
@@ -315,7 +396,39 @@ export function EventDrawer({
                   : event.organizerExperience || "Aizu Connectで活動を企画"}
               </small>
             </div>
+            {!previewMode && (
+              <button
+                type="button"
+                aria-pressed={organizerSaved}
+                onClick={() => void toggleOrganizerSaved()}
+              >
+                <Heart size={15} fill={organizerSaved ? "currentColor" : "none"} />
+                {organizerSaved ? "主催者を保存済み" : "主催者を保存"}
+              </button>
+            )}
           </div>
+          {eventReport && (
+            <section className="detail-section">
+              <h3>開催後の活動報告</h3>
+              <strong>{eventReport.title}</strong>
+              <p>{eventReport.summary}</p>
+              <div className="event-report-images">
+                {eventReport.imageUrls.slice(0, 4).map((imageUrl) => (
+                  <img key={imageUrl} src={imageUrl} alt="活動報告" />
+                ))}
+              </div>
+            </section>
+          )}
+          {pastEvents.length > 0 && (
+            <section className="detail-section">
+              <h3>同じ主催者の過去・公開イベント</h3>
+              <ul>
+                {pastEvents.map((pastEvent) => (
+                  <li key={pastEvent.id}>{pastEvent.title}</li>
+                ))}
+              </ul>
+            </section>
+          )}
           {!previewMode && (
             <button
               className="detail-inline-report text-button"

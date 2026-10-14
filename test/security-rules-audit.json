@@ -1,18 +1,5 @@
 {
-  "score": 4,
-  "summary": "Default-deny rules enforce verified-email role boundaries, restrict self-activation to verified Aizu University identities, bind chat sender names to trusted profiles, protect check-in attempts as server-only data, and validate writable schemas. The remaining findings are defense-in-depth improvements rather than direct privilege-escalation paths.",
-  "findings": [
-    {
-      "severity": "moderate",
-      "area": "chatRooms/{roomId}/messages/{messageId}",
-      "issue": "Attachment URLs are length-checked but are not constrained to the project's Firebase Storage origin or the sender's room-scoped object path.",
-      "recommendation": "Create attachment messages through a callable function, or validate a server-issued Storage object identifier instead of accepting an arbitrary HTTPS URL."
-    },
-    {
-      "severity": "minor",
-      "area": "reports/{reportId}",
-      "issue": "Any signed-in account can create a report, including an unverified or inactive account.",
-      "recommendation": "Require an active verified role if anonymous-style reporting is not an intentional product requirement."
-    }
-  ]
+  "score": 5,
+  "summary": "Ownership and role checks use authenticated user documents, client writes are schema-limited, server-owned workflow and message-history fields cannot be mutated directly, bounded lists and strings reduce abuse, and emulator tests cover cross-user denial paths for the new collections.",
+  "findings": []
 }

@@ -157,6 +157,7 @@ export type EventPlanInput = {
   accessInfo: string;
   bringItems: string;
   cancellationPolicy: string;
+  cancellationDeadlineMillis?: number;
   weatherPolicy: string;
   accessibility: string;
   contactMethod: string;
@@ -167,6 +168,80 @@ export type EventPlanInput = {
   takeaways: string[];
   organizerDescription: string;
   organizerExperience: string;
+  applicationQuestions: Array<{
+    id: string;
+    label: string;
+    type: "text" | "textarea" | "select" | "checkbox";
+    required: boolean;
+    options: string[];
+  }>;
+};
+
+export type ValidatedApplicationAnswer = {
+  questionId: string;
+  label: string;
+  value: string | boolean;
+};
+
+export const normalizeApplicationAnswers = (
+  questionsValue: unknown,
+  answersValue: unknown,
+): ValidatedApplicationAnswer[] | null => {
+  const questions = Array.isArray(questionsValue) ? questionsValue : [];
+  const answers = Array.isArray(answersValue) ? answersValue : [];
+  if (questions.length > 8 || answers.length > 8) return null;
+  if (
+    !answers.every((answer) => {
+      if (!answer || typeof answer !== "object") return false;
+      const item = answer as Record<string, unknown>;
+      return typeof item.questionId === "string" &&
+        item.questionId.length >= 1 && item.questionId.length <= 40 &&
+        ((typeof item.value === "string" && item.value.length <= 1000) ||
+          typeof item.value === "boolean");
+    })
+  ) {
+    return null;
+  }
+  const answerEntries = answers.map((answer) => {
+    const item = answer as Record<string, unknown>;
+    return [String(item.questionId), item.value] as const;
+  });
+  const answerById = new Map(answerEntries);
+  if (answerById.size !== answers.length) return null;
+  const questionIds = new Set(
+    questions.map((question) =>
+      String((question as Record<string, unknown>).id),
+    ),
+  );
+  if (answers.some((answer) =>
+    !questionIds.has(String((answer as Record<string, unknown>).questionId)))) {
+    return null;
+  }
+  const normalized: ValidatedApplicationAnswer[] = [];
+  for (const questionValue of questions) {
+    if (!questionValue || typeof questionValue !== "object") return null;
+    const question = questionValue as Record<string, unknown>;
+    const questionId = String(question.id ?? "");
+    const label = String(question.label ?? "").trim();
+    const type = String(question.type ?? "");
+    if (
+      !questionId || questionId.length > 40 || !label || label.length > 120 ||
+      !["text", "textarea", "select", "checkbox"].includes(type)
+    ) {
+      return null;
+    }
+    const rawValue = answerById.get(questionId);
+    const value = typeof rawValue === "string" ?
+      rawValue.trim() :
+      rawValue === true;
+    const missingRequired = question.required === true &&
+      (type === "checkbox" ? value !== true : value === "");
+    const invalidSelect = type === "select" && value !== "" &&
+      (!Array.isArray(question.options) || !question.options.includes(value));
+    if (missingRequired || invalidSelect) return null;
+    normalized.push({questionId, label, value});
+  }
+  return normalized;
 };
 
 const validText = (
@@ -209,6 +284,13 @@ export const normalizeEventPlanInput = (
   const eventFormats = ["現地", "オンライン", "ハイブリッド"];
   const beginnerLevels = ["初参加歓迎", "少し経験者向け", "誰でも歓迎"];
   const takeaways = data.takeaways;
+  const questions = Array.isArray(data.applicationQuestions) ?
+    data.applicationQuestions :
+    [];
+  const cancellationDeadlineMillis =
+    typeof data.cancellationDeadlineMillis === "number" ?
+      data.cancellationDeadlineMillis :
+      undefined;
   const isPaidEvent = data.feeType === "有料";
   if (
     !validText(data.title, 1, 80) ||
@@ -240,6 +322,10 @@ export const normalizeEventPlanInput = (
     !validText(data.accessInfo, 0, 300) ||
     !validText(data.bringItems, 1, 300) ||
     !validText(data.cancellationPolicy, 1, 500) ||
+    (cancellationDeadlineMillis !== undefined &&
+      (!Number.isFinite(cancellationDeadlineMillis) ||
+        cancellationDeadlineMillis <= nowMillis ||
+        cancellationDeadlineMillis >= Number(data.startAtMillis))) ||
     !validText(data.weatherPolicy, 1, 500) ||
     !validText(data.accessibility, 1, 500) ||
     !validText(data.contactMethod, 1, 300) ||
@@ -256,7 +342,22 @@ export const normalizeEventPlanInput = (
     takeaways.length > 3 ||
     !takeaways.every((item) => validText(item, 1, 60)) ||
     !validText(data.organizerDescription, 1, 500) ||
-    !validText(data.organizerExperience, 1, 300)
+    !validText(data.organizerExperience, 1, 300) ||
+    questions.length > 8 ||
+    !questions.every((question) => {
+      if (!question || typeof question !== "object") return false;
+      const item = question as Record<string, unknown>;
+      const options = Array.isArray(item.options) ? item.options : [];
+      return validText(item.id, 1, 40) &&
+        validText(item.label, 1, 120) &&
+        ["text", "textarea", "select", "checkbox"].includes(
+          String(item.type),
+        ) &&
+        typeof item.required === "boolean" &&
+        options.length <= 8 &&
+        options.every((option) => validText(option, 1, 80)) &&
+        (item.type !== "select" || options.length >= 2);
+    })
   ) {
     return null;
   }
@@ -292,6 +393,9 @@ export const normalizeEventPlanInput = (
     accessInfo: String(data.accessInfo).trim(),
     bringItems: String(data.bringItems).trim(),
     cancellationPolicy: String(data.cancellationPolicy).trim(),
+    ...(cancellationDeadlineMillis === undefined ? {} : {
+      cancellationDeadlineMillis,
+    }),
     weatherPolicy: String(data.weatherPolicy).trim(),
     accessibility: String(data.accessibility).trim(),
     contactMethod: String(data.contactMethod).trim(),
@@ -302,6 +406,19 @@ export const normalizeEventPlanInput = (
     takeaways: takeaways.map((item) => String(item).trim()),
     organizerDescription: String(data.organizerDescription).trim(),
     organizerExperience: String(data.organizerExperience).trim(),
+    applicationQuestions: questions.map((question) => {
+      const item = question as Record<string, unknown>;
+      return {
+        id: String(item.id),
+        label: String(item.label).trim(),
+        type: item.type as
+          EventPlanInput["applicationQuestions"][number]["type"],
+        required: item.required === true,
+        options: Array.isArray(item.options) ?
+          item.options.map((option) => String(option).trim()) :
+          [],
+      };
+    }),
   };
 };
 

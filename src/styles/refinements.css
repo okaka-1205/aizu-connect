@@ -514,6 +514,12 @@
   font-size: 20px;
   letter-spacing: 0.12em;
 }
+.check-in-qr {
+  width: 80px;
+  height: 80px;
+  flex: 0 0 80px;
+  border-radius: 6px;
+}
 .participant-toolbar {
   align-items: stretch;
   flex-wrap: wrap;
@@ -748,6 +754,16 @@
   }
 }
 @media (max-width: 620px) {
+  .check-in-panel {
+    flex-wrap: wrap;
+  }
+
+  .check-in-qr {
+    width: 72px;
+    height: 72px;
+    flex-basis: 72px;
+  }
+
   .management-nav {
     display: flex;
     overflow-x: auto;
@@ -2470,6 +2486,23 @@ body,
 }
 
 @media (max-width: 620px) {
+  .role-header {
+    width: calc(100% - 28px);
+    max-width: 560px;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .role-header > .brand-lockup {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .role-header-user {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+
   .role-header-user > svg,
   .role-header-user > strong {
     display: none;
@@ -2481,7 +2514,7 @@ body,
   }
 
   .role-header-user:not(.has-home-action) > strong {
-    max-width: 104px;
+    max-width: min(104px, 25vw);
     overflow: hidden;
     font-size: 11px;
     text-overflow: ellipsis;

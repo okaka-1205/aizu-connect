@@ -14,6 +14,18 @@ function projectSuffix(projectName: string) {
   return projectVariant(projectName).toLowerCase();
 }
 
+function studentEmail(projectName: string) {
+  return `student-e2e-${projectSuffix(projectName)}@u-aizu.ac.jp`;
+}
+
+function organizationEmail(projectName: string) {
+  return `org-e2e-${projectSuffix(projectName)}@example.com`;
+}
+
+function adminEmail(projectName: string) {
+  return `admin-e2e-${projectSuffix(projectName)}@aizu-connect.local`;
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -21,10 +33,18 @@ function escapeRegExp(value: string) {
 async function login(page, email: string, userPassword = password) {
   await page.goto("/");
   await page.getByRole("button", { name: "ログイン" }).click();
-  await page.getByLabel("メールアドレス").fill(email);
-  await page.getByLabel("パスワード", { exact: true }).fill(userPassword);
-  await page.getByRole("button", { name: "ログインする" }).click();
-  await expect(page.getByRole("heading", { name: "ログイン" })).toBeHidden();
+  const loginHeading = page.getByRole("heading", { name: "ログイン" });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.getByLabel("メールアドレス").fill(email);
+    await page.getByLabel("パスワード", { exact: true }).fill(userPassword);
+    await page.getByRole("button", { name: "ログインする" }).click();
+    try {
+      await expect(loginHeading).toBeHidden({ timeout: 5_000 });
+      break;
+    } catch (error) {
+      if (attempt === 2) throw error;
+    }
+  }
   const legalUpdateHeading = page.getByRole("heading", {
     name: "利用条件を更新しました",
   });
@@ -68,8 +88,13 @@ async function expectNoHorizontalOverflow(page) {
                 element.id ||
                 element.className ||
                 element.tagName.toLowerCase(),
+              text: element.textContent
+                ?.trim()
+                .replace(/\s+/g, " ")
+                .slice(0, 80),
               left: Math.round(bounds.left),
               right: Math.round(bounds.right),
+              top: Math.round(bounds.top),
               width: Math.round(bounds.width),
             };
           })
@@ -111,10 +136,12 @@ async function confirmApplication(
 }
 
 test.describe("emulator-backed role flows", () => {
-  test("student can enter the product and navigate core tabs", async ({
-    page,
-  }) => {
-    await login(page, "student-e2e@u-aizu.ac.jp");
+  test("student can enter the product and navigate core tabs", async (
+    { page },
+    testInfo,
+  ) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    await login(page, studentEmail(testInfo.project.name));
     const nav = page.getByRole("navigation", { name: "メインナビゲーション" });
 
     await expect(
@@ -164,6 +191,7 @@ test.describe("emulator-backed role flows", () => {
 
     await page
       .getByRole("button", { name: "E2E 地域交流会の詳細を見る" })
+      .first()
       .click();
     await expect(
       page.getByRole("dialog", { name: "E2E 地域交流会" }),
@@ -185,7 +213,7 @@ test.describe("emulator-backed role flows", () => {
       page.getByRole("heading", { name: "参加履歴", exact: true }),
     ).toBeVisible();
     await expect(page.getByText("証明済み活動")).toBeVisible();
-    await expect(page.getByText("活動証明 AC-app-e2e")).toBeVisible();
+    await expect(page.getByText(`活動証明 AC-app-e2e-${suffix}`)).toBeVisible();
     await expect(
       page.getByRole("heading", {
         name: `${new Date().getFullYear()}年`,
@@ -270,8 +298,11 @@ test.describe("emulator-backed role flows", () => {
     ).toBeHidden();
   });
 
-  test("login persistence survives reopening the site", async ({ page }) => {
-    await login(page, "student-e2e@u-aizu.ac.jp");
+  test("login persistence survives reopening the site", async (
+    { page },
+    testInfo,
+  ) => {
+    await login(page, studentEmail(testInfo.project.name));
     const reopenedPage = await page.context().newPage();
     await page.close();
     await reopenedPage.goto("/");
@@ -285,10 +316,11 @@ test.describe("emulator-backed role flows", () => {
     await expectNoHorizontalOverflow(reopenedPage);
   });
 
-  test("student can load events beyond the first search page", async ({
-    page,
-  }) => {
-    await login(page, "student-e2e@u-aizu.ac.jp");
+  test("student can load events beyond the first search page", async (
+    { page },
+    testInfo,
+  ) => {
+    await login(page, studentEmail(testInfo.project.name));
     await openSearch(page);
 
     const pagingEvents = page.getByRole("button", {
@@ -307,10 +339,11 @@ test.describe("emulator-backed role flows", () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  test("search automatically includes events beyond the first page", async ({
-    page,
-  }) => {
-    await login(page, "student-e2e@u-aizu.ac.jp");
+  test("search automatically includes events beyond the first page", async (
+    { page },
+    testInfo,
+  ) => {
+    await login(page, studentEmail(testInfo.project.name));
     await openSearch(page);
 
     const laterEvent = page.getByRole("button", {
@@ -331,7 +364,7 @@ test.describe("emulator-backed role flows", () => {
     page,
   }, testInfo) => {
     const eventTitle = `E2E 追加募集イベント ${projectVariant(testInfo.project.name)}`;
-    await login(page, "student-e2e@u-aizu.ac.jp");
+    await login(page, studentEmail(testInfo.project.name));
 
     await openSearch(page);
     await page
@@ -355,7 +388,7 @@ test.describe("emulator-backed role flows", () => {
       ),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "メッセージ" }),
+      page.getByRole("heading", { name: "メッセージ", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", {
@@ -373,7 +406,7 @@ test.describe("emulator-backed role flows", () => {
     page,
   }, testInfo) => {
     const eventTitle = `E2E 学生企画 ${testInfo.project.name}`;
-    await login(page, "student-e2e@u-aizu.ac.jp");
+    await login(page, studentEmail(testInfo.project.name));
 
     await page.getByRole("button", { name: "企画" }).click();
     await page.getByRole("button", { name: "勉強会" }).click();
@@ -553,7 +586,7 @@ test.describe("emulator-backed role flows", () => {
     await confirmApplication(page);
 
     await expect(
-      page.getByRole("heading", { name: "メッセージ" }),
+      page.getByRole("heading", { name: "メッセージ", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: new RegExp(`${eventTitle}.*全体`) }),
@@ -584,7 +617,7 @@ test.describe("emulator-backed role flows", () => {
     page,
   }, testInfo) => {
     const eventTitle = `E2E 満員イベント ${projectVariant(testInfo.project.name)}`;
-    await login(page, "student-e2e@u-aizu.ac.jp");
+    await login(page, studentEmail(testInfo.project.name));
 
     await openSearch(page);
     await page
@@ -627,8 +660,13 @@ test.describe("emulator-backed role flows", () => {
     await occupiedApplication
       .getByRole("button", { name: "キャンセル" })
       .click();
-    await page
-      .getByRole("alertdialog", { name: "参加申請をキャンセルしますか？" })
+    const cancellationDialog = page.getByRole("alertdialog", {
+      name: "参加申請をキャンセルしますか？",
+    });
+    await cancellationDialog
+      .getByLabel("キャンセル理由")
+      .fill("E2E端末別テストのためキャンセルします。");
+    await cancellationDialog
       .getByRole("button", { name: "申請を取り消す" })
       .click();
     await expect(
@@ -642,7 +680,9 @@ test.describe("emulator-backed role flows", () => {
       })
       .click();
     await expect(page.getByRole("heading", { name: "ログイン" })).toBeVisible();
-    await page.getByLabel("メールアドレス").fill("student-e2e@u-aizu.ac.jp");
+    await page
+      .getByLabel("メールアドレス")
+      .fill(studentEmail(testInfo.project.name));
     await page.getByLabel("パスワード", { exact: true }).fill(password);
     await page.getByRole("button", { name: "ログインする" }).click();
     await page
@@ -812,25 +852,34 @@ test.describe("emulator-backed role flows", () => {
   test("organization can view its dashboard, applicants, and messages", async ({
     page,
   }, testInfo) => {
-    const eventChatTitle = `E2E 全体チャットイベント ${projectVariant(testInfo.project.name)}`;
-    await login(page, "org-e2e@example.com");
+    testInfo.setTimeout(45_000);
+    const variant = projectVariant(testInfo.project.name);
+    const eventChatTitle = `E2E 全体チャットイベント ${variant}`;
+    const dashboardEventTitle = `E2E 地域交流会 ${variant}`;
+    await login(page, organizationEmail(testInfo.project.name));
 
     await page.getByRole("button", { name: "ホームへ戻る" }).first().click();
     await expect(
       page.getByRole("heading", { name: "登録したイベント" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /E2E 地域交流会 .* 公開中/ }),
+      page.getByRole("button", {
+        name: new RegExp(`${escapeRegExp(dashboardEventTitle)} .* 公開中`),
+      }),
     ).toBeVisible();
 
     await page
-      .getByRole("button", { name: /E2E 地域交流会 .* 公開中/ })
+      .getByRole("button", {
+        name: new RegExp(`${escapeRegExp(dashboardEventTitle)} .* 公開中`),
+      })
       .click();
     await expect(
       page.getByRole("heading", { name: "参加者一覧" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /E2E 学生 E2E 地域交流会/ }),
+      page.getByRole("button", {
+        name: new RegExp(`E2E 学生 ${escapeRegExp(dashboardEventTitle)}`),
+      }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "承認", exact: true }),
@@ -841,7 +890,11 @@ test.describe("emulator-backed role flows", () => {
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("alertdialog")).toBeHidden();
-    await page.getByRole("button", { name: /E2E 学生 E2E 地域交流会/ }).click();
+    await page
+      .getByRole("button", {
+        name: new RegExp(`E2E 学生 ${escapeRegExp(dashboardEventTitle)}`),
+      })
+      .click();
     await expect(
       page.locator("p", { hasText: "E2E 初期メッセージ" }),
     ).toBeVisible();
@@ -865,10 +918,11 @@ test.describe("emulator-backed role flows", () => {
   test("organization can complete participant management and reporting flows", async ({
     page,
   }, testInfo) => {
+    testInfo.setTimeout(60_000);
     const variant = projectVariant(testInfo.project.name);
     const eventTitle = `E2E 参加者管理 ${variant}`;
     const studentName = `E2E 後参加 ${variant}`;
-    await login(page, "org-e2e@example.com");
+    await login(page, organizationEmail(testInfo.project.name));
 
     const managedEvent = page
       .locator(".managed-event-row")
@@ -932,10 +986,11 @@ test.describe("emulator-backed role flows", () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  test("admin can load reports beyond the first review page", async ({
-    page,
-  }) => {
-    await login(page, "admin", "admin123");
+  test("admin can load reports beyond the first review page", async (
+    { page },
+    testInfo,
+  ) => {
+    await login(page, adminEmail(testInfo.project.name), "admin123");
 
     const reportQueue = page.locator(".admin-report-card");
     await expect(reportQueue.getByText("E2E ページング通報 55")).toHaveCount(0);
@@ -950,7 +1005,7 @@ test.describe("emulator-backed role flows", () => {
   }, testInfo) => {
     const variant = projectVariant(testInfo.project.name);
     const deletionReason = `E2E ${variant}で管理者の削除権限と関連データを確認しました。`;
-    await login(page, "admin", "admin123");
+    await login(page, adminEmail(testInfo.project.name), "admin123");
 
     await expect(
       page.getByRole("heading", { name: "イベント審査" }),

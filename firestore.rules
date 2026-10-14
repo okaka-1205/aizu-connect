@@ -52,6 +52,17 @@ service cloud.firestore {
       return isActiveStudent() || isActiveOrganization();
     }
 
+    function isRoomMember(roomId, uid) {
+      return exists(
+        /databases/$(database)/documents/chatRooms/$(roomId)/members/$(uid)
+      ) || (
+        exists(/databases/$(database)/documents/chatRooms/$(roomId))
+        && uid in get(
+          /databases/$(database)/documents/chatRooms/$(roomId)
+        ).data.participantIds
+      );
+    }
+
     function validString(value, min, max) {
       return value is string && value.size() >= min && value.size() <= max;
     }
@@ -496,9 +507,21 @@ service cloud.firestore {
         )
         || (isActiveStudent()
           && resource.data.studentId == request.auth.uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'cancellationReason', 'cancelledAt'
+          ])
           && resource.data.status in ['pending', 'waitlisted', 'confirmed']
-          && request.resource.data.status == 'cancelled');
+          && request.resource.data.status == 'cancelled'
+          && validString(request.resource.data.cancellationReason, 1, 500)
+          && request.resource.data.cancelledAt is timestamp
+          && (
+            !get(
+              /databases/$(database)/documents/events/$(resource.data.eventId)
+            ).data.keys().hasAny(['cancellationDeadline'])
+            || request.time <= get(
+              /databases/$(database)/documents/events/$(resource.data.eventId)
+            ).data.cancellationDeadline
+          ));
       allow delete: if false;
     }
 
@@ -507,11 +530,29 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/events/$(resource.data.eventId));
       }
 
-      allow read: if isActiveCreator()
-        && request.auth.uid in resource.data.participantIds;
+      allow get: if isActiveCreator()
+        && (
+          exists(
+            /databases/$(database)/documents/chatRooms/$(roomId)/members/$(request.auth.uid)
+          )
+          || (
+            resource.data.keys().hasAny(['participantIds'])
+            && (request.auth.uid in resource.data.participantIds)
+          )
+        );
+      allow list: if isActiveCreator()
+        && (request.auth.uid in resource.data.participantIds);
       allow create: if false;
       allow update: if isActiveCreator()
-        && request.auth.uid in resource.data.participantIds
+        && (
+          exists(
+            /databases/$(database)/documents/chatRooms/$(roomId)/members/$(request.auth.uid)
+          )
+          || (
+            resource.data.keys().hasAny(['participantIds'])
+            && (request.auth.uid in resource.data.participantIds)
+          )
+        )
         && resource.data.status == 'active'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'lastMessageText', 'lastMessageAt'
@@ -531,15 +572,17 @@ service cloud.firestore {
         );
       allow delete: if false;
 
+      match /members/{memberId} {
+        allow read: if isActiveCreator()
+          && resource.data.userId == request.auth.uid;
+        allow write: if false;
+      }
+
       match /messages/{messageId} {
         allow read: if isActiveCreator()
-          && request.auth.uid in get(
-            /databases/$(database)/documents/chatRooms/$(roomId)
-          ).data.participantIds;
+          && isRoomMember(roomId, request.auth.uid);
         allow create: if isActiveCreator()
-          && request.auth.uid in get(
-            /databases/$(database)/documents/chatRooms/$(roomId)
-          ).data.participantIds
+          && isRoomMember(roomId, request.auth.uid)
           && get(
             /databases/$(database)/documents/chatRooms/$(roomId)
           ).data.status == 'active'
@@ -571,19 +614,16 @@ service cloud.firestore {
             )
           )
           && request.resource.data.createdAt is timestamp;
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if false;
       }
 
       match /reads/{userId} {
         allow read: if isActiveCreator()
-          && request.auth.uid in get(
-            /databases/$(database)/documents/chatRooms/$(roomId)
-          ).data.participantIds;
+          && isRoomMember(roomId, request.auth.uid);
         allow create, update: if isActiveCreator()
           && request.auth.uid == userId
-          && request.auth.uid in get(
-            /databases/$(database)/documents/chatRooms/$(roomId)
-          ).data.participantIds
+          && isRoomMember(roomId, request.auth.uid)
           && request.resource.data.keys().hasOnly(['userId', 'readAt'])
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.readAt is timestamp;
@@ -706,15 +746,16 @@ service cloud.firestore {
 
     match /savedSearches/{savedSearchId} {
       allow read: if isActiveStudent()
-        && savedSearchId == request.auth.uid + '_default';
+        && resource.data.userId == request.auth.uid;
       allow create, update: if isActiveStudent()
-        && savedSearchId == request.auth.uid + '_default'
+        && savedSearchId.matches('^' + request.auth.uid + '_.*$')
         && request.resource.data.keys().hasOnly([
-          'userId', 'searchText', 'category', 'dateFilter', 'dayFilter',
+          'userId', 'name', 'searchText', 'category', 'dateFilter', 'dayFilter',
           'timeFilter', 'feeFilter', 'formatFilter', 'onlyAvailable',
           'onlyBeginner', 'updatedAt'
         ])
         && request.resource.data.userId == request.auth.uid
+        && validString(request.resource.data.name, 1, 60)
         && validOptionalString(request.resource.data.searchText, 120)
         && validString(request.resource.data.category, 1, 40)
         && request.resource.data.dateFilter in ['すべて', '今週', '今月']
@@ -743,9 +784,7 @@ service cloud.firestore {
         && validString(request.resource.data.roomId, 1, 200)
         && request.resource.data.muted is bool
         && request.resource.data.updatedAt is timestamp
-        && request.auth.uid in get(
-          /databases/$(database)/documents/chatRooms/$(request.resource.data.roomId)
-        ).data.participantIds;
+        && isRoomMember(request.resource.data.roomId, request.auth.uid);
       allow delete: if isActiveCreator()
         && resource.data.userId == request.auth.uid;
     }
@@ -753,6 +792,124 @@ service cloud.firestore {
     match /publicOrganizerProfiles/{userId} {
       allow read: if signedIn();
       allow write: if false;
+    }
+
+    match /savedOrganizers/{savedOrganizerId} {
+      allow read: if isActiveStudent()
+        && resource.data.userId == request.auth.uid;
+      allow create: if isActiveStudent()
+        && savedOrganizerId == request.auth.uid + '_' + request.resource.data.organizationId
+        && request.resource.data.keys().hasOnly([
+          'userId', 'organizationId', 'organizationName', 'createdAt'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && validString(request.resource.data.organizationId, 1, 128)
+        && validString(request.resource.data.organizationName, 1, 100)
+        && request.resource.data.createdAt is timestamp;
+      allow delete: if isActiveStudent()
+        && resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
+    match /userBlocks/{blockId} {
+      allow read: if isActiveCreator()
+        && resource.data.blockerId == request.auth.uid;
+      allow create: if isActiveCreator()
+        && blockId == request.auth.uid + '_' + request.resource.data.blockedId
+        && request.resource.data.keys().hasOnly([
+          'blockerId', 'blockedId', 'reason', 'createdAt'
+        ])
+        && request.resource.data.blockerId == request.auth.uid
+        && request.resource.data.blockedId != request.auth.uid
+        && validString(request.resource.data.blockedId, 1, 128)
+        && validOptionalString(request.resource.data.reason, 300)
+        && request.resource.data.createdAt is timestamp;
+      allow delete: if isActiveCreator()
+        && resource.data.blockerId == request.auth.uid;
+      allow update: if false;
+    }
+
+    match /eventSurveys/{eventId}/responses/{userId} {
+      allow read: if isAdmin()
+        || (isActiveStudent() && request.auth.uid == userId)
+        || (isActiveOrganization()
+          && get(/databases/$(database)/documents/events/$(eventId)).data.createdBy
+            == request.auth.uid);
+      allow create, update: if isActiveStudent()
+        && request.auth.uid == userId
+        && exists(
+          /databases/$(database)/documents/eventApplications/$(eventId + '_' + userId)
+        )
+        && get(
+          /databases/$(database)/documents/eventApplications/$(eventId + '_' + userId)
+        ).data.status == 'attended'
+        && request.resource.data.keys().hasOnly([
+          'eventId', 'userId', 'rating', 'comment', 'wouldRecommend',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.eventId == eventId
+        && request.resource.data.userId == userId
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && validOptionalString(request.resource.data.comment, 1000)
+        && request.resource.data.wouldRecommend is bool
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
+    }
+
+    match /eventReports/{eventId} {
+      allow read: if isAdmin()
+        || (signedIn()
+          && resource != null
+          && resource.data.status == 'published')
+        || (isActiveOrganization()
+          && resource != null
+          && resource.data.organizationId == request.auth.uid);
+      allow create, update: if isActiveOrganization()
+        && get(/databases/$(database)/documents/events/$(eventId)).data.createdBy
+          == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'eventId', 'organizationId', 'title', 'summary', 'imageUrls',
+          'participantCount', 'status', 'createdAt', 'updatedAt', 'publishedAt'
+        ])
+        && request.resource.data.eventId == eventId
+        && request.resource.data.organizationId == request.auth.uid
+        && validString(request.resource.data.title, 1, 160)
+        && validString(request.resource.data.summary, 1, 2000)
+        && request.resource.data.imageUrls is list
+        && request.resource.data.imageUrls.size() <= 4
+        && validListItem(request.resource.data.imageUrls, 0, 1000)
+        && validListItem(request.resource.data.imageUrls, 1, 1000)
+        && validListItem(request.resource.data.imageUrls, 2, 1000)
+        && validListItem(request.resource.data.imageUrls, 3, 1000)
+        && request.resource.data.participantCount is int
+        && request.resource.data.participantCount >= 0
+        && request.resource.data.status in ['draft', 'published']
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && (!request.resource.data.keys().hasAny(['publishedAt'])
+          || request.resource.data.publishedAt is timestamp);
+      allow delete: if false;
+    }
+
+    match /adminAssignments/{assignmentId} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'targetType', 'targetId', 'assigneeId', 'assigneeName', 'dueAt',
+          'status', 'updatedAt'
+        ])
+        && request.resource.data.targetType in ['event', 'user', 'report', 'deletion']
+        && validString(request.resource.data.targetId, 1, 200)
+        && request.resource.data.assigneeId == request.auth.uid
+        && validString(request.resource.data.assigneeName, 1, 80)
+        && request.resource.data.status in ['open', 'in_progress', 'completed']
+        && request.resource.data.updatedAt is timestamp
+        && (!request.resource.data.keys().hasAny(['dueAt'])
+          || request.resource.data.dueAt is timestamp);
+      allow delete: if false;
     }
 
     match /thirdPartyProvisionLogs/{logId} {
@@ -783,6 +940,14 @@ service cloud.firestore {
       allow read: if isAdmin()
         || (isActiveCreator()
           && resource.data.organizerId == request.auth.uid);
+      allow write: if false;
+    }
+
+    // Collection-group queries need an explicit recursive match. Membership
+    // documents contain only the signed-in user's own membership metadata.
+    match /{path=**}/members/{memberId} {
+      allow read: if isActiveCreator()
+        && resource.data.userId == request.auth.uid;
       allow write: if false;
     }
 

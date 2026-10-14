@@ -1,6 +1,10 @@
 import type { Timestamp } from "firebase/firestore";
 import { toCalendarFile } from "./appLogic";
-import type { AizuEvent, NotificationPreferences } from "../types/domain";
+import type {
+  ActivityRecord,
+  AizuEvent,
+  NotificationPreferences,
+} from "../types/domain";
 
 export const hasRequiredCommerceDisclosure = (event: AizuEvent) =>
   event.feeType !== "有料" ||
@@ -99,4 +103,44 @@ export const defaultNotificationPreferences = (
 
 export const revokeObjectUrl = (url: string | null | undefined) => {
   if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+};
+
+export const downloadActivityPortfolioPdf = async (
+  userName: string,
+  activities: ActivityRecord[],
+) => {
+  const { jsPDF } = await import("jspdf");
+  const canvas = document.createElement("canvas");
+  canvas.width = 1240;
+  canvas.height = Math.max(1754, 360 + activities.length * 110);
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("PDFを作成できませんでした。");
+  context.fillStyle = "#fffefa";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#1c2735";
+  context.font = "bold 46px system-ui, sans-serif";
+  context.fillText("Aizu Connect 活動実績", 90, 120);
+  context.font = "28px system-ui, sans-serif";
+  context.fillText(`${userName} さん`, 90, 180);
+  context.fillStyle = "#627083";
+  context.font = "22px system-ui, sans-serif";
+  context.fillText(`証明済み活動 ${activities.length}件`, 90, 225);
+  activities.forEach((activity, index) => {
+    const top = 310 + index * 110;
+    context.fillStyle = "#f1f4f2";
+    context.fillRect(80, top - 48, 1080, 86);
+    context.fillStyle = "#1c2735";
+    context.font = "bold 24px system-ui, sans-serif";
+    context.fillText(activity.title.slice(0, 38), 105, top - 10);
+    context.fillStyle = "#526274";
+    context.font = "19px system-ui, sans-serif";
+    context.fillText(
+      `${activity.organizationName} / ${activity.activityYear}年${activity.activityMonth}月`,
+      105,
+      top + 22,
+    );
+  });
+  const pdf = new jsPDF({ unit: "px", format: [canvas.width, canvas.height] });
+  pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, canvas.width, canvas.height);
+  pdf.save(`Aizu-Connect-${userName}-活動実績.pdf`);
 };

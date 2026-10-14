@@ -1,5 +1,6 @@
 import {
   Bell,
+  Ban,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -12,8 +13,10 @@ import {
   MessageSquareText,
   Paperclip,
   Pin,
+  Pencil,
   Search,
   Send,
+  Trash2,
   UserRound,
   UsersRound,
   Volume2,
@@ -48,6 +51,9 @@ export function MessagesTab({
   onSend,
   onUploadAttachment,
   onReportMessage,
+  onEditMessage,
+  onDeleteMessage,
+  onBlockUser,
   onSaveRoomMeta,
   currentUserId,
   currentUserRole,
@@ -69,6 +75,9 @@ export function MessagesTab({
   onSend: () => void;
   onUploadAttachment?: (file: File) => Promise<void> | void;
   onReportMessage?: (message: ChatMessage) => void;
+  onEditMessage?: (message: ChatMessage, text: string) => Promise<void>;
+  onDeleteMessage?: (message: ChatMessage) => Promise<void>;
+  onBlockUser?: (message: ChatMessage) => Promise<void>;
   onSaveRoomMeta?: (
     room: ChatRoom,
     updates: Pick<ChatRoom, "pinnedMessage" | "organizerNotice">,
@@ -91,6 +100,8 @@ export function MessagesTab({
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [attachmentInputKey, setAttachmentInputKey] = useState(0);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingMessageText, setEditingMessageText] = useState("");
   const conversationListRef = useRef<HTMLDivElement>(null);
   const chatPanelRef = useRef<HTMLDivElement>(null);
   const selectRoom = (roomId: string) => {
@@ -498,13 +509,62 @@ export function MessagesTab({
                                 <Download size={13} />
                               </a>
                             )}
-                          {chatMessage.type !== "file" && (
+                          {editingMessageId === chatMessage.id ? (
+                            <form
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                if (!onEditMessage || !editingMessageText.trim()) return;
+                                void onEditMessage(
+                                  chatMessage,
+                                  editingMessageText,
+                                ).then(() => setEditingMessageId(null));
+                              }}
+                            >
+                              <input
+                                aria-label="メッセージを編集"
+                                maxLength={2000}
+                                value={editingMessageText}
+                                onChange={(event) =>
+                                  setEditingMessageText(event.target.value)
+                                }
+                              />
+                              <button type="submit">保存</button>
+                            </form>
+                          ) : chatMessage.type !== "file" ? (
                             <p>{chatMessage.text}</p>
-                          )}
+                          ) : null}
                           <small className="chat-message-time">
                             {formatChatTime(chatMessage.createdAt)}
+                            {chatMessage.editedAt ? " · 編集済み" : ""}
                             {isRead ? " · 既読" : ""}
                           </small>
+                          {isOwn &&
+                            chatMessage.type === "text" &&
+                            !chatMessage.deletedAt && (
+                              <span className="message-owner-actions">
+                                {onEditMessage && (
+                                  <button
+                                    type="button"
+                                    aria-label="メッセージを編集"
+                                    onClick={() => {
+                                      setEditingMessageId(chatMessage.id);
+                                      setEditingMessageText(chatMessage.text);
+                                    }}
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                )}
+                                {onDeleteMessage && (
+                                  <button
+                                    type="button"
+                                    aria-label="メッセージを削除"
+                                    onClick={() => void onDeleteMessage(chatMessage)}
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                              </span>
+                            )}
                           {chatMessage.senderId !== currentUserId &&
                             onReportMessage &&
                             chatMessage.type !== "system" && (
@@ -516,6 +576,19 @@ export function MessagesTab({
                                 onClick={() => onReportMessage(chatMessage)}
                               >
                                 <Flag size={12} />
+                              </button>
+                            )}
+                          {chatMessage.senderId !== currentUserId &&
+                            onBlockUser &&
+                            chatMessage.type !== "system" && (
+                              <button
+                                className="message-report-button"
+                                type="button"
+                                title="このユーザーをブロック"
+                                aria-label={`${chatMessage.senderName}さんをブロック`}
+                                onClick={() => void onBlockUser(chatMessage)}
+                              >
+                                <Ban size={12} />
                               </button>
                             )}
                         </div>

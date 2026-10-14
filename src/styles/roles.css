@@ -87,12 +87,15 @@
 }
 .role-grid {
   display: grid;
+  min-width: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
   gap: 16px;
   margin-bottom: 16px;
 }
 .role-card {
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 20px;

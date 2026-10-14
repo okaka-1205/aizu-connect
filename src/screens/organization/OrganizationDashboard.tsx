@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  endAt,
   getDoc,
   getDocs,
   limit,
@@ -10,6 +11,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  startAt,
   Timestamp,
   updateDoc,
   where,
@@ -43,6 +45,7 @@ import {
   type FormEvent,
 } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { CheckInQrCode } from "../../components/CheckInQrCode";
 import { Field } from "../../components/Field";
 import { ImageCropDialog } from "../../components/ImageCropDialog";
 import { NoticeBanner } from "../../components/ui/AppPrimitives";
@@ -66,9 +69,17 @@ import {
 } from "../../lib/eventUtils";
 import { db, functions } from "../../lib/firebase";
 import { uploadImage } from "../../lib/storage";
+import { subscribeChatRoomsForUser } from "../../repositories/chatRepository";
+import {
+  deleteChatMessage,
+  editChatMessage,
+  saveEventReport,
+  saveUserBlock,
+} from "../../repositories/engagementRepository";
 import type {
   AccountDeletionRequest,
   AizuEvent,
+  ApplicationQuestion,
   AppUser,
   ChatMessage,
   ChatPreference,
@@ -104,6 +115,8 @@ export function OrganizationDashboard({
   onLogout: () => void;
 }) {
   const [events, setEvents] = useState<AizuEvent[]>([]);
+  const [eventQueryLimit, setEventQueryLimit] = useState(50);
+  const [hasMoreManagedEvents, setHasMoreManagedEvents] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [applications, setApplications] = useState<EventApplication[]>([]);
@@ -151,6 +164,11 @@ export function OrganizationDashboard({
   const [beginnerLevel, setBeginnerLevel] =
     useState<AizuEvent["beginnerLevel"]>("初参加歓迎");
   const [takeawayText, setTakeawayText] = useState("");
+  const [applicationQuestions, setApplicationQuestions] = useState<
+    ApplicationQuestion[]
+  >([]);
+  const [cancellationDeadlineInput, setCancellationDeadlineInput] =
+    useState("");
   const [eventImageFile, setEventImageFile] = useState<File | null>(null);
   const [eventImagePreview, setEventImagePreview] = useState<string | null>(
     eventTemplates[0].imageUrl,
@@ -177,6 +195,8 @@ export function OrganizationDashboard({
   );
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationQueryLimit, setNotificationQueryLimit] = useState(50);
+  const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
   const [eventSearch, setEventSearch] = useState("");
   const [eventStatusFilter, setEventStatusFilter] = useState<
     "all" | AizuEvent["status"]
@@ -186,6 +206,8 @@ export function OrganizationDashboard({
   const [applicantStatusFilter, setApplicantStatusFilter] = useState<
     "all" | EventApplication["status"]
   >("all");
+  const [participantQueryLimit, setParticipantQueryLimit] = useState(50);
+  const [hasMoreParticipants, setHasMoreParticipants] = useState(false);
   const [selectedApplicantIds, setSelectedApplicantIds] = useState<string[]>(
     [],
   );
@@ -193,6 +215,9 @@ export function OrganizationDashboard({
     useState<AizuEvent | null>(null);
   const [isDraftReady, setIsDraftReady] = useState(false);
   const [checkInCode, setCheckInCode] = useState("");
+  const [eventReportSummary, setEventReportSummary] = useState("");
+  const [eventReportFiles, setEventReportFiles] = useState<File[]>([]);
+  const [isSavingEventReport, setIsSavingEventReport] = useState(false);
   const [pendingApplicationUpdate, setPendingApplicationUpdate] = useState<{
     application: EventApplication;
     status: "rejected" | "absent";
@@ -333,6 +358,8 @@ export function OrganizationDashboard({
     setTemplateKey(event.templateKey ?? eventTemplates[0].key);
     setBeginnerLevel(event.beginnerLevel ?? "誰でも歓迎");
     setTakeawayText((event.takeaways ?? defaultTakeaways).join("\n"));
+    setApplicationQuestions(event.applicationQuestions ?? []);
+    setCancellationDeadlineInput(toDateTimeInput(event.cancellationDeadline));
     setEventImageFile(null);
     setEventImagePreview(event.imageUrl);
     setIsEventImageReviewOpen(false);
@@ -390,6 +417,8 @@ export function OrganizationDashboard({
     setTemplateKey(eventTemplates[0].key);
     setBeginnerLevel("初参加歓迎");
     setTakeawayText("");
+    setApplicationQuestions([]);
+    setCancellationDeadlineInput("");
     setEventImageFile(null);
     setEventImagePreview(eventTemplates[0].imageUrl);
     setIsEventImageReviewOpen(false);
@@ -462,6 +491,14 @@ export function OrganizationDashboard({
           (draft.beginnerLevel as AizuEvent["beginnerLevel"]) ?? "初参加歓迎",
         );
         setTakeawayText(restoredTakeaways);
+        setApplicationQuestions(
+          Array.isArray(draft.applicationQuestions)
+            ? (draft.applicationQuestions as ApplicationQuestion[])
+            : [],
+        );
+        setCancellationDeadlineInput(
+          String(draft.cancellationDeadlineInput ?? ""),
+        );
         setFeeType((draft.feeType as AizuEvent["feeType"]) ?? "無料");
         setFeeAmount(Number(draft.feeAmount ?? 0));
         setCommercialSellerName(String(draft.commercialSellerName ?? ""));
@@ -508,6 +545,8 @@ export function OrganizationDashboard({
       templateKey,
       beginnerLevel,
       takeawayText,
+      applicationQuestions,
+      cancellationDeadlineInput,
       feeType,
       feeAmount,
       commercialSellerName,
@@ -573,6 +612,8 @@ export function OrganizationDashboard({
     startAtInput,
     summary,
     takeawayText,
+    applicationQuestions,
+    cancellationDeadlineInput,
     templateKey,
     title,
     weatherPolicy,
@@ -583,98 +624,118 @@ export function OrganizationDashboard({
       query(
         collection(db, "events"),
         where("createdBy", "==", appUser.uid),
-        limit(50),
+        orderBy("createdAt", "desc"),
+        limit(eventQueryLimit + 1),
       ),
     );
     setEvents(
-      snapshot.docs.map((eventDoc) => ({
+      snapshot.docs.slice(0, eventQueryLimit).map((eventDoc) => ({
         id: eventDoc.id,
         ...eventDoc.data(),
       })) as AizuEvent[],
     );
-  }, [appUser.uid]);
+  }, [appUser.uid, eventQueryLimit]);
 
   useEffect(() => {
     const eventsQuery = query(
       collection(db, "events"),
       where("createdBy", "==", appUser.uid),
-      limit(50),
+      orderBy("createdAt", "desc"),
+      limit(eventQueryLimit + 1),
     );
     return onSnapshot(
       eventsQuery,
-      (snapshot) =>
+      (snapshot) => {
+        setHasMoreManagedEvents(snapshot.size > eventQueryLimit);
         setEvents(
-          snapshot.docs.map((eventDoc) => ({
+          snapshot.docs.slice(0, eventQueryLimit).map((eventDoc) => ({
             id: eventDoc.id,
             ...eventDoc.data(),
           })) as AizuEvent[],
-        ),
+        );
+      },
       () => setNotice("掲載した活動を取得できませんでした。", "error"),
     );
-  }, [appUser.uid, setNotice]);
+  }, [appUser.uid, eventQueryLimit, setNotice]);
 
   useEffect(() => {
     const notificationsQuery = query(
       collection(db, "notifications"),
       where("recipientId", "==", appUser.uid),
-      limit(100),
+      orderBy("createdAt", "desc"),
+      limit(notificationQueryLimit + 1),
     );
     return onSnapshot(
       notificationsQuery,
-      (snapshot) =>
+      (snapshot) => {
+        setHasMoreNotifications(snapshot.size > notificationQueryLimit);
         setNotifications(
-          snapshot.docs.map((notificationDoc) => ({
+          snapshot.docs.slice(0, notificationQueryLimit).map((notificationDoc) => ({
             id: notificationDoc.id,
             ...notificationDoc.data(),
           })) as NotificationItem[],
-        ),
+        );
+      },
       () => setNotice("通知を取得できませんでした。", "error"),
     );
-  }, [appUser.uid, setNotice]);
+  }, [appUser.uid, notificationQueryLimit, setNotice]);
 
   useEffect(() => {
     if (!selectedEventId) {
       setApplications([]);
+      setHasMoreParticipants(false);
       return;
     }
-    const applicationsQuery = query(
-      collection(db, "eventApplications"),
-      where("organizationId", "==", appUser.uid),
-      where("eventId", "==", selectedEventId),
-      limit(1000),
-    );
+    const normalizedSearch = applicantSearch.trim().toLocaleLowerCase("ja-JP");
+    const applicationsQuery = normalizedSearch
+      ? query(
+          collection(db, "eventApplications"),
+          where("organizationId", "==", appUser.uid),
+          where("eventId", "==", selectedEventId),
+          orderBy("studentNameLower", "asc"),
+          startAt(normalizedSearch),
+          endAt(`${normalizedSearch}\uf8ff`),
+          limit(participantQueryLimit + 1),
+        )
+      : query(
+          collection(db, "eventApplications"),
+          where("organizationId", "==", appUser.uid),
+          where("eventId", "==", selectedEventId),
+          orderBy("createdAt", "desc"),
+          limit(participantQueryLimit + 1),
+        );
     return onSnapshot(
       applicationsQuery,
-      (snapshot) =>
+      (snapshot) => {
+        setHasMoreParticipants(snapshot.size > participantQueryLimit);
         setApplications(
-          snapshot.docs.map((applicationDoc) => ({
+          snapshot.docs.slice(0, participantQueryLimit).map((applicationDoc) => ({
             id: applicationDoc.id,
             ...applicationDoc.data(),
           })) as EventApplication[],
-        ),
+        );
+      },
       () => setNotice("参加者情報を取得できませんでした。", "error"),
     );
-  }, [appUser.uid, selectedEventId, setNotice]);
+  }, [
+    appUser.uid,
+    applicantSearch,
+    participantQueryLimit,
+    selectedEventId,
+    setNotice,
+  ]);
 
-  useEffect(() => {
-    const roomsQuery = query(
-      collection(db, "chatRooms"),
-      where("participantIds", "array-contains", appUser.uid),
-      limit(100),
-    );
-    return onSnapshot(
-      roomsQuery,
-      (snapshot) => {
-        const rooms = snapshot.docs.map((roomDoc) => ({
-          id: roomDoc.id,
-          ...roomDoc.data(),
-        })) as ChatRoom[];
+  useEffect(() => setParticipantQueryLimit(50), [applicantSearch, selectedEventId]);
+
+  useEffect(() =>
+    subscribeChatRoomsForUser(
+      appUser.uid,
+      (rooms) => {
         setChatRooms(rooms);
         setActiveRoomId((current) => current ?? rooms[0]?.id ?? null);
       },
       () => setNotice("メッセージを取得できませんでした。", "error"),
-    );
-  }, [appUser.uid, setNotice]);
+    ), [appUser.uid, setNotice]);
 
   useEffect(() => {
     const preferencesQuery = query(
@@ -1050,6 +1111,9 @@ export function OrganizationDashboard({
         accessInfo: accessInfo.trim().slice(0, 300),
         bringItems: bringItems.trim().slice(0, 300),
         cancellationPolicy: cancellationPolicy.trim().slice(0, 500),
+        cancellationDeadlineMillis: cancellationDeadlineInput
+          ? new Date(cancellationDeadlineInput).getTime()
+          : undefined,
         weatherPolicy: weatherPolicy.trim().slice(0, 500),
         accessibility: accessibility.trim().slice(0, 500),
         contactMethod: contactMethod.trim().slice(0, 300),
@@ -1060,6 +1124,7 @@ export function OrganizationDashboard({
         takeaways,
         organizerDescription: organizerDescription.trim().slice(0, 500),
         organizerExperience: organizerExperience.trim().slice(0, 300),
+        applicationQuestions,
       };
       const savePlan = httpsCallable<
         {
@@ -1179,6 +1244,37 @@ export function OrganizationDashboard({
     );
   };
 
+  const publishEventReport = async () => {
+    if (!selectedEvent || !eventReportSummary.trim()) return;
+    setIsSavingEventReport(true);
+    try {
+      const imageUrls = await Promise.all(
+        eventReportFiles.slice(0, 4).map((file, index) =>
+          uploadImage(
+            file,
+            `event-reports/${appUser.uid}/${selectedEvent.id}/${Date.now()}-${index}`,
+          ),
+        ),
+      );
+      await saveEventReport({
+        eventId: selectedEvent.id,
+        organizationId: appUser.uid,
+        title: `${selectedEvent.title} 活動報告`,
+        summary: eventReportSummary.trim().slice(0, 2000),
+        imageUrls,
+        participantCount: applications.filter(
+          (application) => application.status === "attended",
+        ).length,
+        status: "published",
+      });
+      setEventReportSummary("");
+      setEventReportFiles([]);
+      setNotice("活動報告を公開しました。", "success");
+    } finally {
+      setIsSavingEventReport(false);
+    }
+  };
+
   const selectManagedEvent = (eventId: string) => {
     setSelectedEventId(eventId);
     window.setTimeout(
@@ -1229,9 +1325,15 @@ export function OrganizationDashboard({
     accessInfo,
     bringItems,
     cancellationPolicy,
+    cancellationDeadline:
+      cancellationDeadlineInput &&
+      Number.isFinite(new Date(cancellationDeadlineInput).getTime())
+        ? Timestamp.fromDate(new Date(cancellationDeadlineInput))
+        : undefined,
     weatherPolicy,
     accessibility,
     contactMethod,
+    applicationQuestions,
     organizationName,
     status: "pending_review",
     capacity,
@@ -1393,6 +1495,124 @@ export function OrganizationDashboard({
                     onChange={(event) => setTakeawayText(event.target.value)}
                   />
                 </Field>
+                <div className="application-question-editor">
+                  <div className="role-card-head">
+                    <div>
+                      <strong>申込時の質問</strong>
+                      <small>最大8問。回答は参加者一覧で確認できます。</small>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={applicationQuestions.length >= 8}
+                      onClick={() =>
+                        setApplicationQuestions((current) => [
+                          ...current,
+                          {
+                            id: `question_${Date.now()}`,
+                            label: "",
+                            type: "text",
+                            required: false,
+                            options: [],
+                          },
+                        ])
+                      }
+                    >
+                      <Plus size={14} />質問を追加
+                    </button>
+                  </div>
+                  {applicationQuestions.map((question, index) => (
+                    <div className="form-grid" key={question.id}>
+                      <input
+                        aria-label={`申込質問${index + 1}`}
+                        maxLength={120}
+                        required
+                        placeholder="例：参加目的を教えてください"
+                        value={question.label}
+                        onChange={(event) =>
+                          setApplicationQuestions((current) =>
+                            current.map((item) =>
+                              item.id === question.id
+                                ? { ...item, label: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                      <select
+                        aria-label={`申込質問${index + 1}の形式`}
+                        value={question.type}
+                        onChange={(event) =>
+                          setApplicationQuestions((current) =>
+                            current.map((item) =>
+                              item.id === question.id
+                                ? {
+                                    ...item,
+                                    type: event.target
+                                      .value as ApplicationQuestion["type"],
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                      >
+                        <option value="text">1行入力</option>
+                        <option value="textarea">複数行</option>
+                        <option value="select">選択式</option>
+                        <option value="checkbox">確認チェック</option>
+                      </select>
+                      {question.type === "select" && (
+                        <input
+                          aria-label={`申込質問${index + 1}の選択肢`}
+                          placeholder="選択肢をカンマ区切りで入力"
+                          value={(question.options ?? []).join(",")}
+                          onChange={(event) =>
+                            setApplicationQuestions((current) =>
+                              current.map((item) =>
+                                item.id === question.id
+                                  ? {
+                                      ...item,
+                                      options: event.target.value
+                                        .split(",")
+                                        .map((value) => value.trim())
+                                        .filter(Boolean)
+                                        .slice(0, 8),
+                                    }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      )}
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={question.required}
+                          onChange={(event) =>
+                            setApplicationQuestions((current) =>
+                              current.map((item) =>
+                                item.id === question.id
+                                  ? { ...item, required: event.target.checked }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                        必須
+                      </label>
+                      <button
+                        className="muted"
+                        type="button"
+                        onClick={() =>
+                          setApplicationQuestions((current) =>
+                            current.filter((item) => item.id !== question.id),
+                          )
+                        }
+                      >
+                        削除
+                      </button>
+                    </div>
+                  ))}
+                </div>
                 <Field label="初心者歓迎度">
                   <select
                     value={beginnerLevel}
@@ -1548,6 +1768,16 @@ export function OrganizationDashboard({
                       onChange={(event) => setEndAtInput(event.target.value)}
                       onInput={(event) =>
                         setEndAtInput(event.currentTarget.value)
+                      }
+                    />
+                  </Field>
+                  <Field label="キャンセル期限">
+                    <input
+                      type="datetime-local"
+                      value={cancellationDeadlineInput}
+                      max={startAtInput || undefined}
+                      onChange={(event) =>
+                        setCancellationDeadlineInput(event.target.value)
                       }
                     />
                   </Field>
@@ -1936,6 +2166,15 @@ export function OrganizationDashboard({
               ))
             )}
           </div>
+          {hasMoreManagedEvents && (
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={() => setEventQueryLimit((current) => current + 50)}
+            >
+              過去のイベントをさらに50件読み込む
+            </button>
+          )}
         </section>
       </div>
       {isEventImageReviewOpen && eventImagePreview && eventImageFile && (
@@ -2014,8 +2253,11 @@ export function OrganizationDashboard({
           )}
           {checkInCode && (
             <div className="check-in-panel">
+              {selectedEventId && (
+                <CheckInQrCode eventId={selectedEventId} code={checkInCode} />
+              )}
               <span>
-                <small>スマホ受付コード</small>
+                <small>QR受付・6桁受付コード</small>
                 <strong>{checkInCode}</strong>
               </span>
               <button
@@ -2151,6 +2393,16 @@ export function OrganizationDashboard({
                     {application.participantMessage && (
                       <p>{application.participantMessage}</p>
                     )}
+                    {(application.answers ?? []).map((answer) => (
+                      <span className="participant-answer" key={answer.questionId}>
+                        <strong>{answer.label}:</strong>{" "}
+                        {typeof answer.value === "boolean"
+                          ? answer.value
+                            ? "はい"
+                            : "いいえ"
+                          : answer.value}
+                      </span>
+                    ))}
                     {application.accessibilityNeeds && (
                       <span className="participant-sensitive-note">
                         <ShieldCheck size={13} />
@@ -2267,6 +2519,46 @@ export function OrganizationDashboard({
               ))}
             </div>
           )}
+          {hasMoreParticipants && (
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={() =>
+                setParticipantQueryLimit((current) => current + 50)
+              }
+            >
+              参加者をさらに50件読み込む
+            </button>
+          )}
+          {selectedEvent && (
+            <div className="event-report-editor">
+              <h3>イベント終了後の活動報告</h3>
+              <textarea
+                aria-label="活動報告本文"
+                maxLength={2000}
+                placeholder="当日の様子、成果、参加者へのお礼など"
+                value={eventReportSummary}
+                onChange={(event) => setEventReportSummary(event.target.value)}
+              />
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                aria-label="活動報告の写真"
+                onChange={(event) =>
+                  setEventReportFiles(Array.from(event.target.files ?? []).slice(0, 4))
+                }
+              />
+              <button
+                type="button"
+                disabled={isSavingEventReport || !eventReportSummary.trim()}
+                onClick={() => void publishEventReport()}
+              >
+                {isSavingEventReport && <Loader2 size={14} className="spin" />}
+                活動報告を公開
+              </button>
+            </div>
+          )}
         </section>
       )}
       <div className="organization-messages-section" ref={messagesSectionRef}>
@@ -2298,10 +2590,37 @@ export function OrganizationDashboard({
             }
           }}
           onSaveRoomMeta={saveRoomMeta}
+          onEditMessage={(chatMessage, text) =>
+            editChatMessage(activeRoomId ?? chatMessage.roomId, chatMessage.id, text)
+          }
+          onDeleteMessage={(chatMessage) =>
+            deleteChatMessage(
+              activeRoomId ?? chatMessage.roomId,
+              chatMessage.id,
+            )
+          }
+          onBlockUser={async (chatMessage) => {
+            await saveUserBlock(appUser.uid, chatMessage.senderId);
+            setChatMessages((current) =>
+              current.filter((item) => item.senderId !== chatMessage.senderId),
+            );
+            setNotice(`${chatMessage.senderName}さんをブロックしました。`, "success");
+          }}
           currentUserId={appUser.uid}
           currentUserRole="organization"
           onOpenEvent={selectManagedEvent}
         />
+        {hasMoreNotifications && (
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() =>
+              setNotificationQueryLimit((current) => current + 50)
+            }
+          >
+            過去の通知を読み込む
+          </button>
+        )}
       </div>
       <AccountDeletionPanel
         request={accountDeletionRequest}
