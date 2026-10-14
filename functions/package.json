@@ -12,6 +12,7 @@
     "admin:create": "node scripts/create-admin.mjs",
     "admin:reset-non-admin": "node scripts/reset-non-admin-accounts.mjs",
     "admin:seed-emulator": "node scripts/seed-emulator-admin.mjs",
+    "admin:migrate-chat-members": "node scripts/migrate-chat-members.mjs",
     "emulator:verify-user": "node scripts/verify-emulator-user.mjs",
     "deploy": "npx -y firebase-tools@latest deploy --only functions",
     "logs": "npx -y firebase-tools@latest functions:log"
