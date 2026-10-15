@@ -1,6 +1,6 @@
-import communityEventImage from "../assets/event-community.svg";
-import learningEventImage from "../assets/event-learning.svg";
-import volunteerEventImage from "../assets/event-volunteer.svg";
+import communityEventImage from "../assets/event-community.svg?no-inline";
+import learningEventImage from "../assets/event-learning.svg?no-inline";
+import volunteerEventImage from "../assets/event-volunteer.svg?no-inline";
 import type { Tab } from "../types/domain";
 
 export const EVENT_PAGE_SIZE = 24;
