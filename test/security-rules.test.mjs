@@ -412,6 +412,22 @@ const seedData = async () => {
           status: "confirmed",
         }),
       ),
+      db.doc("eventApplications/app-future-pending-approve").set(
+        applicationDoc({
+          id: "app-future-pending-approve",
+          eventId: "event-future",
+          eventTitle: "Future Event",
+          status: "pending",
+        }),
+      ),
+      db.doc("eventApplications/app-future-pending-reject").set(
+        applicationDoc({
+          id: "app-future-pending-reject",
+          eventId: "event-future",
+          eventTitle: "Future Event",
+          status: "pending",
+        }),
+      ),
       db.doc("eventApplications/app-other-student").set(
         applicationDoc({
           id: "app-other-student",
@@ -904,6 +920,18 @@ describe("users and profiles", () => {
       }),
     );
     await assertFails(
+      student.firestore().doc("users/student-1").update({
+        displayName: firebase.firestore.FieldValue.delete(),
+        updatedAt: timestamp,
+      }),
+    );
+    await assertFails(
+      student.firestore().doc("studentProfiles/student-1").update({
+        unexpectedPrivilege: true,
+        updatedAt: timestamp,
+      }),
+    );
+    await assertFails(
       student
         .firestore()
         .doc("users/student-1")
@@ -1269,6 +1297,18 @@ describe("event applications and activities", () => {
         .update({
           status: "attended",
         }),
+    );
+    await assertSucceeds(
+      organization
+        .firestore()
+        .doc("eventApplications/app-future-pending-approve")
+        .update({ status: "confirmed" }),
+    );
+    await assertSucceeds(
+      organization
+        .firestore()
+        .doc("eventApplications/app-future-pending-reject")
+        .update({ status: "rejected" }),
     );
     await assertFails(
       organization.firestore().doc("eventApplications/app-waitlisted").update({

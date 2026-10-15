@@ -30,26 +30,27 @@ service cloud.firestore {
       return get(userRef(request.auth.uid)).data;
     }
 
-    function isAdmin() {
-      return hasUser() && userData().role == 'admin'
+    function hasActiveRole(roles) {
+      return hasUser()
+        && userData().role in roles
         && userData().status == 'active'
         && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return hasActiveRole(['admin']);
     }
 
     function isActiveStudent() {
-      return hasUser() && userData().role == 'student'
-        && userData().status == 'active'
-        && request.auth.token.email_verified == true;
+      return hasActiveRole(['student']);
     }
 
     function isActiveOrganization() {
-      return hasUser() && userData().role == 'organization'
-        && userData().status == 'active'
-        && request.auth.token.email_verified == true;
+      return hasActiveRole(['organization']);
     }
 
     function isActiveCreator() {
-      return isActiveStudent() || isActiveOrganization();
+      return hasActiveRole(['student', 'organization']);
     }
 
     function isRoomMember(roomId, uid) {
@@ -68,7 +69,8 @@ service cloud.firestore {
     }
 
     function validOptionalString(value, max) {
-      return value == null || validString(value, 0, max);
+      return value == null
+        || (value is string && value.size() >= 0 && value.size() <= max);
     }
 
     function validGrade(value) {
@@ -83,11 +85,16 @@ service cloud.firestore {
     function validInterests(value) {
       return value is list
         && value.size() <= 5
-        && validListItem(value, 0, 40)
-        && validListItem(value, 1, 40)
-        && validListItem(value, 2, 40)
-        && validListItem(value, 3, 40)
-        && validListItem(value, 4, 40);
+        && (value.size() <= 0
+          || (value[0] is string && value[0].size() >= 1 && value[0].size() <= 40))
+        && (value.size() <= 1
+          || (value[1] is string && value[1].size() >= 1 && value[1].size() <= 40))
+        && (value.size() <= 2
+          || (value[2] is string && value[2].size() >= 1 && value[2].size() <= 40))
+        && (value.size() <= 3
+          || (value[3] is string && value[3].size() >= 1 && value[3].size() <= 40))
+        && (value.size() <= 4
+          || (value[4] is string && value[4].size() >= 1 && value[4].size() <= 40));
     }
 
     function isAizuStudentIdentity(data) {
@@ -101,7 +108,9 @@ service cloud.firestore {
     }
 
     function isVerifiedAizuStudentIdentity(data) {
-      return isVerifiedStudentIdentity(data) && isAizuStudentIdentity(data);
+      return request.auth.token.email_verified == true
+        && request.auth.token.email == data.email
+        && data.email.matches('^[^@]+@u-aizu\\.ac\\.jp$');
     }
 
     function validLegalConsent(data) {
@@ -215,6 +224,112 @@ service cloud.firestore {
       );
     }
 
+    // Update validators only re-check fields that a client is permitted to
+    // change. All identity and workflow fields remain immutable in the caller,
+    // while these checks ensure the resulting editable profile stays valid.
+    function validStudentEditableFields(data) {
+      return validString(data.displayName, 1, 80)
+        && validString(data.department, 0, 80)
+        && validGrade(data.grade)
+        && validInterests(data.interests)
+        && (!data.keys().hasAny(['currentActivities'])
+          || validOptionalString(data.currentActivities, 240))
+        && (!data.keys().hasAny(['wantToTry'])
+          || validOptionalString(data.wantToTry, 240))
+        && (!data.keys().hasAny(['profileImageUrl'])
+          || validOptionalString(data.profileImageUrl, 500))
+        && data.updatedAt is timestamp;
+    }
+
+    function validUserUpdate(userId) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let isOwner = signedIn() && request.auth.uid == userId;
+      let isStudentOwner = isOwner && resource.data.role == 'student';
+      return (
+          changed.hasOnly([
+            'status', 'reviewReason', 'moderationReason', 'updatedAt'
+          ])
+          && signedIn()
+          && request.auth.uid != userId
+          && isAdmin()
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.status in ['active', 'rejected', 'suspended']
+          && request.resource.data.updatedAt is timestamp
+        )
+        || (
+          changed.hasOnly([
+            'displayName', 'department', 'grade', 'interests',
+            'currentActivities', 'wantToTry', 'profileImageUrl', 'updatedAt'
+          ])
+          && isStudentOwner
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status == resource.data.status
+          && validStudentEditableFields(request.resource.data)
+        )
+        || (
+          changed.hasOnly(['status', 'updatedAt'])
+          && isStudentOwner
+          && resource.data.status == 'pending_approval'
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.status == 'active'
+          && isVerifiedAizuStudentIdentity(request.resource.data)
+          && request.resource.data.updatedAt is timestamp
+        )
+        || (
+          changed.hasOnly([
+            'termsVersion', 'privacyVersion', 'legalAcceptedAt',
+            'eligibilityConfirmedAt', 'updatedAt'
+          ])
+          && isOwner
+          && resource.data.role in ['student', 'organization']
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status == resource.data.status
+          && validLegalConsent(request.resource.data)
+          && request.resource.data.legalAcceptedAt == request.time
+          && request.resource.data.eligibilityConfirmedAt == request.time
+          && request.resource.data.updatedAt == request.time
+        );
+    }
+
+    function validStudentProfileUpdate(userId) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let isOwner = signedIn() && request.auth.uid == userId;
+      return (
+          changed.hasOnly([
+            'displayName', 'department', 'grade', 'interests',
+            'currentActivities', 'wantToTry', 'profileImageUrl', 'updatedAt'
+          ])
+          && isOwner
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.role == resource.data.role
+          && validStudentEditableFields(request.resource.data)
+        )
+        || (
+          changed.hasOnly(['status', 'updatedAt'])
+          && isOwner
+          && resource.data.role == 'student'
+          && resource.data.status == 'pending_approval'
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.status == 'active'
+          && isVerifiedAizuStudentIdentity(request.resource.data)
+          && request.resource.data.updatedAt is timestamp
+        );
+    }
+
+    function attendanceWindowOpen(eventId) {
+      let event = get(
+        /databases/$(database)/documents/events/$(eventId)
+      );
+      return event.data.startAt is timestamp
+        && request.time >= event.data.startAt - duration.value(3, 'h');
+    }
+
     function validOrganization(data, organizationId) {
       return data.keys().hasOnly([
         'id', 'displayName', 'description', 'contactEmail', 'status',
@@ -244,54 +359,7 @@ service cloud.firestore {
           )
         )
         && validLegalConsent(request.resource.data);
-      allow update: if isAdmin()
-        && request.resource.data.role == resource.data.role
-        && request.resource.data.uid == resource.data.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'reviewReason', 'moderationReason', 'updatedAt'
-        ])
-        && request.resource.data.status in ['active', 'rejected', 'suspended']
-        && request.resource.data.updatedAt is timestamp
-        || (
-          signedIn() && request.auth.uid == userId
-          && resource.data.role == 'student'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'displayName', 'department', 'grade', 'interests',
-            'currentActivities', 'wantToTry', 'profileImageUrl', 'updatedAt'
-          ])
-          && request.resource.data.uid == resource.data.uid
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.status == resource.data.status
-          && validUser(request.resource.data, userId)
-        )
-        || (
-          signedIn() && request.auth.uid == userId
-          && resource.data.role == 'student'
-          && resource.data.status == 'pending_approval'
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.uid == resource.data.uid
-          && request.resource.data.status == 'active'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status', 'updatedAt'
-          ])
-          && isVerifiedAizuStudentIdentity(request.resource.data)
-          && validUser(request.resource.data, userId)
-        )
-        || (
-          signedIn() && request.auth.uid == userId
-          && resource.data.role in ['student', 'organization']
-          && request.resource.data.uid == resource.data.uid
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.status == resource.data.status
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'termsVersion', 'privacyVersion', 'legalAcceptedAt',
-            'eligibilityConfirmedAt', 'updatedAt'
-          ])
-          && validLegalConsent(request.resource.data)
-          && request.resource.data.legalAcceptedAt == request.time
-          && request.resource.data.eligibilityConfirmedAt == request.time
-          && request.resource.data.updatedAt == request.time
-        );
+      allow update: if validUserUpdate(userId);
       allow delete: if false;
     }
 
@@ -325,30 +393,7 @@ service cloud.firestore {
           )
         )
         && validStudentProfile(request.resource.data, userId);
-      allow update: if (
-          signedIn()
-          && request.auth.uid == userId
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'displayName', 'department', 'grade', 'interests',
-            'currentActivities', 'wantToTry', 'profileImageUrl', 'updatedAt'
-          ])
-          && request.resource.data.status == resource.data.status
-          && validStudentProfile(request.resource.data, userId)
-        )
-        || (
-          signedIn()
-          && request.auth.uid == userId
-          && resource.data.role == 'student'
-          && resource.data.status == 'pending_approval'
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.uid == resource.data.uid
-          && request.resource.data.status == 'active'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status', 'updatedAt'
-          ])
-          && isVerifiedAizuStudentIdentity(request.resource.data)
-          && validStudentProfile(request.resource.data, userId)
-        );
+      allow update: if validStudentProfileUpdate(userId);
       allow delete: if false;
     }
 
@@ -498,12 +543,7 @@ service cloud.firestore {
           || (
             resource.data.status == 'confirmed'
             && request.resource.data.status in ['attended', 'absent']
-            && get(
-              /databases/$(database)/documents/events/$(resource.data.eventId)
-            ).data.startAt is timestamp
-            && request.time >= get(
-              /databases/$(database)/documents/events/$(resource.data.eventId)
-            ).data.startAt - duration.value(3, 'h')
+            && attendanceWindowOpen(resource.data.eventId)
           )
           || (
             resource.data.status == 'waitlisted'

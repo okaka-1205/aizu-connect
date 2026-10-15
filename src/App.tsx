@@ -784,14 +784,16 @@ function App() {
     };
   }, [appUser, firebaseUser, isEmailVerified, setMessage]);
 
+  const activeStudentUid =
+    appUser?.role === "student" &&
+    appUser.status === "active" &&
+    isEmailVerified &&
+    !isAutoActivatingStudent
+      ? appUser.uid
+      : null;
+
   useEffect(() => {
-    if (
-      !appUser ||
-      !isEmailVerified ||
-      isAutoActivatingStudent ||
-      appUser.status !== "active" ||
-      appUser.role !== "student"
-    ) {
+    if (!activeStudentUid) {
       setEvents([]);
       setApplications([]);
       setChatRooms([]);
@@ -799,52 +801,35 @@ function App() {
       setChatPreferences([]);
       return;
     }
-    void loadProductData(appUser.uid).catch((error) => {
+    void loadProductData(activeStudentUid).catch((error) => {
       setMessage(getFirebaseErrorMessage(error), "error");
     });
-  }, [appUser, isAutoActivatingStudent, isEmailVerified, setMessage]);
+  }, [activeStudentUid, setMessage]);
 
   useEffect(() => {
-    if (
-      !appUser ||
-      appUser.role !== "student" ||
-      appUser.status !== "active" ||
-      !isEmailVerified
-    ) {
-      return;
-    }
+    if (!activeStudentUid) return;
     return subscribeChatRoomsForUser(
-      appUser.uid,
+      activeStudentUid,
       (rooms) => {
         setChatRooms(rooms);
         setActiveRoomId((current) => current ?? rooms[0]?.id ?? null);
       },
       (error) => setMessage(getFirebaseErrorMessage(error), "error"),
     );
-  }, [appUser, isEmailVerified, setMessage]);
+  }, [activeStudentUid, setMessage]);
 
   useEffect(() => {
-    if (
-      !appUser ||
-      !isEmailVerified ||
-      isAutoActivatingStudent ||
-      appUser.status !== "active" ||
-      appUser.role !== "student"
-    ) {
-      return;
-    }
+    if (!activeStudentUid) return;
     return subscribeStudentApplications(
-      appUser.uid,
+      activeStudentUid,
       setApplications,
       (error) => setMessage(getFirebaseErrorMessage(error), "error"),
       applicationQueryLimit,
       setHasMoreApplications,
     );
   }, [
-    appUser,
+    activeStudentUid,
     applicationQueryLimit,
-    isAutoActivatingStudent,
-    isEmailVerified,
     setMessage,
   ]);
 
@@ -869,6 +854,37 @@ function App() {
       );
     } finally {
       setIsLoadingMoreEvents(false);
+    }
+  };
+
+  const openPublishedEvent = async (eventId: string) => {
+    try {
+      let event = events.find((item) => item.id === eventId);
+      if (!event) {
+        const eventSnapshot = await getDoc(doc(db, "events", eventId));
+        if (!eventSnapshot.exists()) {
+          throw new Error("対象のイベントが見つかりません。");
+        }
+        const fetchedEvent = {
+          id: eventSnapshot.id,
+          ...eventSnapshot.data(),
+        } as AizuEvent;
+        if (fetchedEvent.status !== "published") {
+          throw new Error("このイベントは現在公開されていません。");
+        }
+        event = fetchedEvent;
+        setEvents((current) =>
+          current.some((item) => item.id === eventId)
+            ? current
+            : [...current, fetchedEvent],
+        );
+      }
+      setSelectedEventId(eventId);
+      setActiveTab("search");
+      return true;
+    } catch (error) {
+      setMessage(getFirebaseErrorMessage(error), "error");
+      return false;
     }
   };
 
@@ -1846,9 +1862,9 @@ function App() {
                   notification.targetType === "event" &&
                   notification.targetId
                 ) {
-                  setSelectedEventId(notification.targetId);
-                  setActiveTab("search");
-                  setIsNotificationOpen(false);
+                  if (await openPublishedEvent(notification.targetId)) {
+                    setIsNotificationOpen(false);
+                  }
                 } else if (
                   notification.targetType === "chat" &&
                   notification.targetId
@@ -2072,10 +2088,7 @@ function App() {
             currentUserId={appUser.uid}
             currentUserRole="student"
             onOpenActivity={() => setActiveTab("activity")}
-            onOpenEvent={(eventId) => {
-              setSelectedEventId(eventId);
-              setActiveTab("search");
-            }}
+            onOpenEvent={(eventId) => void openPublishedEvent(eventId)}
           />
         )}
         {activeTab === "profile" && (
@@ -2141,10 +2154,7 @@ function App() {
             }}
             onOpenActivity={() => setActiveTab("activity")}
             onOpenCreatorDashboard={() => setIsCreatorDashboardOpen(true)}
-            onOpenSavedEvent={(eventId) => {
-              setSelectedEventId(eventId);
-              setActiveTab("search");
-            }}
+            onOpenSavedEvent={(eventId) => void openPublishedEvent(eventId)}
             onLogout={() => void handleLogout()}
           />
         )}

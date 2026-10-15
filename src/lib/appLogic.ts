@@ -35,6 +35,7 @@ export const categories: Filter[] = [
 
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 export const MAX_CHAT_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+export const ATTENDANCE_WINDOW_LEAD_MS = 3 * 60 * 60 * 1000;
 export const acceptedImageTypes = ["image/jpeg", "image/png", "image/webp"];
 export const acceptedChatAttachmentTypes = [
   ...acceptedImageTypes,
@@ -42,6 +43,14 @@ export const acceptedChatAttachmentTypes = [
   "text/plain",
   "text/csv",
 ];
+
+export const isAttendanceWindowOpen = (
+  startAtMillis: number,
+  nowMillis: number,
+) =>
+  Number.isFinite(startAtMillis) &&
+  Number.isFinite(nowMillis) &&
+  nowMillis >= startAtMillis - ATTENDANCE_WINDOW_LEAD_MS;
 
 export const validateImageFile = (file: ImageLike, label: string) => {
   if (!acceptedImageTypes.includes(file.type)) {

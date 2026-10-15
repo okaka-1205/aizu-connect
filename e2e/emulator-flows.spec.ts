@@ -1,18 +1,9 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
+import { projectSuffix, projectVariant } from "./testVariants";
 
 const password = "password123";
 const fixtureImage = path.resolve("src/assets/event-community.jpg");
-
-function projectVariant(projectName: string) {
-  if (projectName === "mobile") return "Mobile";
-  if (projectName === "tablet") return "Tablet";
-  return "Desktop";
-}
-
-function projectSuffix(projectName: string) {
-  return projectVariant(projectName).toLowerCase();
-}
 
 function studentEmail(projectName: string) {
   return `student-e2e-${projectSuffix(projectName)}@u-aizu.ac.jp`;
@@ -326,15 +317,17 @@ test.describe("emulator-backed role flows", () => {
     const pagingEvents = page.getByRole("button", {
       name: /E2E ページングイベント \d+の詳細を見る/,
     });
+    await expect.poll(() => pagingEvents.count()).toBeGreaterThan(0);
     const initialEventCount = await pagingEvents.count();
-    expect(initialEventCount).toBeGreaterThan(0);
     expect(initialEventCount).toBeLessThan(30);
     await page.getByRole("button", { name: "次の24件を見る" }).click();
     await expect
       .poll(() => pagingEvents.count())
       .toBeGreaterThan(initialEventCount);
     await expect(
-      page.getByText("公開中のイベントをすべて確認しました"),
+      page.getByRole("button", {
+        name: "E2E ページングイベント 30の詳細を見る",
+      }),
     ).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
@@ -347,12 +340,12 @@ test.describe("emulator-backed role flows", () => {
     await openSearch(page);
 
     const laterEvent = page.getByRole("button", {
-      name: "E2E ページングイベント 18の詳細を見る",
+      name: "E2E ページングイベント 30の詳細を見る",
     });
     await expect(laterEvent).toHaveCount(0);
     await page
       .getByRole("textbox", { name: "イベントを検索" })
-      .fill("E2E ページングイベント 18");
+      .fill("E2E ページングイベント 30");
     await expect(laterEvent).toBeVisible();
     await expect(
       page.getByText("公開中のイベントをすべて確認しました"),
@@ -491,7 +484,7 @@ test.describe("emulator-backed role flows", () => {
     );
     await expect(eventImagePreview).toHaveAttribute(
       "src",
-      /^data:image\/svg\+xml/,
+      /event-learning\.svg(?:\?no-inline)?$/,
     );
 
     await page.getByLabel("イベント写真").setInputFiles(fixtureImage);
@@ -522,7 +515,7 @@ test.describe("emulator-backed role flows", () => {
     await expect(page.getByLabel("開始日時")).toHaveValue("");
     await expect(eventImagePreview).toHaveAttribute(
       "src",
-      /^data:image\/svg\+xml/,
+      /event-learning\.svg(?:\?no-inline)?$/,
     );
     await submittedEvent.getByRole("button", { name: "編集" }).click();
     await expect(
@@ -800,7 +793,9 @@ test.describe("emulator-backed role flows", () => {
     const calendarDownloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Appleカレンダー" }).click();
     const calendarDownload = await calendarDownloadPromise;
-    expect(calendarDownload.suggestedFilename()).toBe(`${eventTitle}.ics`);
+    expect(calendarDownload.suggestedFilename().normalize("NFC")).toBe(
+      `${eventTitle}.ics`.normalize("NFC"),
+    );
     await page.getByRole("button", { name: "掲載を通報" }).click();
     const reportDialog = page.getByRole("dialog", { name: "通報する" });
     await reportDialog
@@ -956,8 +951,8 @@ test.describe("emulator-backed role flows", () => {
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "レポート出力" }).click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toBe(
-      `${eventTitle}-参加者レポート.csv`,
+    expect(download.suggestedFilename().normalize("NFC")).toBe(
+      `${eventTitle}-参加者レポート.csv`.normalize("NFC"),
     );
     await expect(
       page.getByText("参加者レポートを出力しました。"),
@@ -1151,6 +1146,16 @@ test.describe("emulator-backed role flows", () => {
     const directEvent = page
       .locator(".review-row")
       .filter({ hasText: `E2E 直接削除イベント ${variant}` });
+    const eventManagementSection = page.locator(".role-card").filter({
+      has: page.getByRole("heading", { name: "公開中のイベント" }),
+    });
+    const loadMoreManagedEvents = eventManagementSection.getByRole("button", {
+      name: "さらに50件読み込む",
+    });
+    if (await loadMoreManagedEvents.isVisible()) {
+      await loadMoreManagedEvents.click();
+    }
+    await expect(directEvent).toBeVisible();
     await directEvent
       .getByRole("button", { name: "削除", exact: true })
       .click();

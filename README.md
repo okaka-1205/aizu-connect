@@ -69,11 +69,23 @@ npm run test:e2e:auth:emulator
 # チャット、通知、ページング、Functionsを含む全体確認
 npm run test:e2e:full:emulator
 
-# 上記を順番に両方実行
+# 上記に管理者承認、全ロール、アクセシビリティ検査を加えて実行
 npm run test:e2e:emulator
 ```
 
-軽量な認証テストではAuthとFirestoreだけを起動し、チャット履歴や通知トリガーを投入しません。リリース確認では`npm run test:e2e:emulator`を使い、軽量テストとフルテストの両方を実行します。
+軽量な認証テストではAuthとFirestoreだけを起動し、チャット履歴や通知トリガーを投入しません。PlaywrightはChromium、モバイル、タブレット、Firefox、WebKitを端末別データで検証します。
+
+通常の総合検証と、負荷・定期処理・初期化まで含むリリース検証は次のように使い分けます。
+
+```bash
+# lint、ビルド、単体、Rules、全E2E
+npm run verify
+
+# verifyに加えて定期Functions、1,000人通知、初期化権限を確認
+npm run release:check
+```
+
+本番スモークテストは、先に`npm run smoke:production:plan`で専用アカウントを確認し、[本番スモークテスト手順](docs/production-smoke-test.md)に従います。計画表示コマンド自体は本番へ接続しません。
 
 ## Firebase設定
 

@@ -18,22 +18,38 @@ Covered roles:
 Covered Firestore paths:
 
 - `users/{userId}`
+- `legalConsents/{consentId}`
 - `studentProfiles/{userId}`
 - `organizations/{organizationId}`
+- `accountDeletionRequests/{userId}`
 - `events/{eventId}`
 - `eventApplications/{applicationId}`
 - `chatRooms/{roomId}`
+- `chatRooms/{roomId}/members/{memberId}`
 - `chatRooms/{roomId}/messages/{messageId}`
+- `chatRooms/{roomId}/reads/{userId}`
 - `activities/{activityId}`
 - `notifications/{notificationId}`
 - `notificationPreferences/{userId}`
 - `reports/{reportId}`
 - `savedEvents/{savedEventId}`
+- `savedSearches/{savedSearchId}`
+- `chatPreferences/{preferenceId}`
+- `publicOrganizerProfiles/{userId}`
+- `savedOrganizers/{savedOrganizerId}`
+- `userBlocks/{blockId}`
+- `eventSurveys/{eventId}/responses/{userId}`
+- `eventReports/{eventId}`
+- `adminAssignments/{assignmentId}`
+- `thirdPartyProvisionLogs/{logId}`
+- `auditLogs/{auditId}`
+- `eventCheckIns/{eventId}`
 
 Covered Storage paths:
 
 - `profile-images/{userId}/{fileName}`
 - `event-images/{organizationId}/{eventId}/{fileName}`
+- `chat-attachments/{roomId}/{userId}/{fileName}`
 
 Attack cases covered:
 
@@ -46,6 +62,12 @@ Attack cases covered:
 - Active Aizu registration with protected-data denial before email verification
 - Rejection of direct active registration for non-Aizu students
 - Mixed-field activation and role escalation attempts
+- Student profile field removal and unknown-field injection
+- Separation of self-edit, first activation, legal reconsent, and admin review
+- Organization approval and rejection for future-event applications
+- Organization denial for past-event application changes
+- Attendance changes denied until the three-hour pre-event boundary
+- Attendance changes allowed at and after the three-hour boundary
 - Unverified administrator access to audit logs
 - Chat sender-name impersonation
 - Client reads and writes against check-in attempt records

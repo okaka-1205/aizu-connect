@@ -15,7 +15,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #60758e;
+  color: #4b6079;
   font-size: 12px;
 }
 .role-header-user .icon-button {
@@ -78,7 +78,7 @@
   font-size: 11px;
 }
 .management-nav small {
-  color: #8294a8;
+  color: var(--muted);
   font-size: 9px;
   font-weight: 750;
 }
@@ -120,14 +120,14 @@
   max-width: 52ch;
   margin-top: 4px;
   overflow: hidden;
-  color: #7c8fa4;
+  color: var(--muted);
   font-size: 10px;
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .role-card-head strong {
-  color: #7890aa;
+  color: var(--muted);
   font-size: 12px;
 }
 .role-form {
@@ -164,7 +164,7 @@
   cursor: pointer;
 }
 .image-picker small {
-  color: #8395a8;
+  color: var(--muted);
   font-size: 10px;
   line-height: 1.5;
 }
@@ -277,7 +277,7 @@
   font-size: 13px;
 }
 .event-form-section-title small {
-  color: #8192a5;
+  color: var(--muted);
   font-size: 9px;
   font-weight: 750;
 }
@@ -488,7 +488,7 @@
 .role-list-item small,
 .review-row small,
 .applicant-row small {
-  color: #8999aa;
+  color: var(--muted);
   font-size: 10px;
 }
 .status-label {
@@ -501,15 +501,15 @@
 }
 .status-label.published {
   background: #e9f8ef;
-  color: #25834b;
+  color: #17693a;
 }
 .status-label.pending_review {
   background: #fff5e4;
-  color: #b6781b;
+  color: #855317;
 }
 .status-label.revision_required {
   background: #ffecef;
-  color: #c94d65;
+  color: #98354a;
 }
 .status-label.cancelled {
   background: #f1f3f5;
@@ -541,7 +541,7 @@
 }
 .row-actions .muted {
   background: #eef2f6;
-  color: #718198;
+  color: #4b5f78;
 }
 .review-row .row-actions .danger-action {
   border: 1px solid #c7435b;
@@ -591,7 +591,7 @@
   font-size: 12px;
 }
 .queue-pagination > span small {
-  color: #8292a5;
+  color: #556a82;
   font-size: 9px;
   font-weight: 750;
 }
@@ -681,7 +681,7 @@
   min-height: 120px;
   border: 1px dashed #d2dfec;
   border-radius: 11px;
-  color: #8b9bad;
+  color: #556a82;
   font-size: 11px;
   text-align: center;
 }
@@ -1208,7 +1208,7 @@
 }
 .admin-deletion-card .review-row p {
   margin: 5px 0 0;
-  color: #65798f;
+  color: #4f6379;
   font-size: 10px;
   line-height: 1.55;
 }

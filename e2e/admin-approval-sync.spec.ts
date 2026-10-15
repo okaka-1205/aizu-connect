@@ -1,10 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-
-function projectVariant(projectName: string) {
-  if (projectName === "mobile") return "mobile";
-  if (projectName === "tablet") return "tablet";
-  return "desktop";
-}
+import { projectSuffix } from "./testVariants";
 
 async function readFirestoreDocument(path: string) {
   const projectId =
@@ -71,7 +66,7 @@ test("admin approval synchronizes the user and student profile", async ({
   browser,
   page,
 }, testInfo) => {
-  const variant = projectVariant(testInfo.project.name);
+  const variant = projectSuffix(testInfo.project.name);
   const uid = `approval-sync-${variant}`;
   const displayName = `承認同期テスト ${variant}`;
   const studentPage = await browser.newPage({

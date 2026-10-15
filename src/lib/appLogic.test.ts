@@ -7,6 +7,7 @@ import {
   formatEventStart,
   getAuthFlowErrorMessage,
   getFirebaseErrorMessage,
+  isAttendanceWindowOpen,
   isAizuUniversityEmail,
   isFutureEventStart,
   matchesCategoryFilter,
@@ -177,6 +178,22 @@ describe("auth helpers", () => {
         status: "profile_incomplete",
       }),
     ).toBe("account_setup");
+  });
+});
+
+describe("attendance window", () => {
+  const startAt = Date.UTC(2026, 9, 20, 9, 0, 0);
+
+  it("opens exactly three hours before the event, but not one millisecond earlier", () => {
+    expect(isAttendanceWindowOpen(startAt, startAt - 3 * 60 * 60 * 1000 - 1)).toBe(
+      false,
+    );
+    expect(isAttendanceWindowOpen(startAt, startAt - 3 * 60 * 60 * 1000)).toBe(
+      true,
+    );
+    expect(isAttendanceWindowOpen(startAt, startAt - 3 * 60 * 60 * 1000 + 1)).toBe(
+      true,
+    );
   });
 });
 

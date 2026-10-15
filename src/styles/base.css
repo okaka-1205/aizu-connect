@@ -8,7 +8,7 @@
   --surface-soft: #f2f3ef;
   --ink: #1c2735;
   --text: #37485b;
-  --muted: #627083;
+  --muted: #526174;
   --line: #dde2e5;
   --line-strong: #c9d1d8;
   --success: #26745a;
@@ -109,7 +109,7 @@
   font-size: 13px;
 }
 .upcoming-banner span {
-  color: #637891;
+  color: var(--muted);
   font-size: 11px;
 }
 .upcoming-banner > button {
@@ -418,7 +418,7 @@ textarea:focus-visible {
 .brand-lockup small {
   display: block;
   margin-top: 2px;
-  color: #8190a4;
+  color: var(--muted);
   font-size: 10px;
   font-weight: 600;
 }
@@ -653,7 +653,7 @@ textarea:focus-visible {
   display: flex;
   gap: 22px;
   padding-bottom: 3px;
-  color: #8492a6;
+  color: var(--muted);
   font-size: 11px;
   font-weight: 700;
 }
@@ -708,7 +708,7 @@ textarea:focus-visible {
   gap: 10px;
   border: 1px solid var(--line);
   background: #fff;
-  color: #8292a6;
+  color: var(--muted);
   box-shadow: none;
 }
 .search-launch {
@@ -734,7 +734,7 @@ kbd {
   border: 1px solid #e1e8f0;
   border-radius: 5px;
   background: #f7f9fb;
-  color: #97a4b5;
+  color: var(--muted);
   font-size: 10px;
 }
 .category-row,
@@ -757,7 +757,7 @@ kbd {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
-  color: #617289;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
@@ -1679,7 +1679,7 @@ kbd {
   border: 1px dashed #ceddeb;
   border-radius: 10px;
   background: #fff;
-  color: #8a99aa;
+  color: var(--muted);
   text-align: center;
 }
 .message-empty h3,
@@ -1775,7 +1775,7 @@ kbd {
 }
 .chat-panel-head span,
 .chat-panel-head small {
-  color: #8b9bad;
+  color: var(--muted);
   font-size: 10px;
   font-weight: 700;
 }
@@ -1908,7 +1908,7 @@ kbd {
 .chat-message span {
   display: block;
   margin: 0 0 4px 3px;
-  color: #8b9bad;
+  color: var(--muted);
   font-size: 10px;
   font-weight: 700;
 }
@@ -1929,7 +1929,7 @@ kbd {
 }
 .chat-message.system p,
 .chat-placeholder {
-  color: #8192a5;
+  color: var(--muted);
   font-size: 11px;
 }
 .chat-composer {

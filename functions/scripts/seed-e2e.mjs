@@ -63,6 +63,16 @@ const activityDate = new Date(now);
 activityDate.setDate(activityDate.getDate() - 30);
 const activityTimestamp = Timestamp.fromDate(activityDate);
 const defaultPassword = "password123";
+const testVariants = [
+  ["desktop", "Desktop"],
+  ["mobile", "Mobile"],
+  ["tablet", "Tablet"],
+  ["firefox", "Firefox"],
+  ["webkit", "WebKit"],
+];
+const variantKeys = testVariants.map(([variant]) => variant);
+const displayVariantFor = (variant) =>
+  testVariants.find(([key]) => key === variant)?.[1] ?? variant;
 
 const ensureUser = async ({
   uid,
@@ -181,25 +191,15 @@ await Promise.all([
     email: "pending-e2e@example.com",
     displayName: "E2E 承認待ち",
   }),
-  ensureUser({
-    uid: "student-late-desktop",
-    email: "student-late-desktop@u-aizu.ac.jp",
-    displayName: "E2E 後参加 Desktop",
-  }),
-  ensureUser({
-    uid: "student-late-mobile",
-    email: "student-late-mobile@u-aizu.ac.jp",
-    displayName: "E2E 後参加 Mobile",
-  }),
-  ensureUser({
-    uid: "student-late-tablet",
-    email: "student-late-tablet@u-aizu.ac.jp",
-    displayName: "E2E 後参加 Tablet",
-  }),
 ]);
 
 await Promise.all(
-  ["desktop", "mobile", "tablet"].flatMap((variant) => [
+  variantKeys.flatMap((variant) => [
+    ensureUser({
+      uid: `student-late-${variant}`,
+      email: `student-late-${variant}@u-aizu.ac.jp`,
+      displayName: `E2E 後参加 ${displayVariantFor(variant)}`,
+    }),
     ensureUser({
       uid: `student-e2e-${variant}`,
       email: `student-e2e-${variant}@u-aizu.ac.jp`,
@@ -311,86 +311,33 @@ for (let index = 0; index < 55; index += 1) {
     }),
   );
 }
-batch.set(
-  db.doc("users/student-late-desktop"),
-  userDoc({
-    uid: "student-late-desktop",
-    email: "student-late-desktop@u-aizu.ac.jp",
-    displayName: "E2E 後参加 Desktop",
-  }),
-);
-batch.set(db.doc("studentProfiles/student-late-desktop"), {
-  ...userDoc({
-    uid: "student-late-desktop",
-    email: "student-late-desktop@u-aizu.ac.jp",
-    displayName: "E2E 後参加 Desktop",
-  }),
-  verificationMethod: "university_email",
-  profileCompletionRate: 80,
-  activityCount: 0,
-});
-batch.set(
-  db.doc("users/student-late-mobile"),
-  userDoc({
-    uid: "student-late-mobile",
-    email: "student-late-mobile@u-aizu.ac.jp",
-    displayName: "E2E 後参加 Mobile",
-  }),
-);
-batch.set(db.doc("studentProfiles/student-late-mobile"), {
-  ...userDoc({
-    uid: "student-late-mobile",
-    email: "student-late-mobile@u-aizu.ac.jp",
-    displayName: "E2E 後参加 Mobile",
-  }),
-  verificationMethod: "university_email",
-  profileCompletionRate: 80,
-  activityCount: 0,
-});
-batch.set(
-  db.doc("users/student-late-tablet"),
-  userDoc({
-    uid: "student-late-tablet",
-    email: "student-late-tablet@u-aizu.ac.jp",
-    displayName: "E2E 後参加 Tablet",
-  }),
-);
-batch.set(db.doc("studentProfiles/student-late-tablet"), {
-  ...userDoc({
-    uid: "student-late-tablet",
-    email: "student-late-tablet@u-aizu.ac.jp",
-    displayName: "E2E 後参加 Tablet",
-  }),
-  verificationMethod: "university_email",
-  profileCompletionRate: 80,
-  activityCount: 0,
-});
+for (const [variant, displayVariant] of testVariants) {
+  const studentId = `student-late-${variant}`;
+  const studentData = userDoc({
+    uid: studentId,
+    email: `${studentId}@u-aizu.ac.jp`,
+    displayName: `E2E 後参加 ${displayVariant}`,
+  });
+  batch.set(db.doc(`users/${studentId}`), studentData);
+  batch.set(db.doc(`studentProfiles/${studentId}`), {
+    ...studentData,
+    verificationMethod: "university_email",
+    profileCompletionRate: 80,
+    activityCount: 0,
+  });
+}
 
 batch.set(db.doc("events/event-e2e-published"), eventDoc());
-batch.set(
-  db.doc("events/event-e2e-open-chromium"),
-  eventDoc({
-    title: "E2E 追加募集イベント Desktop",
-    applicantCount: 0,
-    ...organizationFields("desktop"),
-  }),
-);
-batch.set(
-  db.doc("events/event-e2e-open-mobile"),
-  eventDoc({
-    title: "E2E 追加募集イベント Mobile",
-    applicantCount: 0,
-    ...organizationFields("mobile"),
-  }),
-);
-batch.set(
-  db.doc("events/event-e2e-open-tablet"),
-  eventDoc({
-    title: "E2E 追加募集イベント Tablet",
-    applicantCount: 0,
-    ...organizationFields("tablet"),
-  }),
-);
+for (const [variant, displayVariant] of testVariants) {
+  batch.set(
+    db.doc(`events/event-e2e-open-${variant}`),
+    eventDoc({
+      title: `E2E 追加募集イベント ${displayVariant}`,
+      applicantCount: 0,
+      ...organizationFields(variant),
+    }),
+  );
+}
 batch.set(
   db.doc("events/event-e2e-pending"),
   eventDoc({
@@ -399,18 +346,13 @@ batch.set(
     applicantCount: 0,
   }),
 );
-for (const variant of ["desktop", "mobile", "tablet"]) {
-  const displayVariant =
-    variant === "desktop"
-      ? "Desktop"
-      : variant === "mobile"
-        ? "Mobile"
-        : "Tablet";
+for (const variant of variantKeys) {
+  const displayVariant = displayVariantFor(variant);
   const profileUserId = `student-profile-${variant}`;
   const isolatedStudentId = `student-e2e-${variant}`;
   const isolatedOrganizationId = `org-e2e-${variant}`;
   const isolatedAdminId = `admin-e2e-${variant}`;
-  const profileEventId = `event-e2e-open-${variant === "desktop" ? "chromium" : variant}`;
+  const profileEventId = `event-e2e-open-${variant}`;
   batch.set(
     db.doc(`users/${isolatedStudentId}`),
     userDoc({
@@ -761,37 +703,18 @@ for (let index = 0; index < 120; index += 1) {
     createdAt: timestamp,
   });
 }
-batch.set(
-  db.doc("events/event-e2e-chat-history-desktop"),
-  eventDoc({
-    title: "E2E 全体チャットイベント Desktop",
-    applicantCount: 0,
-    ...organizationFields("desktop"),
-  }),
-);
-batch.set(
-  db.doc("events/event-e2e-chat-history-mobile"),
-  eventDoc({
-    title: "E2E 全体チャットイベント Mobile",
-    applicantCount: 0,
-    ...organizationFields("mobile"),
-  }),
-);
-batch.set(
-  db.doc("events/event-e2e-chat-history-tablet"),
-  eventDoc({
-    title: "E2E 全体チャットイベント Tablet",
-    applicantCount: 0,
-    ...organizationFields("tablet"),
-  }),
-);
-for (const variant of ["desktop", "mobile", "tablet"]) {
-  const displayVariant =
-    variant === "desktop"
-      ? "Desktop"
-      : variant === "mobile"
-        ? "Mobile"
-        : "Tablet";
+for (const [variant, displayVariant] of testVariants) {
+  batch.set(
+    db.doc(`events/event-e2e-chat-history-${variant}`),
+    eventDoc({
+      title: `E2E 全体チャットイベント ${displayVariant}`,
+      applicantCount: 0,
+      ...organizationFields(variant),
+    }),
+  );
+}
+for (const variant of variantKeys) {
+  const displayVariant = displayVariantFor(variant);
   batch.set(
     db.doc(`events/event-e2e-waitlist-${variant}`),
     eventDoc({
@@ -861,6 +784,10 @@ for (const variant of ["desktop", "mobile", "tablet"]) {
     db.doc(`events/${participantEventId}`),
     eventDoc({
       title: `E2E 参加者管理 ${displayVariant}`,
+      startAtLabel: checkInStartLabel,
+      startAt: checkInStartTimestamp,
+      endAtLabel: checkInEndLabel,
+      endAt: checkInEndTimestamp,
       applicantCount: 1,
       ...organizationFields(variant),
     }),
@@ -999,14 +926,9 @@ batch.set(db.doc("chatRooms/event_event-e2e-published/messages/welcome"), {
   text: "イベント全体チャットです。参加者は参加前のやり取りも確認できます。",
   createdAt: timestamp,
 });
-for (const [eventId, title] of [
-  ["event-e2e-chat-history-desktop", "E2E 全体チャットイベント Desktop"],
-  ["event-e2e-chat-history-mobile", "E2E 全体チャットイベント Mobile"],
-  ["event-e2e-chat-history-tablet", "E2E 全体チャットイベント Tablet"],
-]) {
-  const variant = eventId.endsWith("mobile") ?
-    "mobile" :
-    eventId.endsWith("tablet") ? "tablet" : "desktop";
+for (const [variant, displayVariant] of testVariants) {
+  const eventId = `event-e2e-chat-history-${variant}`;
+  const title = `E2E 全体チャットイベント ${displayVariant}`;
   const roomId = `event_${eventId}`;
   batch.set(db.doc(`chatRooms/${roomId}`), {
     id: roomId,
@@ -1095,9 +1017,10 @@ batch.set(db.doc("eventCheckIns/event-e2e-published"), {
 await batch.commit();
 
 const paginationBatch = db.batch();
-for (let index = 0; index < 18; index += 1) {
-  const paginationStartDate = new Date(eventStartDate);
-  paginationStartDate.setDate(paginationStartDate.getDate() + 20 + index);
+for (let index = 0; index < 30; index += 1) {
+  const paginationStartDate = new Date(now);
+  paginationStartDate.setDate(paginationStartDate.getDate() + 1);
+  paginationStartDate.setHours(9 + index, 0, 0, 0);
   const paginationEndDate = new Date(
     paginationStartDate.getTime() + 2 * 60 * 60 * 1000,
   );
@@ -1139,7 +1062,7 @@ for (let index = 0; index < 55; index += 1) {
 }
 await paginationBatch.commit();
 
-for (const variant of ["desktop", "mobile", "tablet"]) {
+for (const variant of variantKeys) {
   const historyBatch = db.batch();
   const roomId = `event_event-e2e-chat-history-${variant}`;
   for (let index = 1; index <= 120; index += 1) {
@@ -1163,7 +1086,7 @@ for (const variant of ["desktop", "mobile", "tablet"]) {
 }
 
 await Promise.all(
-  ["desktop", "mobile", "tablet"].flatMap((variant) => {
+  variantKeys.flatMap((variant) => {
     const userId = `admin-delete-user-${variant}`;
     const eventId = `admin-delete-event-${variant}`;
     return [
@@ -1181,6 +1104,27 @@ await Promise.all(
     ];
   }),
 );
+
+const eventRoomRefs = [
+  ...variantKeys.flatMap((variant) => [
+    db.doc(`chatRooms/event_event-e2e-open-${variant}`),
+    db.doc(`chatRooms/event_event-e2e-published-${variant}`),
+  ]),
+  ...Array.from({ length: 30 }, (_, index) =>
+    db.doc(
+      `chatRooms/event_event-e2e-pagination-${String(index).padStart(2, "0")}`,
+    ),
+  ),
+];
+const eventRoomDeadline = Date.now() + 30_000;
+while (true) {
+  const roomSnapshots = await db.getAll(...eventRoomRefs);
+  if (roomSnapshots.every((snapshot) => snapshot.exists)) break;
+  if (Date.now() >= eventRoomDeadline) {
+    throw new Error("Timed out waiting for event chat room triggers.");
+  }
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
 
 await db.doc("seedStatus/e2e").set({
   seededAt: FieldValue.serverTimestamp(),
