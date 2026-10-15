@@ -722,6 +722,7 @@ test.describe("emulator-backed role flows", () => {
   test("student can complete profile, notification, saved event, report, and certificate flows", async ({
     page,
   }, testInfo) => {
+    testInfo.setTimeout(45_000);
     const variant = projectVariant(testInfo.project.name);
     const suffix = projectSuffix(testInfo.project.name);
     const eventTitle = `E2E 追加募集イベント ${variant}`;

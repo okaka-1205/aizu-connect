@@ -1286,7 +1286,10 @@
 }
 .tab-button.active {
   background: var(--brand-soft);
-  color: var(--brand);
+  color: #063a99;
+}
+.tab-button.active > span {
+  color: #063a99;
 }
 .tab-button.active::before {
   content: none;

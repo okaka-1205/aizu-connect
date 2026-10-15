@@ -66,6 +66,50 @@ test.describe("accessibility", () => {
     await expectNoSeriousAccessibilityViolations(page);
   });
 
+  test("student secondary screens and event dialog support keyboard navigation", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    await login(page, `student-e2e-${suffix}@u-aizu.ac.jp`);
+    const nav = page.getByRole("navigation", { name: "メインナビゲーション" });
+
+    const searchTab = nav.getByRole("button", { name: "探す" });
+    await searchTab.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { name: "イベントを探す" })).toBeVisible();
+    await expectNoSeriousAccessibilityViolations(page);
+
+    const eventTitle = "E2E ページングイベント 01";
+    const eventTrigger = page
+      .getByRole("button", { name: `${eventTitle}の詳細を見る` })
+      .first();
+    await eventTrigger.focus();
+    await page.keyboard.press("Enter");
+    const eventDialog = page.getByRole("dialog", { name: eventTitle });
+    await expect(eventDialog).toBeVisible();
+    expect(
+      await eventDialog.evaluate((element) =>
+        element.contains(document.activeElement),
+      ),
+    ).toBe(true);
+    await expectNoSeriousAccessibilityViolations(page);
+    await page.keyboard.press("Escape");
+    await expect(eventDialog).toBeHidden();
+    await expect(eventTrigger).toBeFocused();
+
+    const activityTab = nav.getByRole("button", { name: /^活動/ });
+    await activityTab.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { name: "参加履歴", exact: true })).toBeVisible();
+    await expectNoSeriousAccessibilityViolations(page);
+
+    const profileTab = nav.getByRole("button", { name: "プロフィール" });
+    await profileTab.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("通知設定")).toBeVisible();
+    await expectNoSeriousAccessibilityViolations(page);
+  });
+
   test("organization dashboard has no serious automated violations", async ({
     page,
   }, testInfo) => {

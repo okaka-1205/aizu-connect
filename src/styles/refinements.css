@@ -124,7 +124,7 @@
 }
 .event-guidance-list dt {
   margin-bottom: 3px;
-  color: #7c8fa4;
+  color: var(--muted);
   font-size: 9px;
   font-weight: 900;
 }
@@ -141,7 +141,7 @@
 }
 .organizer-card p {
   margin: 5px 0;
-  color: #647890;
+  color: var(--muted);
   font-size: 10px;
   line-height: 1.55;
 }
