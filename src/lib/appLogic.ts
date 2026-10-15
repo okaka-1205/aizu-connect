@@ -300,6 +300,11 @@ export const getFirebaseErrorMessage = (error: unknown) => {
       error.message.includes("Event details")
     )
       return "イベントの入力内容を確認してください。必須項目と開催日時を見直してください。";
+    if (
+      code === "functions/failed-precondition" &&
+      error.message.includes("Check-in is not available at this time.")
+    )
+      return "受付は開催3時間前から終了24時間後まで利用できます。";
     if (code === "functions/failed-precondition")
       return "このイベントは現在申し込めません。公開状態と受付期間を確認してください。";
     if (code === "functions/permission-denied")

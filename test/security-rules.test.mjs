@@ -14,6 +14,9 @@ const PROJECT_ID = "demo-aizu-connect-rules";
 const timestamp = firebase.firestore.Timestamp.fromDate(
   new Date("2026-01-01T00:00:00.000Z"),
 );
+const farFutureTimestamp = firebase.firestore.Timestamp.fromDate(
+  new Date("2099-01-01T00:00:00.000Z"),
+);
 const legalConsent = {
   termsVersion: "2026-08-01",
   privacyVersion: "2026-08-01",
@@ -378,6 +381,15 @@ const seedData = async () => {
           createdBy: "student-1",
         }),
       ),
+      db.doc("events/event-future").set(
+        eventDoc({
+          title: "Future Event",
+          startAt: farFutureTimestamp,
+          endAt: firebase.firestore.Timestamp.fromDate(
+            new Date("2099-01-01T02:00:00.000Z"),
+          ),
+        }),
+      ),
       db.doc("eventApplications/app-1").set(applicationDoc()),
       db.doc("eventApplications/app-confirmed").set(
         applicationDoc({
@@ -390,6 +402,14 @@ const seedData = async () => {
           id: "app-waitlisted",
           status: "waitlisted",
           waitlistPosition: 1,
+        }),
+      ),
+      db.doc("eventApplications/app-future-confirmed").set(
+        applicationDoc({
+          id: "app-future-confirmed",
+          eventId: "event-future",
+          eventTitle: "Future Event",
+          status: "confirmed",
         }),
       ),
       db.doc("eventApplications/app-other-student").set(
@@ -1236,6 +1256,19 @@ describe("event applications and activities", () => {
       organization.firestore().doc("eventApplications/app-1").update({
         status: "confirmed",
       }),
+    );
+    await assertSucceeds(
+      organization.firestore().doc("eventApplications/app-1").update({
+        status: "attended",
+      }),
+    );
+    await assertFails(
+      organization
+        .firestore()
+        .doc("eventApplications/app-future-confirmed")
+        .update({
+          status: "attended",
+        }),
     );
     await assertFails(
       organization.firestore().doc("eventApplications/app-waitlisted").update({

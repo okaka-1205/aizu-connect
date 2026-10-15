@@ -498,6 +498,12 @@ service cloud.firestore {
           || (
             resource.data.status == 'confirmed'
             && request.resource.data.status in ['attended', 'absent']
+            && get(
+              /databases/$(database)/documents/events/$(resource.data.eventId)
+            ).data.startAt is timestamp
+            && request.time >= get(
+              /databases/$(database)/documents/events/$(resource.data.eventId)
+            ).data.startAt - duration.value(3, 'h')
           )
           || (
             resource.data.status == 'waitlisted'

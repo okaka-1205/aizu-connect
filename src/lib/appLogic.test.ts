@@ -328,6 +328,16 @@ describe("firebase error messages", () => {
     );
   });
 
+  it("explains the event check-in window", () => {
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(new Error("Check-in is not available at this time."), {
+          code: "functions/failed-precondition",
+        }),
+      ),
+    ).toBe("受付は開催3時間前から終了24時間後まで利用できます。");
+  });
+
   it("maps auth failures to user-friendly Japanese copy", () => {
     expect(
       getFirebaseErrorMessage(

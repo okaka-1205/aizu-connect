@@ -146,6 +146,10 @@ export function ActivityTab(props: {
               (item) => item.id === application.eventId,
             );
             const eventDate = relatedEvent?.startAt?.toDate();
+            const eventEndDate =
+              relatedEvent?.endAt?.toDate() ?? relatedEvent?.startAt?.toDate();
+            const canSubmitSurvey =
+              eventEndDate !== undefined && eventEndDate.getTime() <= Date.now();
             return (
               <div className="application-item" key={application.id}>
                 <div className="date-block">
@@ -248,7 +252,7 @@ export function ActivityTab(props: {
                   {checkInError && checkInErrorId === application.id && (
                     <small className="inline-error">{checkInError}</small>
                   )}
-                  {application.status === "attended" && (
+                  {application.status === "attended" && canSubmitSurvey && (
                     <div className="event-survey-form">
                       <strong>開催後アンケート</strong>
                       <select

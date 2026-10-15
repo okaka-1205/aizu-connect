@@ -229,6 +229,11 @@ export function OrganizationDashboard({
 
   const organizationName = appUser.organizationName || appUser.displayName;
   const selectedEvent = events.find((event) => event.id === selectedEventId);
+  const attendanceWindowOpen = Boolean(
+    selectedEvent &&
+      Date.now() >=
+        timestampMillis(selectedEvent.startAt) - 3 * 60 * 60 * 1000,
+  );
   const selectedTemplate =
     eventTemplates.find((template) => template.key === templateKey) ??
     eventTemplates[0];
@@ -1159,6 +1164,13 @@ export function OrganizationDashboard({
     application: EventApplication,
     status: EventApplication["status"],
   ) => {
+    if (
+      (status === "attended" || status === "absent") &&
+      !attendanceWindowOpen
+    ) {
+      setNotice("出欠の確定は開催3時間前から行えます。", "error");
+      return;
+    }
     try {
       await updateDoc(doc(db, "eventApplications", application.id), { status });
       setApplications((current) =>
@@ -1175,6 +1187,10 @@ export function OrganizationDashboard({
   const bulkUpdateApplications = async (
     targetStatus: "confirmed" | "attended",
   ) => {
+    if (targetStatus === "attended" && !attendanceWindowOpen) {
+      setNotice("出席の確定は開催3時間前から行えます。", "error");
+      return;
+    }
     const targets = applications.filter(
       (application) =>
         selectedApplicantIds.includes(application.id) &&
@@ -2340,7 +2356,14 @@ export function OrganizationDashboard({
               </button>
               <button
                 type="button"
-                disabled={selectedApplicantIds.length === 0}
+                disabled={
+                  selectedApplicantIds.length === 0 || !attendanceWindowOpen
+                }
+                title={
+                  attendanceWindowOpen
+                    ? undefined
+                    : "出席の確定は開催3時間前から行えます"
+                }
                 onClick={() =>
                   void bulkUpdateApplications("attended").catch((error) =>
                     setNotice(getFirebaseErrorMessage(error), "error"),
@@ -2441,6 +2464,12 @@ export function OrganizationDashboard({
                       <>
                         <button
                           type="button"
+                          disabled={!attendanceWindowOpen}
+                          title={
+                            attendanceWindowOpen
+                              ? undefined
+                              : "出席の確定は開催3時間前から行えます"
+                          }
                           onClick={() =>
                             void updateApplicationStatus(
                               application,
@@ -2453,6 +2482,12 @@ export function OrganizationDashboard({
                         <button
                           className="muted"
                           type="button"
+                          disabled={!attendanceWindowOpen}
+                          title={
+                            attendanceWindowOpen
+                              ? undefined
+                              : "欠席の確定は開催3時間前から行えます"
+                          }
                           onClick={() =>
                             setPendingApplicationUpdate({
                               application,
