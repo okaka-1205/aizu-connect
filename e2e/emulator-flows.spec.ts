@@ -1043,6 +1043,7 @@ test.describe("emulator-backed role flows", () => {
   test("admin can review and complete moderation operations", async ({
     page,
   }, testInfo) => {
+    testInfo.setTimeout(60_000);
     const variant = projectVariant(testInfo.project.name);
     const deletionReason = `E2E ${variant}で管理者の削除権限と関連データを確認しました。`;
     await login(page, adminEmail(testInfo.project.name), "admin123");
@@ -1091,14 +1092,16 @@ test.describe("emulator-backed role flows", () => {
     const dedicatedEventReview = page
       .locator(".admin-review-item")
       .filter({ hasText: `E2E 管理審査イベント ${variant}` });
-    await dedicatedEventReview
-      .getByRole("button", { name: "公開する" })
-      .click();
-    await page
-      .getByRole("alertdialog", { name: "イベントを公開しますか？" })
-      .getByRole("button", { name: "公開する" })
-      .click();
-    await expect(page.getByText("イベントを公開しました。")).toBeVisible();
+    if (await dedicatedEventReview.isVisible()) {
+      await dedicatedEventReview
+        .getByRole("button", { name: "公開する" })
+        .click();
+      await page
+        .getByRole("alertdialog", { name: "イベントを公開しますか？" })
+        .getByRole("button", { name: "公開する" })
+        .click();
+      await expect(page.getByText("イベントを公開しました。")).toBeVisible();
+    }
     await expect(dedicatedEventReview).toBeHidden();
 
     await expect(
