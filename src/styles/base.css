@@ -263,7 +263,7 @@
   padding: 10px 12px;
   border-radius: 9px;
   background: #f4f7fb;
-  color: #5d718a;
+  color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
 }

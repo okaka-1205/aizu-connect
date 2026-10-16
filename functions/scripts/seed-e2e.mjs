@@ -43,6 +43,31 @@ const eventEndLabel = new Intl.DateTimeFormat("ja-JP", {
   hour: "numeric",
   minute: "2-digit",
 }).format(eventEndDate);
+const accessibilityApplicationStartDate = new Date(eventStartDate);
+accessibilityApplicationStartDate.setDate(
+  accessibilityApplicationStartDate.getDate() + 60,
+);
+const accessibilityApplicationEndDate = new Date(
+  accessibilityApplicationStartDate.getTime() + 2 * 60 * 60 * 1000,
+);
+const accessibilityApplicationStartTimestamp = Timestamp.fromDate(
+  accessibilityApplicationStartDate,
+);
+const accessibilityApplicationEndTimestamp = Timestamp.fromDate(
+  accessibilityApplicationEndDate,
+);
+const accessibilityApplicationStartLabel = new Intl.DateTimeFormat("ja-JP", {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  weekday: "short",
+  hour: "numeric",
+  minute: "2-digit",
+}).format(accessibilityApplicationStartDate);
+const accessibilityApplicationEndLabel = new Intl.DateTimeFormat("ja-JP", {
+  hour: "numeric",
+  minute: "2-digit",
+}).format(accessibilityApplicationEndDate);
 const checkInStartDate = new Date(now.getTime() - 30 * 60 * 1000);
 const checkInEndDate = new Date(now.getTime() + 2 * 60 * 60 * 1000);
 const checkInStartTimestamp = Timestamp.fromDate(checkInStartDate);
@@ -62,6 +87,25 @@ const checkInEndLabel = new Intl.DateTimeFormat("ja-JP", {
 const activityDate = new Date(now);
 activityDate.setDate(activityDate.getDate() - 30);
 const activityTimestamp = Timestamp.fromDate(activityDate);
+const completedEventStartDate = new Date(activityDate);
+completedEventStartDate.setHours(10, 0, 0, 0);
+const completedEventEndDate = new Date(
+  completedEventStartDate.getTime() + 2 * 60 * 60 * 1000,
+);
+const completedEventStartTimestamp = Timestamp.fromDate(completedEventStartDate);
+const completedEventEndTimestamp = Timestamp.fromDate(completedEventEndDate);
+const completedEventStartLabel = new Intl.DateTimeFormat("ja-JP", {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  weekday: "short",
+  hour: "numeric",
+  minute: "2-digit",
+}).format(completedEventStartDate);
+const completedEventEndLabel = new Intl.DateTimeFormat("ja-JP", {
+  hour: "numeric",
+  minute: "2-digit",
+}).format(completedEventEndDate);
 const defaultPassword = "password123";
 const testVariants = [
   ["desktop", "Desktop"],
@@ -451,6 +495,43 @@ for (const variant of variantKeys) {
       ...organization,
     }),
   );
+  const accessibilityApplicationEventId =
+    `event-e2e-a11y-application-${variant}`;
+  const accessibilityApplicationTitle =
+    `E2E 申込質問イベント ${displayVariant}`;
+  batch.set(
+    db.doc(`events/${accessibilityApplicationEventId}`),
+    eventDoc({
+      title: accessibilityApplicationTitle,
+      applicantCount: 0,
+      startAt: accessibilityApplicationStartTimestamp,
+      startAtLabel: accessibilityApplicationStartLabel,
+      endAt: accessibilityApplicationEndTimestamp,
+      endAtLabel: accessibilityApplicationEndLabel,
+      applicationQuestions: [
+        {
+          id: "motivation",
+          label: "参加目的",
+          type: "textarea",
+          required: true,
+        },
+        {
+          id: "experience",
+          label: "参加経験",
+          type: "select",
+          required: true,
+          options: ["初めて", "参加経験あり"],
+        },
+        {
+          id: "guidelines",
+          label: "参加ルールの確認",
+          type: "checkbox",
+          required: true,
+        },
+      ],
+      ...organization,
+    }),
+  );
   batch.set(db.doc(`eventApplications/${dashboardApplicationId}`), {
     id: dashboardApplicationId,
     eventId: dashboardEventId,
@@ -495,12 +576,98 @@ for (const variant of variantKeys) {
     },
   );
   batch.set(
+    db.doc(`chatRooms/${dashboardApplicationId}/messages/student-seed-message`),
+    {
+      roomId: dashboardApplicationId,
+      senderId: isolatedStudentId,
+      senderName: `E2E 学生 ${displayVariant}`,
+      type: "text",
+      text: "E2E 学生からの編集・削除確認用メッセージ",
+      suppressNotification: true,
+      createdAt: Timestamp.fromMillis(now.getTime() + 1_000),
+    },
+  );
+  batch.set(
     db.doc(`chatRooms/${dashboardApplicationId}/members/${isolatedStudentId}`),
     {
       userId: isolatedStudentId,
       role: "student",
       displayName: `E2E 学生 ${displayVariant}`,
       joinedAt: timestamp,
+    },
+  );
+  const accessibilityCheckInEventId = `event-e2e-a11y-checkin-${variant}`;
+  const accessibilityCheckInTitle = `E2E QR受付確認 ${displayVariant}`;
+  batch.set(
+    db.doc(`events/${accessibilityCheckInEventId}`),
+    eventDoc({
+      title: accessibilityCheckInTitle,
+      startAtLabel: checkInStartLabel,
+      startAt: checkInStartTimestamp,
+      endAtLabel: checkInEndLabel,
+      endAt: checkInEndTimestamp,
+      applicantCount: 1,
+      ...organization,
+    }),
+  );
+  batch.set(
+    db.doc(
+      `eventApplications/${accessibilityCheckInEventId}_${isolatedStudentId}`,
+    ),
+    {
+      id: `${accessibilityCheckInEventId}_${isolatedStudentId}`,
+      eventId: accessibilityCheckInEventId,
+      eventTitle: accessibilityCheckInTitle,
+      eventStartAt: checkInStartTimestamp,
+      eventEndAt: checkInEndTimestamp,
+      studentId: isolatedStudentId,
+      studentName: `E2E 学生 ${displayVariant}`,
+      organizationName: organization.organizationName,
+      organizationId: organization.organizationId,
+      status: "confirmed",
+      consentAccepted: true,
+      createdAt: Timestamp.fromMillis(now.getTime() + 2_000),
+    },
+  );
+  batch.set(db.doc(`eventCheckIns/${accessibilityCheckInEventId}`), {
+    eventId: accessibilityCheckInEventId,
+    organizerId: organization.organizationId,
+    code: "246810",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+
+  const accessibilitySurveyEventId = `event-e2e-a11y-survey-${variant}`;
+  const accessibilitySurveyTitle = `E2E 開催後アンケート ${displayVariant}`;
+  batch.set(
+    db.doc(`events/${accessibilitySurveyEventId}`),
+    eventDoc({
+      title: accessibilitySurveyTitle,
+      startAtLabel: completedEventStartLabel,
+      startAt: completedEventStartTimestamp,
+      endAtLabel: completedEventEndLabel,
+      endAt: completedEventEndTimestamp,
+      applicantCount: 1,
+      ...organization,
+    }),
+  );
+  batch.set(
+    db.doc(
+      `eventApplications/${accessibilitySurveyEventId}_${isolatedStudentId}`,
+    ),
+    {
+      id: `${accessibilitySurveyEventId}_${isolatedStudentId}`,
+      eventId: accessibilitySurveyEventId,
+      eventTitle: accessibilitySurveyTitle,
+      eventStartAt: completedEventStartTimestamp,
+      eventEndAt: completedEventEndTimestamp,
+      studentId: isolatedStudentId,
+      studentName: `E2E 学生 ${displayVariant}`,
+      organizationName: organization.organizationName,
+      organizationId: organization.organizationId,
+      status: "attended",
+      consentAccepted: true,
+      createdAt: Timestamp.fromMillis(now.getTime() + 3_000),
     },
   );
   batch.set(

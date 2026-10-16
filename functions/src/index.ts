@@ -1198,6 +1198,8 @@ export const submitApplication = onCall(
         studentProfileImageUrl: userSnapshot.data()?.profileImageUrl ?? null,
         organizationName: eventData.organizationName,
         organizationId,
+        eventStartAt: eventData.startAt,
+        eventEndAt: eventData.endAt ?? eventData.startAt,
         status: applicationStatus,
         participantMessage,
         accessibilityNeeds,

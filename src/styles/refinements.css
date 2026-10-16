@@ -384,7 +384,7 @@
   text-align: right;
 }
 .chat-message.mine .chat-message-time {
-  color: #587796;
+  color: var(--muted);
 }
 .chat-image-link {
   display: block;

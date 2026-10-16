@@ -138,7 +138,11 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("heading", { name: "おすすめのイベント" }),
     ).toBeVisible();
-    await expect(page.getByText("E2E 地域交流会").first()).toBeVisible();
+    await expect(
+      page
+        .getByRole("heading", { name: "E2E ページングイベント 01" })
+        .first(),
+    ).toBeVisible();
 
     await page.reload();
     await expect(

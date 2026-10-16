@@ -42,7 +42,13 @@ export function ApplicationDialog({
   ] = useState(false);
   const isWaitlist =
     Number(event.applicantCount ?? 0) >= Number(event.capacity ?? 0);
-  const dialogRef = useDialogAccessibility<HTMLFormElement>(onClose);
+  const dialogRef = useDialogAccessibility<HTMLFormElement>(onClose, () =>
+    Array.from(document.querySelectorAll<HTMLElement>("button")).find(
+      (element) =>
+        element.getAttribute("aria-label") ===
+        `${event.title}の詳細を見る`,
+    ) ?? null,
+  );
   return createPortal(
     <div className="report-backdrop" role="presentation" onClick={onClose}>
       <form

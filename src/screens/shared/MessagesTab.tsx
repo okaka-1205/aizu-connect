@@ -23,6 +23,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import {
   formatChatDay,
   formatChatTime,
@@ -102,6 +103,11 @@ export function MessagesTab({
   const [attachmentInputKey, setAttachmentInputKey] = useState(0);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageText, setEditingMessageText] = useState("");
+  const [messageToDelete, setMessageToDelete] = useState<ChatMessage | null>(
+    null,
+  );
+  const [messageAuthorToBlock, setMessageAuthorToBlock] =
+    useState<ChatMessage | null>(null);
   const conversationListRef = useRef<HTMLDivElement>(null);
   const chatPanelRef = useRef<HTMLDivElement>(null);
   const selectRoom = (roomId: string) => {
@@ -172,7 +178,8 @@ export function MessagesTab({
     setIsMetaEditing(false);
   }, [activeRoom?.id, activeRoom?.organizerNotice, activeRoom?.pinnedMessage]);
   return (
-    <section className="tab-page">
+    <>
+      <section className="tab-page">
       <div className="page-title">
         <div>
           <h1>メッセージ</h1>
@@ -472,7 +479,11 @@ export function MessagesTab({
                       index === lastOwnMessageIndex &&
                       otherReadAt >= timestampMillis(chatMessage.createdAt);
                     return (
-                      <div className="chat-message-block" key={chatMessage.id}>
+                      <div
+                        className="chat-message-block"
+                        data-message-id={chatMessage.id}
+                        key={chatMessage.id}
+                      >
                         {day && day !== previousDay && (
                           <div className="chat-date-separator">
                             <span>{day}</span>
@@ -522,8 +533,24 @@ export function MessagesTab({
                             >
                               <input
                                 aria-label="メッセージを編集"
+                                autoFocus
                                 maxLength={2000}
                                 value={editingMessageText}
+                                onKeyDown={(event) => {
+                                  if (event.key !== "Escape") return;
+                                  event.preventDefault();
+                                  setEditingMessageId(null);
+                                  window.requestAnimationFrame(() => {
+                                    const messageBlock = document.querySelector<HTMLElement>(
+                                      `[data-message-id="${CSS.escape(chatMessage.id)}"]`,
+                                    );
+                                    messageBlock
+                                      ?.querySelector<HTMLElement>(
+                                        '[aria-label="メッセージを編集"]',
+                                      )
+                                      ?.focus();
+                                  });
+                                }}
                                 onChange={(event) =>
                                   setEditingMessageText(event.target.value)
                                 }
@@ -558,7 +585,7 @@ export function MessagesTab({
                                   <button
                                     type="button"
                                     aria-label="メッセージを削除"
-                                    onClick={() => void onDeleteMessage(chatMessage)}
+                                    onClick={() => setMessageToDelete(chatMessage)}
                                   >
                                     <Trash2 size={12} />
                                   </button>
@@ -586,7 +613,7 @@ export function MessagesTab({
                                 type="button"
                                 title="このユーザーをブロック"
                                 aria-label={`${chatMessage.senderName}さんをブロック`}
-                                onClick={() => void onBlockUser(chatMessage)}
+                                onClick={() => setMessageAuthorToBlock(chatMessage)}
                               >
                                 <Ban size={12} />
                               </button>
@@ -658,6 +685,35 @@ export function MessagesTab({
           )}
         </div>
       )}
-    </section>
+      </section>
+      {messageToDelete && onDeleteMessage && (
+        <ConfirmDialog
+          title="メッセージを削除しますか？"
+          description="削除したメッセージの本文は表示されなくなります。編集履歴は安全管理のため保持される場合があります。"
+          confirmLabel="メッセージを削除"
+          danger
+          onClose={() => setMessageToDelete(null)}
+          onConfirm={() => {
+            void onDeleteMessage(messageToDelete).then(() =>
+              setMessageToDelete(null),
+            );
+          }}
+        />
+      )}
+      {messageAuthorToBlock && onBlockUser && (
+        <ConfirmDialog
+          title={`${messageAuthorToBlock.senderName}さんをブロックしますか？`}
+          description="このユーザーからのメッセージは表示されなくなります。"
+          confirmLabel="ブロックする"
+          danger
+          onClose={() => setMessageAuthorToBlock(null)}
+          onConfirm={() => {
+            void onBlockUser(messageAuthorToBlock).then(() =>
+              setMessageAuthorToBlock(null),
+            );
+          }}
+        />
+      )}
+    </>
   );
 }

@@ -1,6 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import path from "node:path";
 import { projectSuffix, projectVariant } from "./testVariants";
+
+const fixtureImage = path.resolve("src/assets/event-community.jpg");
+
+async function pressForwardTab(page: Page, projectName: string) {
+  await page.keyboard.press(projectName === "webkit" ? "Alt+Tab" : "Tab");
+}
 
 async function expectNoSeriousAccessibilityViolations(page: Page) {
   const results = await new AxeBuilder({ page })
@@ -41,9 +48,10 @@ test.describe("accessibility", () => {
     page,
   }) => {
     await page.goto("/");
+    const termsButton = page.getByRole("button", { name: "利用規約" });
+    await expect(termsButton).toBeVisible();
     await expectNoSeriousAccessibilityViolations(page);
 
-    const termsButton = page.getByRole("button", { name: "利用規約" });
     await termsButton.focus();
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog", { name: "利用規約" });
@@ -110,6 +118,177 @@ test.describe("accessibility", () => {
     await expectNoSeriousAccessibilityViolations(page);
   });
 
+  test("student application questions keep focus and work from the keyboard", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    const variant = projectVariant(testInfo.project.name);
+    const eventTitle = `E2E 申込質問イベント ${variant}`;
+    await login(page, `student-e2e-${suffix}@u-aizu.ac.jp`);
+
+    const nav = page.getByRole("navigation", { name: "メインナビゲーション" });
+    const searchTab = nav.getByRole("button", { name: "探す" });
+    await searchTab.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("textbox", { name: "イベントを検索" }).fill(eventTitle);
+
+    const eventTrigger = page.getByRole("button", {
+      name: `${eventTitle}の詳細を見る`,
+    });
+    await eventTrigger.focus();
+    await page.keyboard.press("Enter");
+    const applyButton = page.getByRole("button", {
+      name: "このイベントに参加する",
+    });
+    await applyButton.focus();
+    await page.keyboard.press("Enter");
+
+    const applicationDialog = page.getByRole("dialog", {
+      name: "参加申請を確認",
+    });
+    await expect(applicationDialog).toBeVisible();
+    await expect(applicationDialog.getByTitle("閉じる")).toBeFocused();
+    await expect(applicationDialog.getByLabel("参加目的")).toBeVisible();
+    await expect(applicationDialog.getByLabel("参加経験")).toBeVisible();
+    await expect(
+      applicationDialog.getByRole("checkbox", {
+        name: /参加ルールの確認.*確認しました/,
+      }),
+    ).toBeVisible();
+    await expectNoSeriousAccessibilityViolations(page);
+
+    await page.keyboard.press("Escape");
+    await expect(applicationDialog).toBeHidden();
+    await expect(eventTrigger).toBeFocused();
+  });
+
+  test("student check-in and post-event survey controls are keyboard accessible", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    const variant = projectVariant(testInfo.project.name);
+    const checkInTitle = `E2E QR受付確認 ${variant}`;
+    const surveyTitle = `E2E 開催後アンケート ${variant}`;
+    await login(page, `student-e2e-${suffix}@u-aizu.ac.jp`);
+
+    const activityTab = page
+      .getByRole("navigation", { name: "メインナビゲーション" })
+      .getByRole("button", { name: /^活動/ });
+    await activityTab.focus();
+    await page.keyboard.press("Enter");
+
+    const checkInItem = page
+      .locator(".application-item")
+      .filter({ hasText: checkInTitle });
+    const codeInput = checkInItem.getByLabel(`${checkInTitle}の受付コード`);
+    await codeInput.focus();
+    await codeInput.fill("246810");
+    await pressForwardTab(page, testInfo.project.name);
+    await expect(
+      checkInItem.getByRole("button", { name: "受付する" }),
+    ).toBeFocused();
+
+    const surveyItem = page
+      .locator(".application-item")
+      .filter({ hasText: surveyTitle });
+    const rating = surveyItem.getByLabel(`${surveyTitle}の満足度`);
+    await expect(
+      surveyItem.getByText("開催後アンケート", { exact: true }),
+    ).toBeVisible();
+    await rating.focus();
+    await pressForwardTab(page, testInfo.project.name);
+    await expect(surveyItem.getByLabel(`${surveyTitle}の感想`)).toBeFocused();
+    await pressForwardTab(page, testInfo.project.name);
+    await expect(
+      surveyItem.getByRole("checkbox", { name: "友人にもおすすめしたい" }),
+    ).toBeFocused();
+    await pressForwardTab(page, testInfo.project.name);
+    await expect(
+      surveyItem.getByRole("button", { name: "アンケートを送信" }),
+    ).toBeFocused();
+    await expectNoSeriousAccessibilityViolations(page);
+  });
+
+  test("chat edit, delete, report, and block controls preserve keyboard focus", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    const variant = projectVariant(testInfo.project.name);
+    const eventTitle = `E2E 地域交流会 ${variant}`;
+    await login(page, `student-e2e-${suffix}@u-aizu.ac.jp`);
+
+    const messagesTab = page
+      .getByRole("navigation", { name: "メインナビゲーション" })
+      .getByRole("button", { name: "メッセージ" });
+    await messagesTab.focus();
+    await page.keyboard.press("Enter");
+    const roomButton = page
+      .locator(".conversation-item")
+      .filter({ hasText: eventTitle });
+    await roomButton.focus();
+    await page.keyboard.press("Enter");
+
+    const ownMessage = page.locator(
+      '[data-message-id="student-seed-message"]',
+    );
+    await expect(ownMessage).toContainText(
+      "E2E 学生からの編集・削除確認用メッセージ",
+    );
+    const editButton = ownMessage.getByRole("button", {
+      name: "メッセージを編集",
+    });
+    await editButton.focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      ownMessage.getByRole("textbox", { name: "メッセージを編集" }),
+    ).toBeFocused();
+    await expectNoSeriousAccessibilityViolations(page);
+    await page.keyboard.press("Escape");
+    await expect(editButton).toBeFocused();
+
+    const deleteButton = ownMessage.getByRole("button", {
+      name: "メッセージを削除",
+    });
+    await deleteButton.focus();
+    await page.keyboard.press("Enter");
+    const deleteDialog = page.getByRole("alertdialog", {
+      name: "メッセージを削除しますか？",
+    });
+    await expect(deleteDialog).toBeVisible();
+    await expect(deleteDialog.getByRole("button", { name: "戻る" })).toBeFocused();
+    await expectNoSeriousAccessibilityViolations(page);
+    await page.keyboard.press("Escape");
+    await expect(deleteButton).toBeFocused();
+
+    const otherMessage = page.locator('[data-message-id="seed-message"]');
+    await expect(otherMessage).toContainText("E2E 初期メッセージ");
+    const reportButton = otherMessage.getByRole("button", {
+      name: /さんのメッセージを通報/,
+    });
+    await reportButton.focus();
+    await page.keyboard.press("Enter");
+    const reportDialog = page.getByRole("dialog", { name: "通報する" });
+    await expect(reportDialog).toBeVisible();
+    await expect(reportDialog.getByTitle("閉じる")).toBeFocused();
+    await expectNoSeriousAccessibilityViolations(page);
+    await page.keyboard.press("Escape");
+    await expect(reportButton).toBeFocused();
+
+    const blockButton = otherMessage.getByRole("button", {
+      name: /さんをブロック/,
+    });
+    await blockButton.focus();
+    await page.keyboard.press("Enter");
+    const blockDialog = page.getByRole("alertdialog", {
+      name: /さんをブロックしますか？/,
+    });
+    await expect(blockDialog).toBeVisible();
+    await expect(blockDialog.getByRole("button", { name: "戻る" })).toBeFocused();
+    await expectNoSeriousAccessibilityViolations(page);
+    await page.keyboard.press("Escape");
+    await expect(blockButton).toBeFocused();
+  });
+
   test("organization dashboard has no serious automated violations", async ({
     page,
   }, testInfo) => {
@@ -140,6 +319,17 @@ test.describe("accessibility", () => {
     await expect(page.getByRole("heading", { name: "参加者一覧" })).toBeVisible();
     await expect(page.getByText("QR受付・6桁受付コード")).toBeVisible();
     await expect(page.getByLabel("活動報告本文")).toBeVisible();
+    const reportPhotos = page.getByLabel("活動報告の写真");
+    await reportPhotos.focus();
+    await expect(reportPhotos).toBeFocused();
+    await reportPhotos.setInputFiles(fixtureImage);
+    await expect
+      .poll(() =>
+        reportPhotos.evaluate(
+          (element: HTMLInputElement) => element.files?.length ?? 0,
+        ),
+      )
+      .toBe(1);
     await expectNoSeriousAccessibilityViolations(page);
 
     const applicant = page

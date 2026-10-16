@@ -154,6 +154,8 @@ export type EventApplication = {
   answers?: ApplicationAnswer[];
   cancellationReason?: string;
   cancelledAt?: Timestamp;
+  eventStartAt?: Timestamp;
+  eventEndAt?: Timestamp;
   createdAt?: Timestamp;
 };
 

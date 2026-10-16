@@ -145,9 +145,14 @@ export function ActivityTab(props: {
             const relatedEvent = props.events.find(
               (item) => item.id === application.eventId,
             );
-            const eventDate = relatedEvent?.startAt?.toDate();
+            const eventDate =
+              relatedEvent?.startAt?.toDate() ??
+              application.eventStartAt?.toDate();
             const eventEndDate =
-              relatedEvent?.endAt?.toDate() ?? relatedEvent?.startAt?.toDate();
+              relatedEvent?.endAt?.toDate() ??
+              application.eventEndAt?.toDate() ??
+              relatedEvent?.startAt?.toDate() ??
+              application.eventStartAt?.toDate();
             const canSubmitSurvey =
               eventEndDate !== undefined && eventEndDate.getTime() <= Date.now();
             return (
