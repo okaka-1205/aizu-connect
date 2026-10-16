@@ -222,6 +222,11 @@ await Promise.all(
       displayName: `E2E プロフィール ${variant}`,
     }),
     ensureUser({
+      uid: `student-account-${variant}`,
+      email: `student-account-${variant}@u-aizu.ac.jp`,
+      displayName: `E2E アカウント ${variant}`,
+    }),
+    ensureUser({
       uid: `admin-delete-user-${variant}`,
       email: `admin-delete-${variant}@u-aizu.ac.jp`,
       displayName: `E2E 削除対象 ${variant}`,
@@ -349,6 +354,7 @@ batch.set(
 for (const variant of variantKeys) {
   const displayVariant = displayVariantFor(variant);
   const profileUserId = `student-profile-${variant}`;
+  const accountUserId = `student-account-${variant}`;
   const isolatedStudentId = `student-e2e-${variant}`;
   const isolatedOrganizationId = `org-e2e-${variant}`;
   const isolatedAdminId = `admin-e2e-${variant}`;
@@ -559,6 +565,50 @@ for (const variant of variantKeys) {
     occurredAt: activityTimestamp,
     activityMonth: activityDate.getMonth() + 1,
     activityYear: activityDate.getFullYear(),
+    createdAt: timestamp,
+  });
+  batch.set(
+    db.doc(`users/${accountUserId}`),
+    userDoc({
+      uid: accountUserId,
+      email: `student-account-${variant}@u-aizu.ac.jp`,
+      displayName: `E2E アカウント ${displayVariant}`,
+    }),
+  );
+  batch.set(db.doc(`studentProfiles/${accountUserId}`), {
+    ...userDoc({
+      uid: accountUserId,
+      email: `student-account-${variant}@u-aizu.ac.jp`,
+      displayName: `E2E アカウント ${displayVariant}`,
+    }),
+    verificationMethod: "university_email",
+    profileCompletionRate: 80,
+    activityCount: 1,
+  });
+  batch.set(db.doc(`notificationPreferences/${accountUserId}`), {
+    userId: accountUserId,
+    newEvents: true,
+    applicationUpdates: true,
+    chatMessages: true,
+    eventReminders: true,
+    updatedAt: timestamp,
+  });
+  batch.set(db.doc(`activities/account-activity-${variant}`), {
+    id: `account-activity-${variant}`,
+    userId: accountUserId,
+    eventId: profileEventId,
+    title: `E2E 追加募集イベント ${displayVariant}`,
+    organizationId: "org-e2e",
+    organizationName: `E2E主催団体 ${displayVariant}`,
+    certificateId: `AC-account-${variant}`,
+    participantRole: "参加者",
+    takeaways: ["活動証明を確認する", "退会申請を確認する"],
+    verificationStatus: "verified",
+    verifiedBy: "org-e2e",
+    occurredAt: activityTimestamp,
+    activityMonth: activityDate.getMonth() + 1,
+    activityYear: activityDate.getFullYear(),
+    hours: 2,
     createdAt: timestamp,
   });
   const userId = `admin-delete-user-${variant}`;

@@ -719,10 +719,9 @@ test.describe("emulator-backed role flows", () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  test("student can complete profile, notification, saved event, report, and certificate flows", async ({
+  test("student can manage notifications, saved events, profile, calendar, and reports", async ({
     page,
   }, testInfo) => {
-    testInfo.setTimeout(45_000);
     const variant = projectVariant(testInfo.project.name);
     const suffix = projectSuffix(testInfo.project.name);
     const eventTitle = `E2E 追加募集イベント ${variant}`;
@@ -806,7 +805,15 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByText("通報を受け付けました。運営が確認します。"),
     ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
 
+  test("student can view a certificate and manage an account deletion request", async ({
+    page,
+  }, testInfo) => {
+    const variant = projectVariant(testInfo.project.name);
+    const suffix = projectSuffix(testInfo.project.name);
+    await login(page, `student-account-${suffix}@u-aizu.ac.jp`);
     await page
       .getByRole("navigation", { name: "メインナビゲーション" })
       .getByRole("button", { name: /^活動/ })
@@ -814,7 +821,7 @@ test.describe("emulator-backed role flows", () => {
     await page.getByRole("button", { name: "証明書を表示・共有" }).click();
     const certificate = page.getByRole("dialog", { name: "活動証明書" });
     await expect(certificate).toBeVisible();
-    await expect(certificate.getByText(`AC-profile-${suffix}`)).toBeVisible();
+    await expect(certificate.getByText(`AC-account-${suffix}`)).toBeVisible();
     await page.keyboard.press("Escape");
     await page
       .getByRole("navigation", { name: "メインナビゲーション" })

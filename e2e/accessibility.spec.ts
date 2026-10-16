@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { projectSuffix } from "./testVariants";
+import { projectSuffix, projectVariant } from "./testVariants";
 
 async function expectNoSeriousAccessibilityViolations(page: Page) {
   const results = await new AxeBuilder({ page })
@@ -121,6 +121,39 @@ test.describe("accessibility", () => {
     await expectNoSeriousAccessibilityViolations(page);
   });
 
+  test("organization participant, check-in, reporting, and chat controls support keyboard navigation", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    const variant = projectVariant(testInfo.project.name);
+    const eventTitle = `E2E 参加者管理 ${variant}`;
+    await login(page, `org-e2e-${suffix}@example.com`);
+
+    const managedEvent = page
+      .locator(".managed-event-row")
+      .filter({ hasText: eventTitle });
+    const eventTrigger = managedEvent
+      .getByRole("button", { name: new RegExp(`^${eventTitle}`) })
+      .first();
+    await eventTrigger.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { name: "参加者一覧" })).toBeVisible();
+    await expect(page.getByText("QR受付・6桁受付コード")).toBeVisible();
+    await expect(page.getByLabel("活動報告本文")).toBeVisible();
+    await expectNoSeriousAccessibilityViolations(page);
+
+    const applicant = page
+      .locator(".applicant-row")
+      .filter({ hasText: `E2E 後参加 ${variant}` });
+    const contactButton = applicant.getByRole("button", { name: "個別連絡" });
+    await contactButton.focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByPlaceholder("参加者にメッセージを送る"),
+    ).toBeVisible();
+    await expectNoSeriousAccessibilityViolations(page);
+  });
+
   test("admin dashboard has no serious automated violations", async ({
     page,
   }, testInfo) => {
@@ -132,5 +165,55 @@ test.describe("accessibility", () => {
     );
     await expect(page.getByRole("heading", { name: "イベント審査" })).toBeVisible();
     await expectNoSeriousAccessibilityViolations(page);
+  });
+
+  test("admin review and report dialogs preserve keyboard focus", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    const variant = projectVariant(testInfo.project.name);
+    await login(
+      page,
+      `admin-e2e-${suffix}@aizu-connect.local`,
+      "admin123",
+    );
+
+    const eventReview = page
+      .locator(".admin-review-item")
+      .filter({ hasText: `E2E 管理審査イベント ${variant}` });
+    const publishButton = eventReview.getByRole("button", { name: "公開する" });
+    await publishButton.focus();
+    await page.keyboard.press("Enter");
+    const publishDialog = page.getByRole("alertdialog", {
+      name: "イベントを公開しますか？",
+    });
+    await expect(publishDialog).toBeVisible();
+    expect(
+      await publishDialog.evaluate((element) =>
+        element.contains(document.activeElement),
+      ),
+    ).toBe(true);
+    await expectNoSeriousAccessibilityViolations(page);
+    await page.keyboard.press("Escape");
+    await expect(publishDialog).toBeHidden();
+    await expect(publishButton).toBeFocused();
+
+    const report = page
+      .locator(".review-row")
+      .filter({ hasText: `削除ユーザー通報の匿名化確認 ${variant}` });
+    const completeButton = report.getByRole("button", {
+      name: "対応済み",
+      exact: true,
+    });
+    await completeButton.focus();
+    await page.keyboard.press("Enter");
+    const reportDialog = page.getByRole("alertdialog", {
+      name: "通報を対応済みにする",
+    });
+    await expect(reportDialog).toBeVisible();
+    await expectNoSeriousAccessibilityViolations(page);
+    await page.keyboard.press("Escape");
+    await expect(reportDialog).toBeHidden();
+    await expect(completeButton).toBeFocused();
   });
 });

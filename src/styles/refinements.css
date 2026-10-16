@@ -505,7 +505,7 @@
   gap: 2px;
 }
 .check-in-panel small {
-  color: #608272;
+  color: var(--muted);
   font-size: 9px;
   font-weight: 850;
 }
@@ -681,7 +681,7 @@
   line-height: 1.55;
 }
 .action-reason-dialog > p {
-  color: #647890;
+  color: var(--muted);
   font-size: 11px;
   line-height: 1.6;
 }

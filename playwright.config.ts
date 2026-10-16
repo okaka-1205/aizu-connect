@@ -1,5 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Playwright enables colored output for its child processes. In environments
+// that export NO_COLOR globally, keeping both variables produces a Node warning.
+delete process.env.NO_COLOR;
+
 const testPort = Number(process.env.PLAYWRIGHT_TEST_PORT ?? 5173);
 const testBaseUrl = `http://127.0.0.1:${testPort}`;
 
