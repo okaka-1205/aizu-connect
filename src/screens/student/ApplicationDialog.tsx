@@ -11,7 +11,11 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Field } from "../../components/Field";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
-import type { AizuEvent, ApplicationDetails } from "../../types/domain";
+import type {
+  AizuEvent,
+  ApplicationAnswer,
+  ApplicationDetails,
+} from "../../types/domain";
 
 export function ApplicationDialog({
   event,
@@ -29,13 +33,22 @@ export function ApplicationDialog({
   const [emergencyContact, setEmergencyContact] = useState("");
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [sensitiveInfoConsent, setSensitiveInfoConsent] = useState(false);
+  const [customAnswers, setCustomAnswers] = useState<
+    Record<string, string | boolean>
+  >({});
   const [
     emergencyContactAuthorityConfirmed,
     setEmergencyContactAuthorityConfirmed,
   ] = useState(false);
   const isWaitlist =
     Number(event.applicantCount ?? 0) >= Number(event.capacity ?? 0);
-  const dialogRef = useDialogAccessibility<HTMLFormElement>(onClose);
+  const dialogRef = useDialogAccessibility<HTMLFormElement>(onClose, () =>
+    Array.from(document.querySelectorAll<HTMLElement>("button")).find(
+      (element) =>
+        element.getAttribute("aria-label") ===
+        `${event.title}の詳細を見る`,
+    ) ?? null,
+  );
   return createPortal(
     <div className="report-backdrop" role="presentation" onClick={onClose}>
       <form
@@ -56,6 +69,13 @@ export function ApplicationDialog({
             consentAccepted,
             sensitiveInfoConsent,
             emergencyContactAuthorityConfirmed,
+            answers: (event.applicationQuestions ?? []).map(
+              (question): ApplicationAnswer => ({
+                questionId: question.id,
+                label: question.label,
+                value: customAnswers[question.id] ?? "",
+              }),
+            ),
           });
         }}
       >
@@ -124,6 +144,66 @@ export function ApplicationDialog({
             }
           />
         </Field>
+        {(event.applicationQuestions ?? []).map((question) => (
+          <Field key={question.id} label={question.label}>
+            {question.type === "textarea" ? (
+              <textarea
+                required={question.required}
+                maxLength={1000}
+                value={String(customAnswers[question.id] ?? "")}
+                onChange={(changeEvent) =>
+                  setCustomAnswers((current) => ({
+                    ...current,
+                    [question.id]: changeEvent.target.value,
+                  }))
+                }
+              />
+            ) : question.type === "select" ? (
+              <select
+                required={question.required}
+                value={String(customAnswers[question.id] ?? "")}
+                onChange={(changeEvent) =>
+                  setCustomAnswers((current) => ({
+                    ...current,
+                    [question.id]: changeEvent.target.value,
+                  }))
+                }
+              >
+                <option value="">選択してください</option>
+                {(question.options ?? []).map((option) => (
+                  <option key={option}>{option}</option>
+                ))}
+              </select>
+            ) : question.type === "checkbox" ? (
+              <label>
+                <input
+                  type="checkbox"
+                  required={question.required}
+                  checked={Boolean(customAnswers[question.id])}
+                  onChange={(changeEvent) =>
+                    setCustomAnswers((current) => ({
+                      ...current,
+                      [question.id]: changeEvent.target.checked,
+                    }))
+                  }
+                />
+                確認しました
+              </label>
+            ) : (
+              <input
+                required={question.required}
+                maxLength={1000}
+                value={String(customAnswers[question.id] ?? "")}
+                onChange={(changeEvent) =>
+                  setCustomAnswers((current) => ({
+                    ...current,
+                    [question.id]: changeEvent.target.value,
+                  }))
+                }
+              />
+            )}
+          </Field>
+        ))}
         <Field label="配慮してほしいこと（任意）">
           <textarea
             maxLength={500}

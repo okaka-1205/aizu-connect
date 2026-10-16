@@ -7,6 +7,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  Timestamp,
   where,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
@@ -24,7 +25,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { NoticeBanner } from "../../components/ui/AppPrimitives";
 import { useNoticeState } from "../../hooks/useNoticeState";
-import { db, functions } from "../../lib/firebase";
+import { auth, db, functions } from "../../lib/firebase";
+import { saveAdminAssignment } from "../../repositories/engagementRepository";
 import {
   getFirebaseErrorMessage,
   isAizuUniversityEmail,
@@ -48,6 +50,60 @@ import {
   RoleShell,
 } from "../shared/RoleScreenPrimitives";
 import { AdminOverview } from "./components/AdminOverview";
+
+function AssignmentControls({
+  targetType,
+  targetId,
+}: {
+  targetType: "event" | "user" | "report" | "deletion";
+  targetId: string;
+}) {
+  const [dueDate, setDueDate] = useState("");
+  const [status, setStatus] = useState<"open" | "in_progress" | "done">(
+    "open",
+  );
+  const [saved, setSaved] = useState(false);
+  return (
+    <div className="admin-assignment-controls">
+      <select
+        aria-label="対応状況"
+        value={status}
+        onChange={(event) =>
+          setStatus(event.target.value as "open" | "in_progress" | "done")
+        }
+      >
+        <option value="open">未対応</option>
+        <option value="in_progress">対応中</option>
+        <option value="done">完了</option>
+      </select>
+      <input
+        type="date"
+        aria-label="対応期限"
+        value={dueDate}
+        onChange={(event) => setDueDate(event.target.value)}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          const user = auth.currentUser;
+          if (!user) return;
+          void saveAdminAssignment({
+            targetType,
+            targetId,
+            assigneeId: user.uid,
+            assigneeName: user.email ?? "管理者",
+            status,
+            dueAt: dueDate
+              ? Timestamp.fromDate(new Date(`${dueDate}T23:59:59`))
+              : undefined,
+          }).then(() => setSaved(true));
+        }}
+      >
+        {saved ? "担当済み" : "自分が担当"}
+      </button>
+    </div>
+  );
+}
 
 export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [pendingEvents, setPendingEvents] = useState<AizuEvent[]>([]);
@@ -655,6 +711,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             ) : (
               visiblePendingEvents.map((event) => (
                 <article className="admin-review-item" key={event.id}>
+                  <AssignmentControls targetType="event" targetId={event.id} />
                   <div className="review-row">
                     <div>
                       <strong>{event.title}</strong>
@@ -807,6 +864,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             ) : (
               visiblePendingUsers.map((user) => (
                 <div className="review-row" key={user.uid}>
+                  <AssignmentControls targetType="user" targetId={user.uid} />
                   <div>
                     <strong>{user.displayName}</strong>
                     <small>
@@ -909,6 +967,10 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 } as AppUser);
               return (
                 <div className="review-row" key={request.userId}>
+                  <AssignmentControls
+                    targetType="deletion"
+                    targetId={request.userId}
+                  />
                   <div>
                     <strong>{deletionTarget.displayName}</strong>
                     <small>
@@ -982,6 +1044,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           >
             {visiblePendingReports.map((report) => (
               <div className="review-row" key={report.id}>
+                <AssignmentControls targetType="report" targetId={report.id} />
                 <div>
                   <strong>{report.targetTitle || "対象コンテンツ"}</strong>
                   <small>

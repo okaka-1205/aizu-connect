@@ -27,28 +27,25 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 const appCheckSiteKey = import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY;
-let appCheckInstance: AppCheck | null = null;
+const appCheckInstance: AppCheck | null =
+  import.meta.env.PROD &&
+  typeof appCheckSiteKey === "string" &&
+  appCheckSiteKey.length > 0
+    ? initializeAppCheck(app, {
+        provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+        isTokenAutoRefreshEnabled: true,
+      })
+    : null;
 let appCheckReady: Promise<void> | null = null;
 
 /**
- * Start App Check only when a protected Firebase operation is about to run.
- * This keeps the public sign-in screen lightweight while preserving enforced
- * App Check for authentication and authenticated data access.
+ * Resolve an App Check token only when a protected Firebase operation is about
+ * to run. The provider itself is registered before Auth is initialized so the
+ * Auth SDK can attach the token when App Check enforcement is enabled.
  */
 export const ensureAppCheck = (): Promise<void> => {
-  if (
-    !import.meta.env.PROD ||
-    typeof appCheckSiteKey !== "string" ||
-    appCheckSiteKey.length === 0
-  ) {
-    return Promise.resolve();
-  }
-
   if (!appCheckInstance) {
-    appCheckInstance = initializeAppCheck(app, {
-      provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
-      isTokenAutoRefreshEnabled: true,
-    });
+    return Promise.resolve();
   }
 
   if (!appCheckReady) {

@@ -209,8 +209,9 @@ export function SearchTab(props: {
   searchView: SearchView;
   setSearchView: (value: SearchView) => void;
   savedSearch: SavedSearch | null;
+  savedSearches?: SavedSearch[];
   onSaveSearch: () => void;
-  onApplySavedSearch: () => void;
+  onApplySavedSearch: (search?: SavedSearch) => void;
   onlyAvailableEvents: boolean;
   setOnlyAvailableEvents: (value: boolean) => void;
   onlyBeginnerEvents: boolean;
@@ -465,12 +466,32 @@ export function SearchTab(props: {
           </button>
         </div>
         <div className="saved-search-actions">
-          {props.savedSearch && (
-            <button type="button" onClick={props.onApplySavedSearch}>
-              <RefreshCw size={14} />
-              保存条件を適用
+          {(props.savedSearches?.length ?? 0) > 0 ? (
+            <select
+              aria-label="保存した検索条件"
+              defaultValue=""
+              onChange={(event) => {
+                const search = props.savedSearches?.find(
+                  (item) => item.id === event.target.value,
+                );
+                if (search) props.onApplySavedSearch(search);
+              }}
+            >
+              <option value="">保存条件を選択</option>
+              {props.savedSearches?.map((search) => (
+                <option key={search.id} value={search.id}>
+                  {search.name || search.searchText || "保存した条件"}
+                </option>
+              ))}
+            </select>
+          ) : props.savedSearch ? (
+            <button
+              type="button"
+              onClick={() => props.onApplySavedSearch(props.savedSearch ?? undefined)}
+            >
+              <RefreshCw size={14} />保存条件を適用
             </button>
-          )}
+          ) : null}
           <button type="button" onClick={props.onSaveSearch}>
             <Bell size={14} />
             この条件を保存

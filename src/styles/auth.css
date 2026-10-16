@@ -52,7 +52,7 @@
 }
 .auth-visual p:not(.eyebrow) {
   margin: 23px 0 0;
-  color: #dceaff;
+  color: #fff;
   font-size: 16px;
   line-height: 2;
 }
@@ -62,7 +62,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #dceaff;
+  color: #fff;
   font-size: 12px;
   font-weight: 800;
 }

@@ -50,6 +50,12 @@ service firebase.storage {
       );
     }
 
+    function isRoomMember(roomId, uid) {
+      return firestore.exists(
+          /databases/(default)/documents/chatRooms/$(roomId)/members/$(uid)
+        ) || uid in roomRef(roomId).data.participantIds;
+    }
+
     function validChatAttachment() {
       return request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches(
@@ -64,15 +70,25 @@ service firebase.storage {
 
     match /event-images/{organizationId}/{eventId}/{fileName} {
       allow read: if activeCreator(request.auth.uid) || activeAdmin();
-      allow write: if activeCreator(organizationId) && validImage();
+      allow write: if activeCreator(organizationId)
+        && validImage();
+    }
+
+    match /event-reports/{organizationId}/{eventId}/{fileName} {
+      allow read: if activeCreator(request.auth.uid) || activeAdmin();
+      allow write: if activeOrganization(organizationId)
+        && firestore.get(
+          /databases/(default)/documents/events/$(eventId)
+        ).data.createdBy == organizationId
+        && validImage();
     }
 
     match /chat-attachments/{roomId}/{userId}/{fileName} {
       allow read: if activeCreator(request.auth.uid)
-        && request.auth.uid in roomRef(roomId).data.participantIds;
+        && isRoomMember(roomId, request.auth.uid);
       allow write: if activeCreator(userId)
         && request.auth.uid == userId
-        && request.auth.uid in roomRef(roomId).data.participantIds
+        && isRoomMember(roomId, request.auth.uid)
         && roomRef(roomId).data.status == 'active'
         && validChatAttachment();
     }

@@ -124,7 +124,7 @@
 }
 .event-guidance-list dt {
   margin-bottom: 3px;
-  color: #7c8fa4;
+  color: var(--muted);
   font-size: 9px;
   font-weight: 900;
 }
@@ -141,7 +141,7 @@
 }
 .organizer-card p {
   margin: 5px 0;
-  color: #647890;
+  color: var(--muted);
   font-size: 10px;
   line-height: 1.55;
 }
@@ -334,7 +334,7 @@
 .conversation-item time {
   display: block;
   margin-top: 3px;
-  color: #a0aebe;
+  color: var(--muted);
   font-size: 8px;
 }
 .chat-head-actions {
@@ -365,7 +365,7 @@
   align-items: center;
   align-self: stretch;
   gap: 8px;
-  color: #8a9bae;
+  color: var(--muted);
   font-size: 9px;
   font-weight: 800;
 }
@@ -379,12 +379,12 @@
 .chat-message-time {
   display: block;
   margin-top: 4px;
-  color: #90a0b2;
+  color: var(--muted);
   font-size: 8px;
   text-align: right;
 }
 .chat-message.mine .chat-message-time {
-  color: #587796;
+  color: var(--muted);
 }
 .chat-image-link {
   display: block;
@@ -505,7 +505,7 @@
   gap: 2px;
 }
 .check-in-panel small {
-  color: #608272;
+  color: var(--muted);
   font-size: 9px;
   font-weight: 850;
 }
@@ -513,6 +513,12 @@
   color: #226b4e;
   font-size: 20px;
   letter-spacing: 0.12em;
+}
+.check-in-qr {
+  width: 80px;
+  height: 80px;
+  flex: 0 0 80px;
+  border-radius: 6px;
 }
 .participant-toolbar {
   align-items: stretch;
@@ -675,7 +681,7 @@
   line-height: 1.55;
 }
 .action-reason-dialog > p {
-  color: #647890;
+  color: var(--muted);
   font-size: 11px;
   line-height: 1.6;
 }
@@ -748,6 +754,16 @@
   }
 }
 @media (max-width: 620px) {
+  .check-in-panel {
+    flex-wrap: wrap;
+  }
+
+  .check-in-qr {
+    width: 72px;
+    height: 72px;
+    flex-basis: 72px;
+  }
+
   .management-nav {
     display: flex;
     overflow-x: auto;
@@ -2470,6 +2486,23 @@ body,
 }
 
 @media (max-width: 620px) {
+  .role-header {
+    width: calc(100% - 28px);
+    max-width: 560px;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .role-header > .brand-lockup {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .role-header-user {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+
   .role-header-user > svg,
   .role-header-user > strong {
     display: none;
@@ -2481,7 +2514,7 @@ body,
   }
 
   .role-header-user:not(.has-home-action) > strong {
-    max-width: 104px;
+    max-width: min(104px, 25vw);
     overflow: hidden;
     font-size: 11px;
     text-overflow: ellipsis;

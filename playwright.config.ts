@@ -1,17 +1,26 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Playwright enables colored output for its child processes. In environments
+// that export NO_COLOR globally, keeping both variables produces a Node warning.
+delete process.env.NO_COLOR;
+
 const testPort = Number(process.env.PLAYWRIGHT_TEST_PORT ?? 5173);
 const testBaseUrl = `http://127.0.0.1:${testPort}`;
 
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
+  retries: process.env.CI ? 1 : 0,
+  workers: process.env.CI ? 2 : 3,
   expect: {
     timeout: 10_000,
   },
   use: {
     baseURL: testBaseUrl,
-    trace: "on-first-retry",
+    reducedMotion: "reduce",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
   },
   webServer: {
     command: `npm run dev:test -- --host 127.0.0.1 --port ${testPort} --strictPort`,
@@ -37,6 +46,14 @@ export default defineConfig({
         isMobile: true,
         hasTouch: true,
       },
+    },
+    {
+      name: "firefox",
+      use: { ...devices["Desktop Firefox"] },
+    },
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
     },
   ],
 });

@@ -8,6 +8,7 @@ import {
   isCheckInWindowOpen,
   isApplicationWindowOpen,
   isMissingStorageBucketError,
+  normalizeApplicationAnswers,
   evaluateCheckInAttempt,
   normalizeEventPlanInput,
   shouldDecrementApplicantCount,
@@ -136,6 +137,26 @@ const deleteMatchingDocuments = async (
         if (beforeDelete) await beforeDelete(document.id);
         await db.recursiveDelete(document.ref);
       }),
+    );
+  }
+};
+
+const deleteCollectionGroupDocuments = async (
+  collectionId: string,
+  field: string,
+  value: string,
+) => {
+  let hasDocuments = true;
+  while (hasDocuments) {
+    const snapshot = await db
+      .collectionGroup(collectionId)
+      .where(field, "==", value)
+      .limit(100)
+      .get();
+    hasDocuments = !snapshot.empty;
+    if (snapshot.empty) continue;
+    await Promise.all(
+      snapshot.docs.map((document) => db.recursiveDelete(document.ref)),
     );
   }
 };
@@ -316,6 +337,9 @@ const deleteEventData = async (
     typeof eventData?.createdBy === "string" ?
       `event-images/${eventData.createdBy}/${eventId}/` :
       "",
+    typeof eventData?.createdBy === "string" ?
+      `event-reports/${eventData.createdBy}/${eventId}/` :
+      "",
   ];
   await Promise.all([
     deleteMatchingDocuments("eventApplications", "eventId", eventId),
@@ -325,7 +349,10 @@ const deleteEventData = async (
     deleteMatchingDocuments("savedEvents", "eventId", eventId),
     deleteMatchingDocuments("checkInAttempts", "eventId", eventId),
     deleteMatchingDocuments("notifications", "targetId", eventId),
+    deleteMatchingDocuments("adminAssignments", "targetId", eventId),
     db.recursiveDelete(db.doc(`eventCheckIns/${eventId}`)),
+    db.recursiveDelete(db.doc(`eventReports/${eventId}`)),
+    db.recursiveDelete(db.doc(`eventSurveys/${eventId}`)),
   ]);
   await deleteStoragePrefixes(storagePrefixes);
   await db.recursiveDelete(db.doc(`events/${eventId}`));
@@ -426,16 +453,51 @@ const deleteUserData = async (
     }
   }
 
+  let hasMemberships = true;
+  while (hasMemberships) {
+    const memberships = await db
+      .collectionGroup("members")
+      .where("userId", "==", userId)
+      .limit(100)
+      .get();
+    hasMemberships = !memberships.empty;
+    for (const membership of memberships.docs) {
+      const roomRef = membership.ref.parent.parent;
+      if (!roomRef) {
+        await membership.ref.delete();
+        continue;
+      }
+      const room = await roomRef.get();
+      storagePrefixes.push(`chat-attachments/${room.id}/${userId}/`);
+      if (room.data()?.roomType === "event") {
+        await anonymizeEventRoomMessages(roomRef, userId);
+        await membership.ref.delete();
+        await roomRef.update({
+          memberCount: FieldValue.increment(-1),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        await db.recursiveDelete(roomRef);
+      }
+    }
+  }
+
   await resolveReportsForTarget("user", userId, resolution);
   await anonymizeReportsByReporter(userId);
   await Promise.all([
     deleteMatchingDocuments("activities", "userId", userId),
     deleteMatchingDocuments("notifications", "recipientId", userId),
     deleteMatchingDocuments("savedEvents", "userId", userId),
+    deleteMatchingDocuments("savedSearches", "userId", userId),
+    deleteMatchingDocuments("savedOrganizers", "userId", userId),
+    deleteMatchingDocuments("savedOrganizers", "organizationId", userId),
+    deleteMatchingDocuments("userBlocks", "blockerId", userId),
+    deleteMatchingDocuments("userBlocks", "blockedId", userId),
     deleteMatchingDocuments("chatPreferences", "userId", userId),
     deleteMatchingDocuments("checkInAttempts", "userId", userId),
+    deleteMatchingDocuments("adminAssignments", "assigneeId", userId),
+    deleteCollectionGroupDocuments("responses", "userId", userId),
     db.recursiveDelete(db.doc(`notificationPreferences/${userId}`)),
-    db.recursiveDelete(db.doc(`savedSearches/${userId}_default`)),
     db.recursiveDelete(db.doc(`studentProfiles/${userId}`)),
     db.recursiveDelete(db.doc(`organizations/${userId}`)),
     db.recursiveDelete(db.doc(`publicOrganizerProfiles/${userId}`)),
@@ -911,6 +973,18 @@ export const saveEventPlan = onCall(
         ...plan,
         startAt,
         endAt,
+        cancellationDeadline:
+          plan.cancellationDeadlineMillis === undefined ?
+            Timestamp.fromMillis(
+              Math.max(
+                plan.startAtMillis - 24 * 60 * 60 * 1000,
+                Math.min(
+                  plan.startAtMillis - 60_000,
+                  Date.now() + 60 * 60 * 1000,
+                ),
+              ),
+            ) :
+            Timestamp.fromMillis(plan.cancellationDeadlineMillis),
         startAtLabel: new Intl.DateTimeFormat("ja-JP", {
           timeZone: "Asia/Tokyo",
           year: "numeric",
@@ -940,10 +1014,13 @@ export const saveEventPlan = onCall(
       };
       delete (eventData as Record<string, unknown>).startAtMillis;
       delete (eventData as Record<string, unknown>).endAtMillis;
+      delete (eventData as Record<string, unknown>).cancellationDeadlineMillis;
       if (mode === "create") {
         transaction.create(eventRef, {
           ...eventData,
           applicantCount: 0,
+          popularityScore: 0,
+          waitlistNextSequence: 1,
           createdAt: FieldValue.serverTimestamp(),
         });
       } else {
@@ -979,6 +1056,9 @@ export const submitApplication = onCall(
     const sensitiveInfoConsent = request.data?.sensitiveInfoConsent === true;
     const emergencyContactAuthorityConfirmed =
       request.data?.emergencyContactAuthorityConfirmed === true;
+    const submittedAnswers = Array.isArray(request.data?.answers) ?
+      request.data.answers :
+      [];
     if (!userId) throw new HttpsError("unauthenticated", "Login required.");
     if (!isFunctionsEmulator && request.auth?.token.email_verified !== true) {
       throw new HttpsError(
@@ -1002,6 +1082,23 @@ export const submitApplication = onCall(
         "Application details are invalid.",
       );
     }
+    if (
+      submittedAnswers.length > 8 ||
+      !submittedAnswers.every((answer: unknown) => {
+        if (!answer || typeof answer !== "object") return false;
+        const item = answer as Record<string, unknown>;
+        return typeof item.questionId === "string" &&
+          item.questionId.length >= 1 && item.questionId.length <= 40 &&
+          typeof item.label === "string" && item.label.length <= 120 &&
+          ((typeof item.value === "string" && item.value.length <= 1000) ||
+            typeof item.value === "boolean");
+      })
+    ) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Application answers are invalid.",
+      );
+    }
 
     const applicationId = `${eventId}_${userId}`;
     const applicationRef = db.doc(`eventApplications/${applicationId}`);
@@ -1013,10 +1110,18 @@ export const submitApplication = onCall(
     const provisionLogRef = db.doc(`thirdPartyProvisionLogs/${applicationId}`);
     let applicationStatus: "pending" | "waitlisted" = "pending";
     let waitlistPosition = 0;
+    let waitlistSequence = 0;
+    let validatedAnswers: Array<{
+      questionId: string;
+      label: string;
+      value: string | boolean;
+    }> = [];
 
     await db.runTransaction(async (transaction) => {
       applicationStatus = "pending";
       waitlistPosition = 0;
+      waitlistSequence = 0;
+      validatedAnswers = [];
       const [userSnapshot, eventSnapshot, applicationSnapshot] =
         await transaction.getAll(userRef, eventRef, applicationRef);
       if (!userSnapshot.exists || userSnapshot.data()?.role !== "student") {
@@ -1055,18 +1160,26 @@ export const submitApplication = onCall(
           "Event application period has ended.",
         );
       }
+      const normalizedAnswers = normalizeApplicationAnswers(
+        eventData.applicationQuestions,
+        submittedAnswers,
+      );
+      if (!normalizedAnswers) {
+        throw new HttpsError(
+          "invalid-argument",
+          "申込質問への回答を確認してください。",
+        );
+      }
+      validatedAnswers = normalizedAnswers;
       const currentCount = Number(eventData.applicantCount ?? 0);
       const capacity = Number(eventData.capacity ?? 0);
       if (capacity > 0 && currentCount >= capacity) {
         applicationStatus = "waitlisted";
-        const waitlistSnapshot = await transaction.get(
-          db
-            .collection("eventApplications")
-            .where("eventId", "==", eventId)
-            .where("status", "==", "waitlisted")
-            .limit(500),
+        waitlistSequence = Math.max(
+          1,
+          Number(eventData.waitlistNextSequence ?? 1),
         );
-        waitlistPosition = waitlistSnapshot.size + 1;
+        waitlistPosition = waitlistSequence;
       }
       const organizationId = eventData.createdBy;
       if (typeof organizationId !== "string" || !organizationId) {
@@ -1079,9 +1192,14 @@ export const submitApplication = onCall(
         eventTitle: eventData.title,
         studentId: userId,
         studentName: userSnapshot.data()?.displayName ?? "学生",
+        studentNameLower: String(
+          userSnapshot.data()?.displayName ?? "学生",
+        ).toLocaleLowerCase("ja-JP"),
         studentProfileImageUrl: userSnapshot.data()?.profileImageUrl ?? null,
         organizationName: eventData.organizationName,
         organizationId,
+        eventStartAt: eventData.startAt,
+        eventEndAt: eventData.endAt ?? eventData.startAt,
         status: applicationStatus,
         participantMessage,
         accessibilityNeeds,
@@ -1089,12 +1207,23 @@ export const submitApplication = onCall(
         consentAccepted,
         sensitiveInfoConsent,
         emergencyContactAuthorityConfirmed,
-        ...(applicationStatus === "waitlisted" ? {waitlistPosition} : {}),
+        answers: validatedAnswers,
+        ...(applicationStatus === "waitlisted" ? {
+          waitlistPosition,
+          waitlistSequence,
+        } : {}),
         createdAt: FieldValue.serverTimestamp(),
       });
       if (applicationStatus === "pending") {
         transaction.update(eventRef, {
           applicantCount: FieldValue.increment(1),
+          popularityScore: FieldValue.increment(1),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        transaction.update(eventRef, {
+          waitlistNextSequence: waitlistSequence + 1,
+          popularityScore: FieldValue.increment(1),
           updatedAt: FieldValue.serverTimestamp(),
         });
       }
@@ -1109,6 +1238,7 @@ export const submitApplication = onCall(
         organizationName: eventData.organizationName,
         organizationId,
         participantIds: [userId, organizationId],
+        memberCount: 2,
         status: "active",
         lastMessageText:
           applicationStatus === "waitlisted" ?
@@ -1129,7 +1259,7 @@ export const submitApplication = onCall(
           studentName: "",
           organizationName: eventData.organizationName,
           organizationId,
-          participantIds: FieldValue.arrayUnion(userId, organizationId),
+          memberCount: FieldValue.increment(1),
           status: "active",
           lastMessageText:
             "イベント全体チャットに参加しました。過去のやり取りも確認できます。",
@@ -1139,6 +1269,30 @@ export const submitApplication = onCall(
         },
         {merge: true},
       );
+      transaction.set(roomRef.collection("members").doc(userId), {
+        userId,
+        role: "student",
+        displayName: userSnapshot.data()?.displayName ?? "学生",
+        joinedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.set(roomRef.collection("members").doc(organizationId), {
+        userId: organizationId,
+        role: "organization",
+        displayName: eventData.organizationName,
+        joinedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.set(eventRoomRef.collection("members").doc(userId), {
+        userId,
+        role: "student",
+        displayName: userSnapshot.data()?.displayName ?? "学生",
+        joinedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.set(eventRoomRef.collection("members").doc(organizationId), {
+        userId: organizationId,
+        role: "organization",
+        displayName: eventData.organizationName,
+        joinedAt: FieldValue.serverTimestamp(),
+      });
       transaction.create(messageRef, {
         roomId: applicationId,
         senderId: userId,
@@ -1191,7 +1345,7 @@ export const createEventChatRoom = onDocumentCreated(
         studentName: "",
         organizationName: eventData.organizationName,
         organizationId: eventData.createdBy,
-        participantIds: [eventData.createdBy],
+        memberCount: 1,
         status: "active",
         lastMessageText: "イベント全体チャットを作成しました。",
         lastMessageAt: FieldValue.serverTimestamp(),
@@ -1199,6 +1353,12 @@ export const createEventChatRoom = onDocumentCreated(
       },
       {merge: true},
     );
+    await db.doc(`chatRooms/${roomId}/members/${eventData.createdBy}`).set({
+      userId: eventData.createdBy,
+      role: "organization",
+      displayName: eventData.organizationName,
+      joinedAt: FieldValue.serverTimestamp(),
+    });
     await db.doc(`chatRooms/${roomId}/messages/welcome`).set({
       roomId,
       senderId: "system",
@@ -1219,6 +1379,87 @@ export const createEventChatRoom = onDocumentCreated(
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
+  },
+);
+
+export const manageChatMessage = onCall(
+  {enforceAppCheck: enforceCallableAppCheck},
+  async (request) => {
+    const userId = request.auth?.uid;
+    if (!userId) throw new HttpsError("unauthenticated", "ログインが必要です。");
+    const roomId = requiredDocumentId(request.data?.roomId);
+    const messageId = requiredDocumentId(request.data?.messageId);
+    const action = String(request.data?.action ?? "");
+    if (!isFunctionsEmulator && request.auth?.token.email_verified !== true) {
+      throw new HttpsError("permission-denied", "メール認証が必要です。");
+    }
+    const userSnapshot = await db.doc(`users/${userId}`).get();
+    if (
+      !userSnapshot.exists ||
+      userSnapshot.data()?.status !== "active" ||
+      !["student", "organization"].includes(String(userSnapshot.data()?.role))
+    ) {
+      throw new HttpsError("permission-denied", "有効なアカウントが必要です。");
+    }
+    const roomRef = db.doc(`chatRooms/${roomId}`);
+    const memberRef = roomRef.collection("members").doc(userId);
+    const messageRef = roomRef.collection("messages").doc(messageId);
+    await db.runTransaction(async (transaction) => {
+      const [roomSnapshot, memberSnapshot, messageSnapshot] =
+        await transaction.getAll(roomRef, memberRef, messageRef);
+      const roomData = roomSnapshot.data();
+      const legacyMember = Array.isArray(roomData?.participantIds) &&
+        roomData.participantIds.includes(userId);
+      if (!roomSnapshot.exists || (!memberSnapshot.exists && !legacyMember)) {
+        throw new HttpsError("permission-denied", "チャット参加者ではありません。");
+      }
+      const messageData = messageSnapshot.data();
+      if (!messageSnapshot.exists || messageData?.senderId !== userId) {
+        throw new HttpsError(
+          "permission-denied",
+          "自分のメッセージだけ変更できます。",
+        );
+      }
+      if (messageData?.deletedAt) {
+        throw new HttpsError("failed-precondition", "削除済みです。");
+      }
+      if (action === "edit") {
+        const text = String(request.data?.text ?? "").trim();
+        if (!text || text.length > 2000) {
+          throw new HttpsError(
+            "invalid-argument",
+            "メッセージは1〜2000文字で入力してください。",
+          );
+        }
+        const history = Array.isArray(messageData.editHistory) ?
+          messageData.editHistory.slice(-19) : [];
+        transaction.update(messageRef, {
+          text,
+          editedAt: FieldValue.serverTimestamp(),
+          editHistory: [
+            ...history,
+            {
+              text: String(messageData.text ?? "").slice(0, 2000),
+              editedAt: Timestamp.now(),
+            },
+          ],
+        });
+        return;
+      }
+      if (action === "delete") {
+        transaction.update(messageRef, {
+          text: "このメッセージは削除されました。",
+          attachmentUrl: FieldValue.delete(),
+          attachmentName: FieldValue.delete(),
+          attachmentType: FieldValue.delete(),
+          attachmentSize: FieldValue.delete(),
+          deletedAt: FieldValue.serverTimestamp(),
+        });
+        return;
+      }
+      throw new HttpsError("invalid-argument", "操作が不正です。");
+    });
+    return {status: action === "edit" ? "edited" : "deleted"};
   },
 );
 

@@ -50,7 +50,7 @@ await db.doc("users/admin-approval-e2e").set({
   updatedAt: timestamp,
 });
 
-for (const variant of ["desktop", "mobile", "tablet"]) {
+for (const variant of ["desktop", "mobile", "tablet", "firefox", "webkit"]) {
   const uid = `approval-sync-${variant}`;
   const email = `${uid}@example.com`;
   const displayName = `承認同期テスト ${variant}`;

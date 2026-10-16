@@ -25,7 +25,7 @@ const auth = getAuth();
 const db = getFirestore();
 const bucket = getStorage().bucket();
 
-for (const variant of ["desktop", "mobile", "tablet"]) {
+for (const variant of ["desktop", "mobile", "tablet", "firefox", "webkit"]) {
   const userId = `admin-delete-user-${variant}`;
   const eventId = `admin-delete-event-${variant}`;
   const roomId = `${eventId}_${userId}`;

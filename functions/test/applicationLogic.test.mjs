@@ -10,6 +10,7 @@ import {
   isApplicationWindowOpen,
   isMissingStorageBucketError,
   matchesSavedSearch,
+  normalizeApplicationAnswers,
   normalizeEventPlanInput,
   reminderBucketForHoursUntil,
   reminderNotificationPath,
@@ -267,6 +268,147 @@ describe("event plan validation", () => {
     );
     assert.equal(paidPlan?.feeAmount, 3000);
     assert.equal(paidPlan?.paymentMethod, "当日現金");
+  });
+
+  it("normalizes application questions and a cancellation deadline", () => {
+    const now = Date.parse("2026-07-01T00:00:00.000Z");
+    const cancellationDeadlineMillis = Date.parse(
+      "2026-07-31T09:00:00.000Z",
+    );
+    const result = normalizeEventPlanInput(
+      {
+        ...validPlan,
+        cancellationDeadlineMillis,
+        applicationQuestions: [
+          {
+            id: "motivation",
+            label: "参加目的",
+            type: "textarea",
+            required: true,
+            options: [],
+          },
+          {
+            id: "transport",
+            label: "交通手段",
+            type: "select",
+            required: false,
+            options: ["徒歩", "公共交通"],
+          },
+        ],
+      },
+      now,
+    );
+    assert.equal(result?.cancellationDeadlineMillis, cancellationDeadlineMillis);
+    assert.equal(result?.applicationQuestions.length, 2);
+    assert.deepEqual(result?.applicationQuestions[1].options, [
+      "徒歩",
+      "公共交通",
+    ]);
+  });
+
+  it("rejects malformed questions and a deadline after the event starts", () => {
+    const now = Date.parse("2026-07-01T00:00:00.000Z");
+    assert.equal(
+      normalizeEventPlanInput(
+        {
+          ...validPlan,
+          applicationQuestions: [
+            {
+              id: "transport",
+              label: "交通手段",
+              type: "select",
+              required: true,
+              options: ["徒歩"],
+            },
+          ],
+        },
+        now,
+      ),
+      null,
+    );
+    assert.equal(
+      normalizeEventPlanInput(
+        {
+          ...validPlan,
+          cancellationDeadlineMillis: validPlan.startAtMillis + 1,
+        },
+        now,
+      ),
+      null,
+    );
+  });
+});
+
+describe("application question validation", () => {
+  const questions = [
+    {
+      id: "motivation",
+      label: "参加目的",
+      type: "textarea",
+      required: true,
+      options: [],
+    },
+    {
+      id: "transport",
+      label: "交通手段",
+      type: "select",
+      required: false,
+      options: ["徒歩", "公共交通"],
+    },
+  ];
+
+  it("uses server-side labels and accepts configured values", () => {
+    assert.deepEqual(
+      normalizeApplicationAnswers(questions, [
+        {
+          questionId: "motivation",
+          label: "改ざんされたラベル",
+          value: "地域の方と交流したいです。",
+        },
+        {
+          questionId: "transport",
+          label: "任意",
+          value: "徒歩",
+        },
+      ]),
+      [
+        {
+          questionId: "motivation",
+          label: "参加目的",
+          value: "地域の方と交流したいです。",
+        },
+        {
+          questionId: "transport",
+          label: "交通手段",
+          value: "徒歩",
+        },
+      ],
+    );
+  });
+
+  it("rejects missing required, duplicate, unknown, and invalid select answers", () => {
+    assert.equal(normalizeApplicationAnswers(questions, []), null);
+    assert.equal(
+      normalizeApplicationAnswers(questions, [
+        { questionId: "motivation", value: "参加します" },
+        { questionId: "motivation", value: "重複" },
+      ]),
+      null,
+    );
+    assert.equal(
+      normalizeApplicationAnswers(questions, [
+        { questionId: "motivation", value: "参加します" },
+        { questionId: "unknown", value: "不正" },
+      ]),
+      null,
+    );
+    assert.equal(
+      normalizeApplicationAnswers(questions, [
+        { questionId: "motivation", value: "参加します" },
+        { questionId: "transport", value: "自家用車" },
+      ]),
+      null,
+    );
   });
 });
 

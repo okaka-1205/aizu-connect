@@ -6,15 +6,16 @@
     "build:watch": "tsc --watch",
     "test": "npm run build && node --test test/*.test.mjs",
     "coverage": "npm run build && node --test --experimental-test-coverage test/*.test.mjs",
-    "serve": "npm run build && npx -y firebase-tools@latest emulators:start --only functions",
-    "shell": "npm run build && npx -y firebase-tools@latest functions:shell",
+    "serve": "npm run build && npx -y --package=node@24 --package=firebase-tools@latest firebase emulators:start --only functions",
+    "shell": "npm run build && npx -y --package=node@24 --package=firebase-tools@latest firebase functions:shell",
     "start": "npm run shell",
     "admin:create": "node scripts/create-admin.mjs",
     "admin:reset-non-admin": "node scripts/reset-non-admin-accounts.mjs",
     "admin:seed-emulator": "node scripts/seed-emulator-admin.mjs",
+    "admin:migrate-chat-members": "node scripts/migrate-chat-members.mjs",
     "emulator:verify-user": "node scripts/verify-emulator-user.mjs",
-    "deploy": "npx -y firebase-tools@latest deploy --only functions",
-    "logs": "npx -y firebase-tools@latest functions:log"
+    "deploy": "npx -y --package=node@24 --package=firebase-tools@latest firebase deploy --only functions",
+    "logs": "npx -y --package=node@24 --package=firebase-tools@latest firebase functions:log"
   },
   "engines": {
     "node": "24"

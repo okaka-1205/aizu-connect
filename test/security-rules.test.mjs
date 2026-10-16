@@ -14,6 +14,9 @@ const PROJECT_ID = "demo-aizu-connect-rules";
 const timestamp = firebase.firestore.Timestamp.fromDate(
   new Date("2026-01-01T00:00:00.000Z"),
 );
+const farFutureTimestamp = firebase.firestore.Timestamp.fromDate(
+  new Date("2099-01-01T00:00:00.000Z"),
+);
 const legalConsent = {
   termsVersion: "2026-08-01",
   privacyVersion: "2026-08-01",
@@ -208,6 +211,7 @@ const savedEventDoc = (userId = "student-1", overrides = {}) => ({
 
 const savedSearchDoc = (userId = "student-1", overrides = {}) => ({
   userId,
+  name: "地域・無料",
   searchText: "地域",
   category: "すべて",
   dateFilter: "今月",
@@ -365,6 +369,27 @@ const seedData = async () => {
           createdBy: "org-2",
         }),
       ),
+      db.doc("events/event-new").set(
+        eventDoc({ status: "pending_review", title: "New Event" }),
+      ),
+      db.doc("events/event-student").set(
+        eventDoc({
+          status: "pending_review",
+          title: "Student Event",
+          organizationId: "student-1",
+          organizationName: "Student One",
+          createdBy: "student-1",
+        }),
+      ),
+      db.doc("events/event-future").set(
+        eventDoc({
+          title: "Future Event",
+          startAt: farFutureTimestamp,
+          endAt: firebase.firestore.Timestamp.fromDate(
+            new Date("2099-01-01T02:00:00.000Z"),
+          ),
+        }),
+      ),
       db.doc("eventApplications/app-1").set(applicationDoc()),
       db.doc("eventApplications/app-confirmed").set(
         applicationDoc({
@@ -379,6 +404,30 @@ const seedData = async () => {
           waitlistPosition: 1,
         }),
       ),
+      db.doc("eventApplications/app-future-confirmed").set(
+        applicationDoc({
+          id: "app-future-confirmed",
+          eventId: "event-future",
+          eventTitle: "Future Event",
+          status: "confirmed",
+        }),
+      ),
+      db.doc("eventApplications/app-future-pending-approve").set(
+        applicationDoc({
+          id: "app-future-pending-approve",
+          eventId: "event-future",
+          eventTitle: "Future Event",
+          status: "pending",
+        }),
+      ),
+      db.doc("eventApplications/app-future-pending-reject").set(
+        applicationDoc({
+          id: "app-future-pending-reject",
+          eventId: "event-future",
+          eventTitle: "Future Event",
+          status: "pending",
+        }),
+      ),
       db.doc("eventApplications/app-other-student").set(
         applicationDoc({
           id: "app-other-student",
@@ -386,7 +435,25 @@ const seedData = async () => {
           studentName: "Student Two",
         }),
       ),
+      db.doc("eventApplications/event-published_student-1").set(
+        applicationDoc({
+          id: "event-published_student-1",
+          status: "attended",
+        }),
+      ),
       db.doc("chatRooms/room-1").set(roomDoc()),
+      db.doc("chatRooms/room-1/members/student-1").set({
+        userId: "student-1",
+        role: "student",
+        displayName: "Student One",
+        joinedAt: timestamp,
+      }),
+      db.doc("chatRooms/room-1/members/org-1").set({
+        userId: "org-1",
+        role: "organization",
+        displayName: "Aizu Org",
+        joinedAt: timestamp,
+      }),
       db.doc("chatRooms/room-readonly").set(
         roomDoc({
           id: "room-readonly",
@@ -853,6 +920,18 @@ describe("users and profiles", () => {
       }),
     );
     await assertFails(
+      student.firestore().doc("users/student-1").update({
+        displayName: firebase.firestore.FieldValue.delete(),
+        updatedAt: timestamp,
+      }),
+    );
+    await assertFails(
+      student.firestore().doc("studentProfiles/student-1").update({
+        unexpectedPrivilege: true,
+        updatedAt: timestamp,
+      }),
+    );
+    await assertFails(
       student
         .firestore()
         .doc("users/student-1")
@@ -1206,6 +1285,31 @@ describe("event applications and activities", () => {
         status: "confirmed",
       }),
     );
+    await assertSucceeds(
+      organization.firestore().doc("eventApplications/app-1").update({
+        status: "attended",
+      }),
+    );
+    await assertFails(
+      organization
+        .firestore()
+        .doc("eventApplications/app-future-confirmed")
+        .update({
+          status: "attended",
+        }),
+    );
+    await assertSucceeds(
+      organization
+        .firestore()
+        .doc("eventApplications/app-future-pending-approve")
+        .update({ status: "confirmed" }),
+    );
+    await assertSucceeds(
+      organization
+        .firestore()
+        .doc("eventApplications/app-future-pending-reject")
+        .update({ status: "rejected" }),
+    );
     await assertFails(
       organization.firestore().doc("eventApplications/app-waitlisted").update({
         status: "confirmed",
@@ -1219,6 +1323,8 @@ describe("event applications and activities", () => {
     await assertSucceeds(
       student.firestore().doc("eventApplications/app-confirmed").update({
         status: "cancelled",
+        cancellationReason: "予定が重なったため",
+        cancelledAt: timestamp,
       }),
     );
     await assertFails(
@@ -1255,6 +1361,13 @@ describe("chat rooms and messages", () => {
   it("allows only participants to read and update active room summaries", async () => {
     const { student, otherStudent, organization } = contexts();
     await assertSucceeds(student.firestore().doc("chatRooms/room-1").get());
+    await assertSucceeds(
+      student
+        .firestore()
+        .collection("chatRooms")
+        .where("participantIds", "array-contains", "student-1")
+        .get(),
+    );
     await assertSucceeds(
       organization.firestore().doc("chatRooms/room-1").get(),
     );
@@ -1534,6 +1647,152 @@ describe("saved searches and operational records", () => {
     );
   });
 
+  it("exposes only the current user's room membership", async () => {
+    const { student, otherStudent, organization } = contexts();
+    const studentMember = "chatRooms/room-1/members/student-1";
+    await assertSucceeds(student.firestore().doc(studentMember).get());
+    await assertSucceeds(
+      student
+        .firestore()
+        .collectionGroup("members")
+        .where("userId", "==", "student-1")
+        .get(),
+    );
+    await assertFails(
+      student
+        .firestore()
+        .collectionGroup("members")
+        .where("userId", "==", "org-1")
+        .get(),
+    );
+    await assertFails(otherStudent.firestore().doc(studentMember).get());
+    await assertSucceeds(
+      organization.firestore().doc("chatRooms/room-1/members/org-1").get(),
+    );
+    await assertFails(
+      student.firestore().doc("chatRooms/room-1/members/student-2").set({
+        userId: "student-2",
+        role: "student",
+        displayName: "Student Two",
+        joinedAt: timestamp,
+      }),
+    );
+  });
+
+  it("keeps message edit history server-owned", async () => {
+    const { student, organization } = contexts();
+    await assertFails(
+      student.firestore().doc("chatRooms/room-1/messages/message-1").update({
+        text: "改ざんした本文",
+        editedAt: timestamp,
+        editHistory: [{ text: "Hello", editedAt: timestamp }],
+      }),
+    );
+    await assertFails(
+      organization
+        .firestore()
+        .doc("chatRooms/room-1/messages/message-1")
+        .update({ text: "他人による編集" }),
+    );
+  });
+
+  it("allows attendee surveys but rejects non-attendees", async () => {
+    const { student, otherStudent } = contexts();
+    const response = {
+      eventId: "event-published",
+      userId: "student-1",
+      rating: 5,
+      comment: "参加して良かったです。",
+      wouldRecommend: true,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    await assertSucceeds(
+      student
+        .firestore()
+        .doc("eventSurveys/event-published/responses/student-1")
+        .set(response),
+    );
+    await assertFails(
+      otherStudent
+        .firestore()
+        .doc("eventSurveys/event-published/responses/student-2")
+        .set({ ...response, userId: "student-2" }),
+    );
+  });
+
+  it("scopes favorites and user blocks to their owner", async () => {
+    const { student, otherStudent } = contexts();
+    await assertSucceeds(
+      student.firestore().doc("savedOrganizers/student-1_org-1").set({
+        userId: "student-1",
+        organizationId: "org-1",
+        organizationName: "Aizu Org",
+        createdAt: timestamp,
+      }),
+    );
+    await assertFails(
+      otherStudent.firestore().doc("savedOrganizers/student-1_org-1").get(),
+    );
+    await assertSucceeds(
+      student.firestore().doc("userBlocks/student-1_student-2").set({
+        blockerId: "student-1",
+        blockedId: "student-2",
+        reason: "迷惑行為",
+        createdAt: timestamp,
+      }),
+    );
+    await assertFails(
+      otherStudent.firestore().doc("userBlocks/student-1_student-2").get(),
+    );
+  });
+
+  it("allows event owners to publish reports and admins to assign cases", async () => {
+    const { student, organization, admin } = contexts();
+    const report = {
+      eventId: "event-published",
+      organizationId: "org-1",
+      title: "Aizu Event 活動報告",
+      summary: "地域の皆さんと交流しました。",
+      imageUrls: [],
+      participantCount: 10,
+      status: "published",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      publishedAt: timestamp,
+    };
+    await assertSucceeds(
+      organization.firestore().doc("eventReports/event-published").set(report),
+    );
+    await assertFails(
+      student
+        .firestore()
+        .doc("eventReports/event-published")
+        .set({ ...report, organizationId: "student-1" }),
+    );
+    await assertSucceeds(
+      admin.firestore().doc("adminAssignments/event_event-published").set({
+        targetType: "event",
+        targetId: "event-published",
+        assigneeId: "admin-1",
+        assigneeName: "Admin",
+        status: "in_progress",
+        dueAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+    await assertFails(
+      organization.firestore().doc("adminAssignments/event_other").set({
+        targetType: "event",
+        targetId: "other",
+        assigneeId: "org-1",
+        assigneeName: "Aizu Org",
+        status: "open",
+        updatedAt: timestamp,
+      }),
+    );
+  });
+
   it("restricts third-party provision records to the data subject and admins", async () => {
     const { student, otherStudent, organization, admin } = contexts();
     const path = "thirdPartyProvisionLogs/app-1";
@@ -1687,6 +1946,18 @@ describe("storage rules", () => {
         .ref("event-images/org-1/event-new/cover.webp")
         .putString("image", "raw", { contentType: "image/webp" }),
     );
+    await assertSucceeds(
+      organization
+        .storage()
+        .ref("event-reports/org-1/event-published/photo.webp")
+        .putString("image", "raw", { contentType: "image/webp" }),
+    );
+    await assertFails(
+      otherOrganization
+        .storage()
+        .ref("event-reports/org-1/event-published/spoof.webp")
+        .putString("image", "raw", { contentType: "image/webp" }),
+    );
     await assertFails(
       unverifiedOrganization
         .storage()
@@ -1696,7 +1967,7 @@ describe("storage rules", () => {
     await assertSucceeds(
       student
         .storage()
-        .ref("event-images/student-1/event-new/cover.webp")
+        .ref("event-images/student-1/event-student/cover.webp")
         .putString("image", "raw", { contentType: "image/webp" }),
     );
     await assertFails(

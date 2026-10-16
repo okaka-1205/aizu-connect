@@ -35,6 +35,7 @@ export const categories: Filter[] = [
 
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 export const MAX_CHAT_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+export const ATTENDANCE_WINDOW_LEAD_MS = 3 * 60 * 60 * 1000;
 export const acceptedImageTypes = ["image/jpeg", "image/png", "image/webp"];
 export const acceptedChatAttachmentTypes = [
   ...acceptedImageTypes,
@@ -42,6 +43,14 @@ export const acceptedChatAttachmentTypes = [
   "text/plain",
   "text/csv",
 ];
+
+export const isAttendanceWindowOpen = (
+  startAtMillis: number,
+  nowMillis: number,
+) =>
+  Number.isFinite(startAtMillis) &&
+  Number.isFinite(nowMillis) &&
+  nowMillis >= startAtMillis - ATTENDANCE_WINDOW_LEAD_MS;
 
 export const validateImageFile = (file: ImageLike, label: string) => {
   if (!acceptedImageTypes.includes(file.type)) {
@@ -230,6 +239,7 @@ export const resolveAccountAccessGate = ({
 export const formatEventStart = (value: string) => {
   const date = new Date(value);
   return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
     year: "numeric",
     month: "numeric",
     day: "numeric",
@@ -240,8 +250,21 @@ export const formatEventStart = (value: string) => {
 };
 
 export const toDateTimeLocalValue = (date: Date) => {
-  const offset = date.getTimezoneOffset() * 60 * 1000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  })
+    .formatToParts(date)
+    .reduce<Record<string, string>>((result, part) => {
+      if (part.type !== "literal") result[part.type] = part.value;
+      return result;
+    }, {});
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 };
 
 export const toDateTimeInput = (timestamp?: TimestampLike) => {
@@ -300,6 +323,11 @@ export const getFirebaseErrorMessage = (error: unknown) => {
       error.message.includes("Event details")
     )
       return "イベントの入力内容を確認してください。必須項目と開催日時を見直してください。";
+    if (
+      code === "functions/failed-precondition" &&
+      error.message.includes("Check-in is not available at this time.")
+    )
+      return "受付は開催3時間前から終了24時間後まで利用できます。";
     if (code === "functions/failed-precondition")
       return "このイベントは現在申し込めません。公開状態と受付期間を確認してください。";
     if (code === "functions/permission-denied")
@@ -340,6 +368,13 @@ export const getFirebaseErrorMessage = (error: unknown) => {
       error.message.includes("storage/quota-exceeded")
     )
       return "現在ファイルを保存できません。運営へお問い合わせください。";
+    if (
+      code === "failed-precondition" &&
+      /(?:query requires|collection_group).*(?:index)|(?:index).*(?:query requires|collection_group)/i.test(
+        error.message,
+      )
+    )
+      return "検索・チャット用データの準備が完了していません。運営へお問い合わせください。";
     if (
       code === "failed-precondition" ||
       error.message.includes("failed-precondition")

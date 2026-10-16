@@ -72,9 +72,11 @@ export type AizuEvent = {
   accessInfo?: string;
   bringItems?: string;
   cancellationPolicy?: string;
+  cancellationDeadline?: Timestamp;
   weatherPolicy?: string;
   accessibility?: string;
   contactMethod?: string;
+  applicationQuestions?: ApplicationQuestion[];
   organizationName: string;
   status:
     | "published"
@@ -84,6 +86,8 @@ export type AizuEvent = {
     | "unpublished";
   capacity: number;
   applicantCount: number;
+  popularityScore?: number;
+  waitlistNextSequence?: number;
   imageUrl: string;
   tags: string[];
   templateKey?: string;
@@ -104,6 +108,21 @@ export type AizuEvent = {
   createdBy?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+  reportPublishedAt?: Timestamp;
+};
+
+export type ApplicationQuestion = {
+  id: string;
+  label: string;
+  type: "text" | "textarea" | "select" | "checkbox";
+  required: boolean;
+  options?: string[];
+};
+
+export type ApplicationAnswer = {
+  questionId: string;
+  label: string;
+  value: string | boolean;
 };
 
 export type EventApplication = {
@@ -131,6 +150,12 @@ export type EventApplication = {
   emergencyContactAuthorityConfirmed?: boolean;
   organizerNote?: string;
   waitlistPosition?: number;
+  waitlistSequence?: number;
+  answers?: ApplicationAnswer[];
+  cancellationReason?: string;
+  cancelledAt?: Timestamp;
+  eventStartAt?: Timestamp;
+  eventEndAt?: Timestamp;
   createdAt?: Timestamp;
 };
 
@@ -144,7 +169,8 @@ export type ChatRoom = {
   studentName?: string;
   organizationName: string;
   organizationId?: string;
-  participantIds: string[];
+  participantIds?: string[];
+  memberCount?: number;
   status: "active" | "read_only" | "closed";
   lastMessageText: string;
   lastMessageAt?: Timestamp;
@@ -164,7 +190,17 @@ export type ChatMessage = {
   attachmentName?: string;
   attachmentType?: string;
   attachmentSize?: number;
+  editedAt?: Timestamp;
+  deletedAt?: Timestamp;
+  editHistory?: Array<{ text: string; editedAt: Timestamp }>;
   createdAt?: Timestamp;
+};
+
+export type ChatMember = {
+  userId: string;
+  role: "student" | "organization";
+  displayName: string;
+  joinedAt?: Timestamp;
 };
 
 export type ChatReadReceipt = {
@@ -225,7 +261,9 @@ export type ActivityRecord = {
 };
 
 export type SavedSearch = {
+  id?: string;
   userId: string;
+  name?: string;
   searchText: string;
   category: Filter;
   dateFilter: SearchDateFilter;
@@ -236,6 +274,13 @@ export type SavedSearch = {
   onlyAvailable: boolean;
   onlyBeginner: boolean;
   updatedAt?: Timestamp;
+};
+
+export type SavedOrganizer = {
+  userId: string;
+  organizationId: string;
+  organizationName: string;
+  createdAt?: Timestamp;
 };
 
 export type PublicOrganizerProfile = {
@@ -268,6 +313,46 @@ export type AccountDeletionRequest = {
   updatedAt?: Timestamp;
 };
 
+export type EventSurveyResponse = {
+  eventId: string;
+  userId: string;
+  rating: number;
+  comment: string;
+  wouldRecommend: boolean;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+};
+
+export type EventReport = {
+  eventId: string;
+  organizationId: string;
+  title: string;
+  summary: string;
+  imageUrls: string[];
+  participantCount: number;
+  status: "draft" | "published";
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+  publishedAt?: Timestamp;
+};
+
+export type AdminAssignment = {
+  targetType: "event" | "user" | "report" | "deletion";
+  targetId: string;
+  assigneeId: string;
+  assigneeName: string;
+  status: "open" | "in_progress" | "done";
+  dueAt?: Timestamp;
+  updatedAt?: Timestamp;
+};
+
+export type UserBlock = {
+  blockerId: string;
+  blockedId: string;
+  reason?: string;
+  createdAt?: Timestamp;
+};
+
 export type ApplicationDetails = {
   participantMessage: string;
   accessibilityNeeds: string;
@@ -275,6 +360,7 @@ export type ApplicationDetails = {
   consentAccepted: boolean;
   sensitiveInfoConsent: boolean;
   emergencyContactAuthorityConfirmed: boolean;
+  answers?: ApplicationAnswer[];
 };
 
 export type NotificationPreferences = {

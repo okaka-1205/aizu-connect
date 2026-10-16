@@ -1,16 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { projectSuffix, projectVariant } from "./testVariants";
 
 const password = "password123";
-
-function projectVariant(projectName: string) {
-  if (projectName === "mobile") return "Mobile";
-  if (projectName === "tablet") return "Tablet";
-  return "Desktop";
-}
-
-function projectSuffix(projectName: string) {
-  return projectVariant(projectName).toLowerCase();
-}
 
 async function login(page, email: string) {
   await page.goto("/");

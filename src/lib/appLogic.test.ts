@@ -7,6 +7,7 @@ import {
   formatEventStart,
   getAuthFlowErrorMessage,
   getFirebaseErrorMessage,
+  isAttendanceWindowOpen,
   isAizuUniversityEmail,
   isFutureEventStart,
   matchesCategoryFilter,
@@ -180,6 +181,22 @@ describe("auth helpers", () => {
   });
 });
 
+describe("attendance window", () => {
+  const startAt = Date.UTC(2026, 9, 20, 9, 0, 0);
+
+  it("opens exactly three hours before the event, but not one millisecond earlier", () => {
+    expect(isAttendanceWindowOpen(startAt, startAt - 3 * 60 * 60 * 1000 - 1)).toBe(
+      false,
+    );
+    expect(isAttendanceWindowOpen(startAt, startAt - 3 * 60 * 60 * 1000)).toBe(
+      true,
+    );
+    expect(isAttendanceWindowOpen(startAt, startAt - 3 * 60 * 60 * 1000 + 1)).toBe(
+      true,
+    );
+  });
+});
+
 describe("event helpers", () => {
   it("matches category aliases used by existing event data", () => {
     expect(matchesCategoryFilter("地域イベント", "地域活動")).toBe(true);
@@ -328,6 +345,16 @@ describe("firebase error messages", () => {
     );
   });
 
+  it("explains the event check-in window", () => {
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(new Error("Check-in is not available at this time."), {
+          code: "functions/failed-precondition",
+        }),
+      ),
+    ).toBe("受付は開催3時間前から終了24時間後まで利用できます。");
+  });
+
   it("maps auth failures to user-friendly Japanese copy", () => {
     expect(
       getFirebaseErrorMessage(
@@ -353,6 +380,21 @@ describe("firebase error messages", () => {
         }),
       ),
     ).toContain("通信状態");
+  });
+
+  it("identifies a missing Firestore index without claiming Firebase is disabled", () => {
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(
+          new Error(
+            "The query requires a COLLECTION_GROUP_ASC index for collection members.",
+          ),
+          {code: "failed-precondition"},
+        ),
+      ),
+    ).toBe(
+      "検索・チャット用データの準備が完了していません。運営へお問い合わせください。",
+    );
   });
 
   it("falls back for unknown non-error values", () => {

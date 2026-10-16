@@ -22,7 +22,7 @@ const db = getFirestore();
 const timestamp = Timestamp.now();
 const password = "password123";
 
-for (const variant of ["desktop", "mobile", "tablet"]) {
+for (const variant of ["desktop", "mobile", "tablet", "firefox", "webkit"]) {
   const uid = `student-auth-${variant}`;
   const email = `${uid}@example.com`;
   const displayName = `認証テスト学生 ${variant}`;

@@ -12,6 +12,12 @@ const forbiddenPatterns = [
 ];
 const textExtensions = new Set([".css", ".html", ".js", ".json", ".map"]);
 const findings = [];
+const requiredEventImagePrefixes = [
+  "event-community-",
+  "event-learning-",
+  "event-volunteer-",
+];
+const emittedEventImages = new Set();
 
 async function scanDirectory(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -22,6 +28,11 @@ async function scanDirectory(directory) {
         await scanDirectory(filePath);
         return;
       }
+      requiredEventImagePrefixes.forEach((prefix) => {
+        if (entry.name.startsWith(prefix) && entry.name.endsWith(".svg")) {
+          emittedEventImages.add(prefix);
+        }
+      });
       if (!textExtensions.has(extname(entry.name))) return;
       const contents = await readFile(filePath, "utf8");
       forbiddenPatterns.forEach(([label, pattern]) => {
@@ -32,6 +43,12 @@ async function scanDirectory(directory) {
 }
 
 await scanDirectory("dist");
+
+requiredEventImagePrefixes.forEach((prefix) => {
+  if (!emittedEventImages.has(prefix)) {
+    findings.push(`missing emitted event image: ${prefix}*.svg`);
+  }
+});
 
 if (findings.length > 0) {
   throw new Error(
