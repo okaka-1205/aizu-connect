@@ -836,6 +836,13 @@ for (const variant of variantKeys) {
     }),
   );
   batch.set(
+    db.doc(`events/admin-reported-event-${variant}`),
+    eventDoc({
+      title: `E2E 管理通報イベント ${displayVariant}`,
+      applicantCount: 0,
+    }),
+  );
+  batch.set(
     db.doc(`events/admin-direct-event-${variant}`),
     eventDoc({
       title: `E2E 直接削除イベント ${displayVariant}`,
@@ -876,8 +883,8 @@ for (const variant of variantKeys) {
   batch.set(db.doc(`reports/admin-delete-report-${variant}`), {
     reporterId: "student-e2e",
     targetType: "event",
-    targetId: eventId,
-    targetTitle: `E2E 管理削除イベント ${displayVariant}`,
+    targetId: `admin-reported-event-${variant}`,
+    targetTitle: `E2E 管理通報イベント ${displayVariant}`,
     reason: "不適切な内容",
     description: `E2E管理削除通報 ${displayVariant}`,
     status: "submitted",
@@ -890,6 +897,16 @@ for (const variant of variantKeys) {
     targetTitle: "E2E 地域交流会",
     reason: "その他",
     description: `削除ユーザー通報の匿名化確認 ${displayVariant}`,
+    status: "submitted",
+    createdAt: timestamp,
+  });
+  batch.set(db.doc(`reports/admin-moderation-report-${variant}`), {
+    reporterId: "student-e2e",
+    targetType: "event",
+    targetId: "event-e2e-published",
+    targetTitle: "E2E 地域交流会",
+    reason: "その他",
+    description: `E2E モデレーション通報 ${displayVariant}`,
     status: "submitted",
     createdAt: timestamp,
   });
@@ -1306,12 +1323,13 @@ await Promise.all(
   variantKeys.flatMap((variant) => {
     const userId = `admin-delete-user-${variant}`;
     const eventId = `admin-delete-event-${variant}`;
+    const reportedEventId = `admin-reported-event-${variant}`;
     return [
       bucket
         .file(`profile-images/${userId}/profile-seed.png`)
         .save(Buffer.from("profile-image")),
       bucket
-        .file(`event-images/org-e2e/${eventId}/cover-seed.png`)
+        .file(`event-images/org-e2e/${reportedEventId}/cover-seed.png`)
         .save(Buffer.from("event-image")),
       bucket
         .file(

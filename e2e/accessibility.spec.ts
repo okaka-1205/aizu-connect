@@ -277,6 +277,26 @@ test.describe("accessibility", () => {
     const blockButton = otherMessage.getByRole("button", {
       name: /さんをブロック/,
     });
+    const [reportBox, blockBox, composerHeight, composerInputHeight] =
+      await Promise.all([
+        reportButton.boundingBox(),
+        blockButton.boundingBox(),
+        page
+          .locator(".chat-composer")
+          .evaluate((element) => element.getBoundingClientRect().height),
+        page
+          .locator('.chat-composer input:not([type="file"])')
+          .evaluate((element) => element.getBoundingClientRect().height),
+      ]);
+    expect(reportBox).not.toBeNull();
+    expect(blockBox).not.toBeNull();
+    expect(
+      reportBox!.x + reportBox!.width <= blockBox!.x ||
+        blockBox!.x + blockBox!.width <= reportBox!.x,
+    ).toBe(true);
+    expect(composerHeight).toBeLessThanOrEqual(80);
+    expect(composerInputHeight).toBeLessThanOrEqual(48);
+
     await blockButton.focus();
     await page.keyboard.press("Enter");
     const blockDialog = page.getByRole("alertdialog", {

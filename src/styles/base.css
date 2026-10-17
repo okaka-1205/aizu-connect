@@ -205,23 +205,6 @@
 .detail-trust-row .text-button {
   color: #b45466;
 }
-.message-report-button {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #9aaabd;
-}
-.message-report-button:hover {
-  background: #fff0f2;
-  color: #c2556b;
-}
 .chat-message {
   position: relative;
 }
@@ -1738,9 +1721,9 @@ kbd {
   font-weight: 900;
 }
 .chat-panel {
-  display: grid;
+  display: flex;
   min-height: 420px;
-  grid-template-rows: auto auto 1fr auto;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 15px;
@@ -1867,7 +1850,8 @@ kbd {
 }
 .chat-messages {
   display: flex;
-  min-height: 0;
+  min-height: 280px;
+  flex: 1 1 280px;
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
@@ -1936,12 +1920,15 @@ kbd {
   position: relative;
   z-index: 1;
   display: flex;
+  align-items: center;
   gap: 8px;
   padding: 12px;
   border-top: 1px solid #eaf0f5;
+  background: #fff;
 }
 .chat-composer input {
   min-width: 0;
+  height: 44px;
   flex: 1;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -1958,6 +1945,8 @@ kbd {
   display: grid;
   place-items: center;
   width: 40px;
+  height: 44px;
+  flex: 0 0 44px;
   border: 0;
   border-radius: 10px;
   background: var(--brand);

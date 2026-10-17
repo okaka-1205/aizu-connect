@@ -1040,12 +1040,10 @@ test.describe("emulator-backed role flows", () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  test("admin can review and complete moderation operations", async ({
+  test("admin can inspect and complete review operations", async ({
     page,
   }, testInfo) => {
-    testInfo.setTimeout(60_000);
     const variant = projectVariant(testInfo.project.name);
-    const deletionReason = `E2E ${variant}で管理者の削除権限と関連データを確認しました。`;
     await login(page, adminEmail(testInfo.project.name), "admin123");
 
     await expect(
@@ -1109,36 +1107,7 @@ test.describe("emulator-backed role flows", () => {
     ).toBeVisible();
     await expect(page.getByText("E2E 承認待ち")).toBeVisible();
     await expect(page.getByRole("heading", { name: "通報" })).toBeVisible();
-    const deletionQueue = page.locator(".admin-deletion-card");
-    await expect(
-      deletionQueue.getByRole("heading", {
-        name: "退会・データ削除",
-      }),
-    ).toBeVisible();
-    const deletionRequest = deletionQueue
-      .locator(".review-row")
-      .filter({ hasText: `E2E 削除対象 ${variant}` });
-    await expect(deletionRequest).toContainText(
-      `E2E ${variant}の退会・データ削除申請です。`,
-    );
     await expect(page.getByText("E2Eで確認する通報です。")).toBeVisible();
-    const completedReport = page
-      .locator(".review-row")
-      .filter({ hasText: `削除ユーザー通報の匿名化確認 ${variant}` });
-    await completedReport
-      .getByRole("button", { name: "対応済み", exact: true })
-      .click();
-    const completedReportDialog = page.getByRole("alertdialog", {
-      name: "通報を対応済みにする",
-    });
-    await completedReportDialog
-      .getByLabel("対応内容・記録")
-      .fill(`${variant}で内容を確認しました。`);
-    await completedReportDialog
-      .getByRole("button", { name: "対応済みにする" })
-      .click();
-    await expect(page.getByText("通報を対応済みにしました。")).toBeVisible();
-    await expect(completedReport).toBeHidden();
 
     const accountReviewItem = page
       .locator(".review-row")
@@ -1170,6 +1139,40 @@ test.describe("emulator-backed role flows", () => {
       .first()
       .click();
     await expect(page.getByText("E2E ページング対象 54")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("admin can complete a reported-content review", async ({
+    page,
+  }, testInfo) => {
+    const variant = projectVariant(testInfo.project.name);
+    await login(page, adminEmail(testInfo.project.name), "admin123");
+
+    const report = page
+      .locator(".review-row")
+      .filter({ hasText: `E2E モデレーション通報 ${variant}` });
+    await expect(report).toBeVisible();
+    await report
+      .getByRole("button", { name: "対応済み", exact: true })
+      .click();
+    const dialog = page.getByRole("alertdialog", {
+      name: "通報を対応済みにする",
+    });
+    await dialog
+      .getByLabel("対応内容・記録")
+      .fill(`${variant}で内容を確認しました。`);
+    await dialog.getByRole("button", { name: "対応済みにする" }).click();
+    await expect(page.getByText("通報を対応済みにしました。")).toBeVisible();
+    await expect(report).toBeHidden();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("admin can delete reported and directly managed events", async ({
+    page,
+  }, testInfo) => {
+    const variant = projectVariant(testInfo.project.name);
+    const deletionReason = `E2E ${variant}で管理者の削除権限と関連データを確認しました。`;
+    await login(page, adminEmail(testInfo.project.name), "admin123");
 
     const reportedEvent = page
       .locator(".review-row")
@@ -1220,6 +1223,46 @@ test.describe("emulator-backed role flows", () => {
       page.getByText("イベントと関連する申請・チャットを削除しました。"),
     ).toBeVisible();
     await expect(directEvent).toBeHidden();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("admin can complete a requested user deletion", async ({
+    page,
+  }, testInfo) => {
+    const variant = projectVariant(testInfo.project.name);
+    const deletionReason = `E2E ${variant}で管理者の削除権限と関連データを確認しました。`;
+    await login(page, adminEmail(testInfo.project.name), "admin123");
+
+    const deletionQueue = page.locator(".admin-deletion-card");
+    await expect(
+      deletionQueue.getByRole("heading", {
+        name: "退会・データ削除",
+      }),
+    ).toBeVisible();
+    const deletionRequest = deletionQueue
+      .locator(".review-row")
+      .filter({ hasText: `E2E 削除対象 ${variant}` });
+    await expect(deletionRequest).toContainText(
+      `E2E ${variant}の退会・データ削除申請です。`,
+    );
+
+    const userReport = page
+      .locator(".review-row")
+      .filter({ hasText: `削除ユーザー通報の匿名化確認 ${variant}` });
+    await userReport
+      .getByRole("button", { name: "対応済み", exact: true })
+      .click();
+    const userReportDialog = page.getByRole("alertdialog", {
+      name: "通報を対応済みにする",
+    });
+    await userReportDialog
+      .getByLabel("対応内容・記録")
+      .fill(`${variant}で削除前の内容を確認しました。`);
+    await userReportDialog
+      .getByRole("button", { name: "対応済みにする" })
+      .click();
+    await expect(page.getByText("通報を対応済みにしました。")).toBeVisible();
+    await expect(userReport).toBeHidden();
 
     const userOperations = page.locator(".role-card").filter({
       has: page.getByRole("heading", { name: "ユーザー管理" }),
@@ -1227,6 +1270,21 @@ test.describe("emulator-backed role flows", () => {
     const managedUser = userOperations
       .locator(".review-row")
       .filter({ hasText: `E2E 削除対象 ${variant}` });
+    const loadMoreUsers = userOperations.getByRole("button", {
+      name: "さらに50件読み込む",
+    });
+    const managedUserRows = userOperations.locator(".review-row");
+    for (
+      let pageNumber = 0;
+      pageNumber < 4 && (await managedUser.count()) === 0;
+      pageNumber += 1
+    ) {
+      if (!(await loadMoreUsers.isVisible())) break;
+      const previousCount = await managedUserRows.count();
+      await loadMoreUsers.click();
+      await expect.poll(() => managedUserRows.count()).toBeGreaterThan(previousCount);
+    }
+    await expect(managedUser).toBeVisible();
     await managedUser
       .getByRole("button", { name: "停止", exact: true })
       .click();

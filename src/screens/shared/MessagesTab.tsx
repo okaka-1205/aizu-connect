@@ -307,7 +307,12 @@ export function MessagesTab({
                   </div>
                 </div>
                 <div className="chat-head-actions">
-                  <small>{getCounterpartName(activeRoom)}</small>
+                  <small
+                    className="chat-counterpart"
+                    title={getCounterpartName(activeRoom)}
+                  >
+                    相手: {getCounterpartName(activeRoom)}
+                  </small>
                   {onOpenEvent && (
                     <button
                       className="icon-button"
@@ -568,7 +573,10 @@ export function MessagesTab({
                           {isOwn &&
                             chatMessage.type === "text" &&
                             !chatMessage.deletedAt && (
-                              <span className="message-owner-actions">
+                              <div
+                                className="message-owner-actions"
+                                aria-label="送信したメッセージの操作"
+                              >
                                 {onEditMessage && (
                                   <button
                                     type="button"
@@ -579,6 +587,7 @@ export function MessagesTab({
                                     }}
                                   >
                                     <Pencil size={12} />
+                                    編集
                                   </button>
                                 )}
                                 {onDeleteMessage && (
@@ -588,35 +597,40 @@ export function MessagesTab({
                                     onClick={() => setMessageToDelete(chatMessage)}
                                   >
                                     <Trash2 size={12} />
+                                    削除
                                   </button>
                                 )}
-                              </span>
+                              </div>
                             )}
                           {chatMessage.senderId !== currentUserId &&
-                            onReportMessage &&
-                            chatMessage.type !== "system" && (
-                              <button
-                                className="message-report-button"
-                                type="button"
-                                title="メッセージを通報"
-                                aria-label={`${chatMessage.senderName}さんのメッセージを通報`}
-                                onClick={() => onReportMessage(chatMessage)}
+                            chatMessage.type !== "system" &&
+                            (onReportMessage || onBlockUser) && (
+                              <div
+                                className="message-moderation-actions"
+                                aria-label={`${chatMessage.senderName}さんのメッセージ操作`}
                               >
-                                <Flag size={12} />
-                              </button>
-                            )}
-                          {chatMessage.senderId !== currentUserId &&
-                            onBlockUser &&
-                            chatMessage.type !== "system" && (
-                              <button
-                                className="message-report-button"
-                                type="button"
-                                title="このユーザーをブロック"
-                                aria-label={`${chatMessage.senderName}さんをブロック`}
-                                onClick={() => setMessageAuthorToBlock(chatMessage)}
-                              >
-                                <Ban size={12} />
-                              </button>
+                                {onReportMessage && (
+                                  <button
+                                    type="button"
+                                    aria-label={`${chatMessage.senderName}さんのメッセージを通報`}
+                                    onClick={() => onReportMessage(chatMessage)}
+                                  >
+                                    <Flag size={13} aria-hidden="true" />
+                                    通報
+                                  </button>
+                                )}
+                                {onBlockUser && (
+                                  <button
+                                    className="is-danger"
+                                    type="button"
+                                    aria-label={`${chatMessage.senderName}さんをブロック`}
+                                    onClick={() => setMessageAuthorToBlock(chatMessage)}
+                                  >
+                                    <Ban size={13} aria-hidden="true" />
+                                    ブロック
+                                  </button>
+                                )}
+                              </div>
                             )}
                         </div>
                       </div>
@@ -663,6 +677,7 @@ export function MessagesTab({
                   </label>
                 )}
                 <input
+                  aria-label={messagePlaceholder}
                   value={draft}
                   maxLength={2000}
                   disabled={activeRoom.status !== "active"}
@@ -677,6 +692,7 @@ export function MessagesTab({
                   type="submit"
                   disabled={activeRoom.status !== "active" || !draft.trim()}
                   title="送信"
+                  aria-label="メッセージを送信"
                 >
                   <Send size={17} />
                 </button>
@@ -703,7 +719,7 @@ export function MessagesTab({
       {messageAuthorToBlock && onBlockUser && (
         <ConfirmDialog
           title={`${messageAuthorToBlock.senderName}さんをブロックしますか？`}
-          description="このユーザーからのメッセージは表示されなくなります。"
+          description="このユーザーからのメッセージを今後この画面に表示しません。ブロックしても相手へ通知は送られません。"
           confirmLabel="ブロックする"
           danger
           onClose={() => setMessageAuthorToBlock(null)}
