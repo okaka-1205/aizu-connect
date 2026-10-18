@@ -53,8 +53,8 @@ for (const variant of ["desktop", "mobile", "tablet", "firefox", "webkit"]) {
   const batch = db.batch();
   batch.set(db.doc(`users/${uid}`), {
     ...userData,
-    termsVersion: "2026-08-01",
-    privacyVersion: "2026-08-01",
+    termsVersion: "2026-10-17",
+    privacyVersion: "2026-10-17",
     legalAcceptedAt: timestamp,
     eligibilityConfirmedAt: timestamp,
   });

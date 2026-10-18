@@ -272,9 +272,7 @@ describe("event plan validation", () => {
 
   it("normalizes application questions and a cancellation deadline", () => {
     const now = Date.parse("2026-07-01T00:00:00.000Z");
-    const cancellationDeadlineMillis = Date.parse(
-      "2026-07-31T09:00:00.000Z",
-    );
+    const cancellationDeadlineMillis = Date.parse("2026-07-31T09:00:00.000Z");
     const result = normalizeEventPlanInput(
       {
         ...validPlan,
@@ -285,6 +283,7 @@ describe("event plan validation", () => {
             label: "参加目的",
             type: "textarea",
             required: true,
+            containsSensitiveInfo: true,
             options: [],
           },
           {
@@ -298,8 +297,13 @@ describe("event plan validation", () => {
       },
       now,
     );
-    assert.equal(result?.cancellationDeadlineMillis, cancellationDeadlineMillis);
+    assert.equal(
+      result?.cancellationDeadlineMillis,
+      cancellationDeadlineMillis,
+    );
     assert.equal(result?.applicationQuestions.length, 2);
+    assert.equal(result?.applicationQuestions[0].containsSensitiveInfo, true);
+    assert.equal(result?.applicationQuestions[1].containsSensitiveInfo, false);
     assert.deepEqual(result?.applicationQuestions[1].options, [
       "徒歩",
       "公共交通",

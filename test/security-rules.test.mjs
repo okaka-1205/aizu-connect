@@ -18,8 +18,8 @@ const farFutureTimestamp = firebase.firestore.Timestamp.fromDate(
   new Date("2099-01-01T00:00:00.000Z"),
 );
 const legalConsent = {
-  termsVersion: "2026-08-01",
-  privacyVersion: "2026-08-01",
+  termsVersion: "2026-10-17",
+  privacyVersion: "2026-10-17",
   legalAcceptedAt: timestamp,
   eligibilityConfirmedAt: timestamp,
 };
@@ -369,9 +369,9 @@ const seedData = async () => {
           createdBy: "org-2",
         }),
       ),
-      db.doc("events/event-new").set(
-        eventDoc({ status: "pending_review", title: "New Event" }),
-      ),
+      db
+        .doc("events/event-new")
+        .set(eventDoc({ status: "pending_review", title: "New Event" })),
       db.doc("events/event-student").set(
         eventDoc({
           status: "pending_review",
@@ -952,19 +952,19 @@ describe("users and profiles", () => {
     const { student, otherStudent, admin } = contexts();
     const db = student.firestore();
     const acceptedAt = firebase.firestore.FieldValue.serverTimestamp();
-    const consentRef = db.doc("legalConsents/student-1_2026-08-01_2026-08-01");
+    const consentRef = db.doc("legalConsents/student-1_2026-10-17_2026-10-17");
     const batch = db.batch();
     batch.update(db.doc("users/student-1"), {
-      termsVersion: "2026-08-01",
-      privacyVersion: "2026-08-01",
+      termsVersion: "2026-10-17",
+      privacyVersion: "2026-10-17",
       legalAcceptedAt: acceptedAt,
       eligibilityConfirmedAt: acceptedAt,
       updatedAt: acceptedAt,
     });
     batch.set(consentRef, {
       userId: "student-1",
-      termsVersion: "2026-08-01",
-      privacyVersion: "2026-08-01",
+      termsVersion: "2026-10-17",
+      privacyVersion: "2026-10-17",
       acceptedAt,
       eligibilityConfirmedAt: acceptedAt,
       source: "reconsent",
@@ -974,21 +974,21 @@ describe("users and profiles", () => {
     await assertSucceeds(
       admin
         .firestore()
-        .doc("legalConsents/student-1_2026-08-01_2026-08-01")
+        .doc("legalConsents/student-1_2026-10-17_2026-10-17")
         .get(),
     );
     await assertFails(
       otherStudent
         .firestore()
-        .doc("legalConsents/student-1_2026-08-01_2026-08-01")
+        .doc("legalConsents/student-1_2026-10-17_2026-10-17")
         .get(),
     );
     await assertFails(consentRef.update({ source: "registration" }));
     await assertFails(
       student.firestore().doc("legalConsents/arbitrary-id").set({
         userId: "student-1",
-        termsVersion: "2026-08-01",
-        privacyVersion: "2026-08-01",
+        termsVersion: "2026-10-17",
+        privacyVersion: "2026-10-17",
         acceptedAt: firebase.firestore.FieldValue.serverTimestamp(),
         eligibilityConfirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
         source: "reconsent",
@@ -1682,11 +1682,14 @@ describe("saved searches and operational records", () => {
   it("keeps message edit history server-owned", async () => {
     const { student, organization } = contexts();
     await assertFails(
-      student.firestore().doc("chatRooms/room-1/messages/message-1").update({
-        text: "改ざんした本文",
-        editedAt: timestamp,
-        editHistory: [{ text: "Hello", editedAt: timestamp }],
-      }),
+      student
+        .firestore()
+        .doc("chatRooms/room-1/messages/message-1")
+        .update({
+          text: "改ざんした本文",
+          editedAt: timestamp,
+          editHistory: [{ text: "Hello", editedAt: timestamp }],
+        }),
     );
     await assertFails(
       organization
@@ -1757,6 +1760,7 @@ describe("saved searches and operational records", () => {
       imageUrls: [],
       participantCount: 10,
       status: "published",
+      rightsConfirmed: true,
       createdAt: timestamp,
       updatedAt: timestamp,
       publishedAt: timestamp,
@@ -1769,6 +1773,12 @@ describe("saved searches and operational records", () => {
         .firestore()
         .doc("eventReports/event-published")
         .set({ ...report, organizationId: "student-1" }),
+    );
+    await assertFails(
+      organization
+        .firestore()
+        .doc("eventReports/event-published")
+        .set({ ...report, rightsConfirmed: false }),
     );
     await assertSucceeds(
       admin.firestore().doc("adminAssignments/event_event-published").set({

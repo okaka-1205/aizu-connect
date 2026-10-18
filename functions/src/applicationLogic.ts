@@ -173,6 +173,7 @@ export type EventPlanInput = {
     label: string;
     type: "text" | "textarea" | "select" | "checkbox";
     required: boolean;
+    containsSensitiveInfo: boolean;
     options: string[];
   }>;
 };
@@ -194,10 +195,13 @@ export const normalizeApplicationAnswers = (
     !answers.every((answer) => {
       if (!answer || typeof answer !== "object") return false;
       const item = answer as Record<string, unknown>;
-      return typeof item.questionId === "string" &&
-        item.questionId.length >= 1 && item.questionId.length <= 40 &&
+      return (
+        typeof item.questionId === "string" &&
+        item.questionId.length >= 1 &&
+        item.questionId.length <= 40 &&
         ((typeof item.value === "string" && item.value.length <= 1000) ||
-          typeof item.value === "boolean");
+          typeof item.value === "boolean")
+      );
     })
   ) {
     return null;
@@ -213,8 +217,14 @@ export const normalizeApplicationAnswers = (
       String((question as Record<string, unknown>).id),
     ),
   );
-  if (answers.some((answer) =>
-    !questionIds.has(String((answer as Record<string, unknown>).questionId)))) {
+  if (
+    answers.some(
+      (answer) =>
+        !questionIds.has(
+          String((answer as Record<string, unknown>).questionId),
+        ),
+    )
+  ) {
     return null;
   }
   const normalized: ValidatedApplicationAnswer[] = [];
@@ -225,18 +235,23 @@ export const normalizeApplicationAnswers = (
     const label = String(question.label ?? "").trim();
     const type = String(question.type ?? "");
     if (
-      !questionId || questionId.length > 40 || !label || label.length > 120 ||
+      !questionId ||
+      questionId.length > 40 ||
+      !label ||
+      label.length > 120 ||
       !["text", "textarea", "select", "checkbox"].includes(type)
     ) {
       return null;
     }
     const rawValue = answerById.get(questionId);
-    const value = typeof rawValue === "string" ?
-      rawValue.trim() :
-      rawValue === true;
-    const missingRequired = question.required === true &&
+    const value =
+      typeof rawValue === "string" ? rawValue.trim() : rawValue === true;
+    const missingRequired =
+      question.required === true &&
       (type === "checkbox" ? value !== true : value === "");
-    const invalidSelect = type === "select" && value !== "" &&
+    const invalidSelect =
+      type === "select" &&
+      value !== "" &&
       (!Array.isArray(question.options) || !question.options.includes(value));
     if (missingRequired || invalidSelect) return null;
     normalized.push({questionId, label, value});
@@ -348,15 +363,19 @@ export const normalizeEventPlanInput = (
       if (!question || typeof question !== "object") return false;
       const item = question as Record<string, unknown>;
       const options = Array.isArray(item.options) ? item.options : [];
-      return validText(item.id, 1, 40) &&
+      return (
+        validText(item.id, 1, 40) &&
         validText(item.label, 1, 120) &&
         ["text", "textarea", "select", "checkbox"].includes(
           String(item.type),
         ) &&
         typeof item.required === "boolean" &&
+        (item.containsSensitiveInfo === undefined ||
+          typeof item.containsSensitiveInfo === "boolean") &&
         options.length <= 8 &&
         options.every((option) => validText(option, 1, 80)) &&
-        (item.type !== "select" || options.length >= 2);
+        (item.type !== "select" || options.length >= 2)
+      );
     })
   ) {
     return null;
@@ -393,9 +412,11 @@ export const normalizeEventPlanInput = (
     accessInfo: String(data.accessInfo).trim(),
     bringItems: String(data.bringItems).trim(),
     cancellationPolicy: String(data.cancellationPolicy).trim(),
-    ...(cancellationDeadlineMillis === undefined ? {} : {
-      cancellationDeadlineMillis,
-    }),
+    ...(cancellationDeadlineMillis === undefined ?
+      {} :
+      {
+        cancellationDeadlineMillis,
+      }),
     weatherPolicy: String(data.weatherPolicy).trim(),
     accessibility: String(data.accessibility).trim(),
     contactMethod: String(data.contactMethod).trim(),
@@ -414,6 +435,7 @@ export const normalizeEventPlanInput = (
         type: item.type as
           EventPlanInput["applicationQuestions"][number]["type"],
         required: item.required === true,
+        containsSensitiveInfo: item.containsSensitiveInfo === true,
         options: Array.isArray(item.options) ?
           item.options.map((option) => String(option).trim()) :
           [],

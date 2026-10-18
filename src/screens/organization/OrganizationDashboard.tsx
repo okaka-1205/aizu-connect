@@ -218,6 +218,8 @@ export function OrganizationDashboard({
   const [checkInCode, setCheckInCode] = useState("");
   const [eventReportSummary, setEventReportSummary] = useState("");
   const [eventReportFiles, setEventReportFiles] = useState<File[]>([]);
+  const [eventReportRightsConfirmed, setEventReportRightsConfirmed] =
+    useState(false);
   const [isSavingEventReport, setIsSavingEventReport] = useState(false);
   const [pendingApplicationUpdate, setPendingApplicationUpdate] = useState<{
     application: EventApplication;
@@ -232,7 +234,7 @@ export function OrganizationDashboard({
   const selectedEvent = events.find((event) => event.id === selectedEventId);
   const attendanceWindowOpen = Boolean(
     selectedEvent &&
-      isAttendanceWindowOpen(timestampMillis(selectedEvent.startAt), Date.now()),
+    isAttendanceWindowOpen(timestampMillis(selectedEvent.startAt), Date.now()),
   );
   const selectedTemplate =
     eventTemplates.find((template) => template.key === templateKey) ??
@@ -675,10 +677,12 @@ export function OrganizationDashboard({
       (snapshot) => {
         setHasMoreNotifications(snapshot.size > notificationQueryLimit);
         setNotifications(
-          snapshot.docs.slice(0, notificationQueryLimit).map((notificationDoc) => ({
-            id: notificationDoc.id,
-            ...notificationDoc.data(),
-          })) as NotificationItem[],
+          snapshot.docs
+            .slice(0, notificationQueryLimit)
+            .map((notificationDoc) => ({
+              id: notificationDoc.id,
+              ...notificationDoc.data(),
+            })) as NotificationItem[],
         );
       },
       () => setNotice("通知を取得できませんでした。", "error"),
@@ -714,10 +718,12 @@ export function OrganizationDashboard({
       (snapshot) => {
         setHasMoreParticipants(snapshot.size > participantQueryLimit);
         setApplications(
-          snapshot.docs.slice(0, participantQueryLimit).map((applicationDoc) => ({
-            id: applicationDoc.id,
-            ...applicationDoc.data(),
-          })) as EventApplication[],
+          snapshot.docs
+            .slice(0, participantQueryLimit)
+            .map((applicationDoc) => ({
+              id: applicationDoc.id,
+              ...applicationDoc.data(),
+            })) as EventApplication[],
         );
       },
       () => setNotice("参加者情報を取得できませんでした。", "error"),
@@ -730,17 +736,23 @@ export function OrganizationDashboard({
     setNotice,
   ]);
 
-  useEffect(() => setParticipantQueryLimit(50), [applicantSearch, selectedEventId]);
+  useEffect(
+    () => setParticipantQueryLimit(50),
+    [applicantSearch, selectedEventId],
+  );
 
-  useEffect(() =>
-    subscribeChatRoomsForUser(
-      appUser.uid,
-      (rooms) => {
-        setChatRooms(rooms);
-        setActiveRoomId((current) => current ?? rooms[0]?.id ?? null);
-      },
-      () => setNotice("メッセージを取得できませんでした。", "error"),
-    ), [appUser.uid, setNotice]);
+  useEffect(
+    () =>
+      subscribeChatRoomsForUser(
+        appUser.uid,
+        (rooms) => {
+          setChatRooms(rooms);
+          setActiveRoomId((current) => current ?? rooms[0]?.id ?? null);
+        },
+        () => setNotice("メッセージを取得できませんでした。", "error"),
+      ),
+    [appUser.uid, setNotice],
+  );
 
   useEffect(() => {
     const preferencesQuery = query(
@@ -1261,16 +1273,23 @@ export function OrganizationDashboard({
   };
 
   const publishEventReport = async () => {
-    if (!selectedEvent || !eventReportSummary.trim()) return;
+    if (
+      !selectedEvent ||
+      !eventReportSummary.trim() ||
+      !eventReportRightsConfirmed
+    )
+      return;
     setIsSavingEventReport(true);
     try {
       const imageUrls = await Promise.all(
-        eventReportFiles.slice(0, 4).map((file, index) =>
-          uploadImage(
-            file,
-            `event-reports/${appUser.uid}/${selectedEvent.id}/${Date.now()}-${index}`,
+        eventReportFiles
+          .slice(0, 4)
+          .map((file, index) =>
+            uploadImage(
+              file,
+              `event-reports/${appUser.uid}/${selectedEvent.id}/${Date.now()}-${index}`,
+            ),
           ),
-        ),
       );
       await saveEventReport({
         eventId: selectedEvent.id,
@@ -1282,9 +1301,11 @@ export function OrganizationDashboard({
           (application) => application.status === "attended",
         ).length,
         status: "published",
+        rightsConfirmed: true,
       });
       setEventReportSummary("");
       setEventReportFiles([]);
+      setEventReportRightsConfirmed(false);
       setNotice("活動報告を公開しました。", "success");
     } finally {
       setIsSavingEventReport(false);
@@ -1528,12 +1549,14 @@ export function OrganizationDashboard({
                             label: "",
                             type: "text",
                             required: false,
+                            containsSensitiveInfo: false,
                             options: [],
                           },
                         ])
                       }
                     >
-                      <Plus size={14} />質問を追加
+                      <Plus size={14} />
+                      質問を追加
                     </button>
                   </div>
                   {applicationQuestions.map((question, index) => (
@@ -1614,6 +1637,26 @@ export function OrganizationDashboard({
                           }
                         />
                         必須
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={question.containsSensitiveInfo === true}
+                          onChange={(event) =>
+                            setApplicationQuestions((current) =>
+                              current.map((item) =>
+                                item.id === question.id
+                                  ? {
+                                      ...item,
+                                      containsSensitiveInfo:
+                                        event.target.checked,
+                                    }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                        健康・障害等の要配慮情報を含む
                       </label>
                       <button
                         className="muted"
@@ -2417,7 +2460,10 @@ export function OrganizationDashboard({
                       <p>{application.participantMessage}</p>
                     )}
                     {(application.answers ?? []).map((answer) => (
-                      <span className="participant-answer" key={answer.questionId}>
+                      <span
+                        className="participant-answer"
+                        key={answer.questionId}
+                      >
                         <strong>{answer.label}:</strong>{" "}
                         {typeof answer.value === "boolean"
                           ? answer.value
@@ -2581,12 +2627,30 @@ export function OrganizationDashboard({
                 multiple
                 aria-label="活動報告の写真"
                 onChange={(event) =>
-                  setEventReportFiles(Array.from(event.target.files ?? []).slice(0, 4))
+                  setEventReportFiles(
+                    Array.from(event.target.files ?? []).slice(0, 4),
+                  )
                 }
               />
+              <label className="application-consent">
+                <input
+                  type="checkbox"
+                  checked={eventReportRightsConfirmed}
+                  onChange={(event) =>
+                    setEventReportRightsConfirmed(event.target.checked)
+                  }
+                />
+                <span>
+                  本文・写真の権利を確認し、写っている方へ公開範囲を説明して必要な同意を得ています
+                </span>
+              </label>
               <button
                 type="button"
-                disabled={isSavingEventReport || !eventReportSummary.trim()}
+                disabled={
+                  isSavingEventReport ||
+                  !eventReportSummary.trim() ||
+                  !eventReportRightsConfirmed
+                }
                 onClick={() => void publishEventReport()}
               >
                 {isSavingEventReport && <Loader2 size={14} className="spin" />}
@@ -2626,7 +2690,11 @@ export function OrganizationDashboard({
           }}
           onSaveRoomMeta={saveRoomMeta}
           onEditMessage={(chatMessage, text) =>
-            editChatMessage(activeRoomId ?? chatMessage.roomId, chatMessage.id, text)
+            editChatMessage(
+              activeRoomId ?? chatMessage.roomId,
+              chatMessage.id,
+              text,
+            )
           }
           onDeleteMessage={(chatMessage) =>
             deleteChatMessage(
@@ -2639,7 +2707,10 @@ export function OrganizationDashboard({
             setChatMessages((current) =>
               current.filter((item) => item.senderId !== chatMessage.senderId),
             );
-            setNotice(`${chatMessage.senderName}さんをブロックしました。`, "success");
+            setNotice(
+              `${chatMessage.senderName}さんをブロックしました。`,
+              "success",
+            );
           }}
           currentUserId={appUser.uid}
           currentUserRole="organization"
@@ -2649,9 +2720,7 @@ export function OrganizationDashboard({
           <button
             type="button"
             className="secondary-button"
-            onClick={() =>
-              setNotificationQueryLimit((current) => current + 50)
-            }
+            onClick={() => setNotificationQueryLimit((current) => current + 50)}
           >
             過去の通知を読み込む
           </button>

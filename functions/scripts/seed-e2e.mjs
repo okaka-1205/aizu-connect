@@ -92,7 +92,9 @@ completedEventStartDate.setHours(10, 0, 0, 0);
 const completedEventEndDate = new Date(
   completedEventStartDate.getTime() + 2 * 60 * 60 * 1000,
 );
-const completedEventStartTimestamp = Timestamp.fromDate(completedEventStartDate);
+const completedEventStartTimestamp = Timestamp.fromDate(
+  completedEventStartDate,
+);
 const completedEventEndTimestamp = Timestamp.fromDate(completedEventEndDate);
 const completedEventStartLabel = new Intl.DateTimeFormat("ja-JP", {
   year: "numeric",
@@ -495,10 +497,8 @@ for (const variant of variantKeys) {
       ...organization,
     }),
   );
-  const accessibilityApplicationEventId =
-    `event-e2e-a11y-application-${variant}`;
-  const accessibilityApplicationTitle =
-    `E2E 申込質問イベント ${displayVariant}`;
+  const accessibilityApplicationEventId = `event-e2e-a11y-application-${variant}`;
+  const accessibilityApplicationTitle = `E2E 申込質問イベント ${displayVariant}`;
   batch.set(
     db.doc(`events/${accessibilityApplicationEventId}`),
     eventDoc({
@@ -514,6 +514,7 @@ for (const variant of variantKeys) {
           label: "参加目的",
           type: "textarea",
           required: true,
+          containsSensitiveInfo: true,
         },
         {
           id: "experience",
@@ -529,6 +530,25 @@ for (const variant of variantKeys) {
           required: true,
         },
       ],
+      ...organization,
+    }),
+  );
+  const paidDisclosureEventId = `event-e2e-paid-disclosure-${variant}`;
+  const paidDisclosureTitle = `E2E 有料イベント ${displayVariant}`;
+  batch.set(
+    db.doc(`events/${paidDisclosureEventId}`),
+    eventDoc({
+      title: paidDisclosureTitle,
+      feeType: "有料",
+      feeAmount: 1500,
+      commercialSellerName: "E2E主催団体",
+      commercialSellerAddress: "福島県会津若松市一箕町鶴賀",
+      commercialSellerPhone: "0242-00-0000",
+      commercialResponsiblePerson: "テスト責任者",
+      paymentMethod: "当日会場で現金払い",
+      paymentTiming: "イベント当日の受付時",
+      additionalFees: "会場までの交通費は参加者負担",
+      applicantCount: 0,
       ...organization,
     }),
   );
@@ -1083,9 +1103,7 @@ for (const variant of variantKeys) {
     },
   );
   batch.set(
-    db.doc(
-      `chatRooms/${participantApplicationId}/members/org-e2e-${variant}`,
-    ),
+    db.doc(`chatRooms/${participantApplicationId}/members/org-e2e-${variant}`),
     {
       userId: `org-e2e-${variant}`,
       role: "organization",

@@ -45,6 +45,9 @@ async function login(page, email: string, userPassword = password) {
   });
   if (await legalUpdateHeading.isVisible()) {
     await page.getByRole("checkbox", { name: /両文書に同意します/ }).check();
+    await page
+      .getByRole("checkbox", { name: /18歳以上です。または16歳・17歳/ })
+      .check();
     const continueButton = page.getByRole("button", {
       name: "同意して利用を続ける",
     });
@@ -131,10 +134,9 @@ async function confirmApplication(
 }
 
 test.describe("emulator-backed role flows", () => {
-  test("student can enter the product and navigate core tabs", async (
-    { page },
-    testInfo,
-  ) => {
+  test("student can enter the product and navigate core tabs", async ({
+    page,
+  }, testInfo) => {
     const suffix = projectSuffix(testInfo.project.name);
     await login(page, studentEmail(testInfo.project.name));
     const nav = page.getByRole("navigation", { name: "メインナビゲーション" });
@@ -143,9 +145,7 @@ test.describe("emulator-backed role flows", () => {
       page.getByRole("heading", { name: "おすすめのイベント" }),
     ).toBeVisible();
     await expect(
-      page
-        .getByRole("heading", { name: "E2E ページングイベント 01" })
-        .first(),
+      page.getByRole("heading", { name: "E2E ページングイベント 01" }).first(),
     ).toBeVisible();
 
     await page.reload();
@@ -297,10 +297,9 @@ test.describe("emulator-backed role flows", () => {
     ).toBeHidden();
   });
 
-  test("login persistence survives reopening the site", async (
-    { page },
-    testInfo,
-  ) => {
+  test("login persistence survives reopening the site", async ({
+    page,
+  }, testInfo) => {
     await login(page, studentEmail(testInfo.project.name));
     const reopenedPage = await page.context().newPage();
     await page.close();
@@ -315,10 +314,9 @@ test.describe("emulator-backed role flows", () => {
     await expectNoHorizontalOverflow(reopenedPage);
   });
 
-  test("student can load events beyond the first search page", async (
-    { page },
-    testInfo,
-  ) => {
+  test("student can load events beyond the first search page", async ({
+    page,
+  }, testInfo) => {
     await login(page, studentEmail(testInfo.project.name));
     await openSearch(page);
 
@@ -340,10 +338,9 @@ test.describe("emulator-backed role flows", () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  test("search automatically includes events beyond the first page", async (
-    { page },
-    testInfo,
-  ) => {
+  test("search automatically includes events beyond the first page", async ({
+    page,
+  }, testInfo) => {
     await login(page, studentEmail(testInfo.project.name));
     await openSearch(page);
 
@@ -808,9 +805,7 @@ test.describe("emulator-backed role flows", () => {
     const calendarDownload = await calendarDownloadPromise;
     expect(
       normalizeBrowserDownloadFilename(calendarDownload.suggestedFilename()),
-    ).toBe(
-      normalizeBrowserDownloadFilename(`${eventTitle}.ics`),
-    );
+    ).toBe(normalizeBrowserDownloadFilename(`${eventTitle}.ics`));
     await page.getByRole("button", { name: "掲載を通報" }).click();
     const reportDialog = page.getByRole("dialog", { name: "通報する" });
     await reportDialog
@@ -1026,10 +1021,9 @@ test.describe("emulator-backed role flows", () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  test("admin can load reports beyond the first review page", async (
-    { page },
-    testInfo,
-  ) => {
+  test("admin can load reports beyond the first review page", async ({
+    page,
+  }, testInfo) => {
     await login(page, adminEmail(testInfo.project.name), "admin123");
 
     const reportQueue = page.locator(".admin-report-card");
@@ -1152,9 +1146,7 @@ test.describe("emulator-backed role flows", () => {
       .locator(".review-row")
       .filter({ hasText: `E2E モデレーション通報 ${variant}` });
     await expect(report).toBeVisible();
-    await report
-      .getByRole("button", { name: "対応済み", exact: true })
-      .click();
+    await report.getByRole("button", { name: "対応済み", exact: true }).click();
     const dialog = page.getByRole("alertdialog", {
       name: "通報を対応済みにする",
     });
@@ -1282,7 +1274,9 @@ test.describe("emulator-backed role flows", () => {
       if (!(await loadMoreUsers.isVisible())) break;
       const previousCount = await managedUserRows.count();
       await loadMoreUsers.click();
-      await expect.poll(() => managedUserRows.count()).toBeGreaterThan(previousCount);
+      await expect
+        .poll(() => managedUserRows.count())
+        .toBeGreaterThan(previousCount);
     }
     await expect(managedUser).toBeVisible();
     await managedUser

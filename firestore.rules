@@ -118,8 +118,8 @@ service cloud.firestore {
         'termsVersion', 'privacyVersion', 'legalAcceptedAt',
         'eligibilityConfirmedAt'
       ])
-      && data.termsVersion == '2026-08-01'
-      && data.privacyVersion == '2026-08-01'
+      && data.termsVersion == '2026-10-17'
+      && data.privacyVersion == '2026-10-17'
       && data.legalAcceptedAt is timestamp
       && data.eligibilityConfirmedAt is timestamp;
     }
@@ -367,14 +367,14 @@ service cloud.firestore {
       allow read: if isAdmin()
         || (signedIn() && resource.data.userId == request.auth.uid);
       allow create: if signedIn()
-        && consentId == request.auth.uid + '_2026-08-01_2026-08-01'
+        && consentId == request.auth.uid + '_2026-10-17_2026-10-17'
         && request.resource.data.keys().hasOnly([
           'userId', 'termsVersion', 'privacyVersion', 'acceptedAt',
           'eligibilityConfirmedAt', 'source'
         ])
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.termsVersion == '2026-08-01'
-        && request.resource.data.privacyVersion == '2026-08-01'
+        && request.resource.data.termsVersion == '2026-10-17'
+        && request.resource.data.privacyVersion == '2026-10-17'
         && request.resource.data.acceptedAt == request.time
         && request.resource.data.eligibilityConfirmedAt == request.time
         && request.resource.data.source in ['registration', 'reconsent'];
@@ -918,7 +918,8 @@ service cloud.firestore {
           == request.auth.uid
         && request.resource.data.keys().hasOnly([
           'eventId', 'organizationId', 'title', 'summary', 'imageUrls',
-          'participantCount', 'status', 'createdAt', 'updatedAt', 'publishedAt'
+          'participantCount', 'status', 'rightsConfirmed', 'createdAt',
+          'updatedAt', 'publishedAt'
         ])
         && request.resource.data.eventId == eventId
         && request.resource.data.organizationId == request.auth.uid
@@ -933,6 +934,7 @@ service cloud.firestore {
         && request.resource.data.participantCount is int
         && request.resource.data.participantCount >= 0
         && request.resource.data.status in ['draft', 'published']
+        && request.resource.data.rightsConfirmed == true
         && request.resource.data.createdAt is timestamp
         && request.resource.data.updatedAt is timestamp
         && (!request.resource.data.keys().hasAny(['publishedAt'])

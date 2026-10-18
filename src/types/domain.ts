@@ -116,6 +116,7 @@ export type ApplicationQuestion = {
   label: string;
   type: "text" | "textarea" | "select" | "checkbox";
   required: boolean;
+  containsSensitiveInfo?: boolean;
   options?: string[];
 };
 
@@ -331,6 +332,7 @@ export type EventReport = {
   imageUrls: string[];
   participantCount: number;
   status: "draft" | "published";
+  rightsConfirmed: boolean;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   publishedAt?: Timestamp;
