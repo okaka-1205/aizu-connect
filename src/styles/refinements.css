@@ -347,7 +347,7 @@
   gap: 6px;
 }
 .chat-panel-head .chat-head-actions > small {
-  max-width: 90px;
+  max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -383,6 +383,52 @@
   font-size: 8px;
   text-align: right;
 }
+.message-owner-actions,
+.message-moderation-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.message-owner-actions {
+  justify-content: flex-end;
+}
+.message-owner-actions button,
+.message-moderation-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  border: 1px solid #d8e2ec;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #60748c;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1;
+}
+.message-owner-actions button:hover,
+.message-moderation-actions button:hover {
+  border-color: #afc2d6;
+  background: #fff;
+  color: #354f6d;
+}
+.message-moderation-actions button.is-danger {
+  color: #9a4b5c;
+}
+.message-moderation-actions button.is-danger:hover {
+  border-color: #dfb1bb;
+  background: #fff4f5;
+  color: #833646;
+}
+.message-owner-actions button:focus-visible,
+.message-moderation-actions button:focus-visible {
+  outline: 3px solid var(--brand-strong);
+  outline-offset: 2px;
+}
 .chat-message.mine .chat-message-time {
   color: var(--muted);
 }
@@ -415,6 +461,7 @@
   display: grid;
   place-items: center;
   width: 40px;
+  height: 44px;
   flex: 0 0 40px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -1272,7 +1319,6 @@ small {
   min-height: 44px;
 }
 .save-button,
-.message-report-button,
 .chat-attachment-button,
 .notice button {
   min-width: 44px;
@@ -1564,7 +1610,6 @@ small {
 
   .chat-head-actions .icon-button,
   .mobile-chat-back,
-  .message-report-button,
   .chat-attachment-button {
     width: 44px;
     min-width: 44px;
@@ -1581,6 +1626,11 @@ small {
 
   .chat-panel-head .chat-head-actions > small {
     display: none;
+  }
+
+  .message-owner-actions button,
+  .message-moderation-actions button {
+    min-height: 44px;
   }
 
   .bottom-nav {

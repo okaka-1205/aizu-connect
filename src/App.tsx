@@ -161,6 +161,7 @@ function App() {
   const [wantToTry, setWantToTry] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [hasAcceptedLegal, setHasAcceptedLegal] = useState(false);
+  const [hasConfirmedEligibility, setHasConfirmedEligibility] = useState(false);
   const [events, setEvents] = useState<AizuEvent[]>([]);
   const [eventPageCursor, setEventPageCursor] =
     useState<QueryDocumentSnapshot<DocumentData> | null>(null);
@@ -647,7 +648,8 @@ function App() {
                     );
                     missingProfileTimer ??= setTimeout(() => {
                       missingProfileTimer = null;
-                      if (disposed || auth.currentUser?.uid !== user.uid) return;
+                      if (disposed || auth.currentUser?.uid !== user.uid)
+                        return;
                       void logout()
                         .then(() => {
                           setMessage(
@@ -827,11 +829,7 @@ function App() {
       applicationQueryLimit,
       setHasMoreApplications,
     );
-  }, [
-    activeStudentUid,
-    applicationQueryLimit,
-    setMessage,
-  ]);
+  }, [activeStudentUid, applicationQueryLimit, setMessage]);
 
   const loadMoreEvents = async () => {
     if (!eventPageCursor || !hasMoreEvents || isLoadingMoreEvents) return;
@@ -1035,6 +1033,13 @@ function App() {
       if (!hasAcceptedLegal) {
         setMessage(
           "利用規約とプライバシーポリシーを確認し、同意してください。",
+          "error",
+        );
+        return;
+      }
+      if (!hasConfirmedEligibility) {
+        setMessage(
+          "年齢条件を確認し、未成年の場合は法定代理人の同意を得てください。",
           "error",
         );
         return;
@@ -1389,7 +1394,9 @@ function App() {
     ) {
       return;
     }
-    const relatedEvent = events.find((event) => event.id === application.eventId);
+    const relatedEvent = events.find(
+      (event) => event.id === application.eventId,
+    );
     if (
       relatedEvent?.cancellationDeadline &&
       relatedEvent.cancellationDeadline.toMillis() < Date.now()
@@ -1462,6 +1469,8 @@ function App() {
     setCurrentActivities("");
     setWantToTry("");
     setOrganizationName("");
+    setHasAcceptedLegal(false);
+    setHasConfirmedEligibility(false);
     setMessage("");
     setIsNotificationOpen(false);
     setSelectedEventId(null);
@@ -1556,6 +1565,8 @@ function App() {
           setOrganizationName,
           hasAcceptedLegal,
           setHasAcceptedLegal,
+          hasConfirmedEligibility,
+          setHasConfirmedEligibility,
           isActionLoading,
           message,
           messageTone,
@@ -2070,7 +2081,11 @@ function App() {
               })
             }
             onEditMessage={(chatMessage, text) =>
-              editChatMessage(activeRoomId ?? chatMessage.roomId, chatMessage.id, text)
+              editChatMessage(
+                activeRoomId ?? chatMessage.roomId,
+                chatMessage.id,
+                text,
+              )
             }
             onDeleteMessage={(chatMessage) =>
               deleteChatMessage(
@@ -2083,7 +2098,10 @@ function App() {
               setBlockedUserIds((current) => [
                 ...new Set([...current, chatMessage.senderId]),
               ]);
-              setMessage(`${chatMessage.senderName}さんをブロックしました。`, "success");
+              setMessage(
+                `${chatMessage.senderName}さんをブロックしました。`,
+                "success",
+              );
             }}
             currentUserId={appUser.uid}
             currentUserRole="student"
@@ -2215,6 +2233,7 @@ function LegalReconsentScreen({
   onLogout: () => void;
 }) {
   const [confirmed, setConfirmed] = useState(false);
+  const [eligibilityConfirmed, setEligibilityConfirmed] = useState(false);
   const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(
     null,
   );
@@ -2243,15 +2262,23 @@ function LegalReconsentScreen({
             checked={confirmed}
             onChange={(event) => setConfirmed(event.target.checked)}
           />
+          <span>両文書に同意します</span>
+        </label>
+        <label className="application-consent">
+          <input
+            type="checkbox"
+            checked={eligibilityConfirmed}
+            onChange={(event) => setEligibilityConfirmed(event.target.checked)}
+          />
           <span>
-            両文書に同意します。16歳以上で、未成年の場合は法定代理人の同意を得ています
+            18歳以上です。または16歳・17歳で、法定代理人から本サービスの利用について同意を得ています
           </span>
         </label>
         {message && <NoticeBanner message={message} tone={messageTone} />}
         <button
           className="primary-action"
           type="button"
-          disabled={!confirmed || isLoading}
+          disabled={!confirmed || !eligibilityConfirmed || isLoading}
           onClick={() => void onAccept()}
         >
           {isLoading && <Loader2 size={16} className="spin" />}
@@ -2298,6 +2325,8 @@ function AuthScreen(props: {
   setOrganizationName: (value: string) => void;
   hasAcceptedLegal: boolean;
   setHasAcceptedLegal: (value: boolean) => void;
+  hasConfirmedEligibility: boolean;
+  setHasConfirmedEligibility: (value: boolean) => void;
   isActionLoading: boolean;
   message: string;
   messageTone: NoticeTone;
@@ -2575,9 +2604,19 @@ function AuthScreen(props: {
                       props.setHasAcceptedLegal(event.target.checked)
                     }
                   />
+                  <span>利用規約とプライバシーポリシーに同意します</span>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    required
+                    checked={props.hasConfirmedEligibility}
+                    onChange={(event) =>
+                      props.setHasConfirmedEligibility(event.target.checked)
+                    }
+                  />
                   <span>
-                    利用規約とプライバシーポリシーに同意します。16歳以上で、
-                    未成年の場合は法定代理人の同意を得ています
+                    18歳以上です。または16歳・17歳で、法定代理人から本サービスの利用について同意を得ています
                   </span>
                 </label>
                 <p>

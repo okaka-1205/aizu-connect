@@ -18,6 +18,11 @@ test.describe("auth entry", () => {
     });
     await expect(legalConsent).toBeVisible();
     await expect(legalConsent).toHaveAttribute("required", "");
+    const eligibilityConsent = page.getByRole("checkbox", {
+      name: /18歳以上です。または16歳・17歳/,
+    });
+    await expect(eligibilityConsent).toBeVisible();
+    await expect(eligibilityConsent).toHaveAttribute("required", "");
     await expect(page.getByLabel("メールアドレス")).toHaveAttribute(
       "required",
       "",
@@ -40,9 +45,7 @@ test.describe("auth entry", () => {
 
     await page.getByRole("button", { name: "ログイン" }).click();
 
-    await expect(
-      page.getByRole("heading", { name: "ログイン" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "ログイン" })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "ログインする" }),
     ).toBeVisible();
@@ -66,7 +69,12 @@ test.describe("auth entry", () => {
     await expect(
       page.getByRole("heading", { name: "第1条 適用とアカウント" }),
     ).toBeVisible();
-    await expect(page.getByText("2026年8月1日")).toBeVisible();
+    await expect(page.getByText("2026年10月17日")).toBeVisible();
+    await expect(
+      page.getByRole("link", {
+        name: "オープンソースソフトウェアのライセンス表示",
+      }),
+    ).toHaveAttribute("href", "/open-source-notices.txt");
     await termsBody.press("PageDown");
     await expect
       .poll(() => termsBody.evaluate((element) => element.scrollTop))

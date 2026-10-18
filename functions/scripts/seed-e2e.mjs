@@ -92,7 +92,9 @@ completedEventStartDate.setHours(10, 0, 0, 0);
 const completedEventEndDate = new Date(
   completedEventStartDate.getTime() + 2 * 60 * 60 * 1000,
 );
-const completedEventStartTimestamp = Timestamp.fromDate(completedEventStartDate);
+const completedEventStartTimestamp = Timestamp.fromDate(
+  completedEventStartDate,
+);
 const completedEventEndTimestamp = Timestamp.fromDate(completedEventEndDate);
 const completedEventStartLabel = new Intl.DateTimeFormat("ja-JP", {
   year: "numeric",
@@ -495,10 +497,8 @@ for (const variant of variantKeys) {
       ...organization,
     }),
   );
-  const accessibilityApplicationEventId =
-    `event-e2e-a11y-application-${variant}`;
-  const accessibilityApplicationTitle =
-    `E2E 申込質問イベント ${displayVariant}`;
+  const accessibilityApplicationEventId = `event-e2e-a11y-application-${variant}`;
+  const accessibilityApplicationTitle = `E2E 申込質問イベント ${displayVariant}`;
   batch.set(
     db.doc(`events/${accessibilityApplicationEventId}`),
     eventDoc({
@@ -514,6 +514,7 @@ for (const variant of variantKeys) {
           label: "参加目的",
           type: "textarea",
           required: true,
+          containsSensitiveInfo: true,
         },
         {
           id: "experience",
@@ -529,6 +530,25 @@ for (const variant of variantKeys) {
           required: true,
         },
       ],
+      ...organization,
+    }),
+  );
+  const paidDisclosureEventId = `event-e2e-paid-disclosure-${variant}`;
+  const paidDisclosureTitle = `E2E 有料イベント ${displayVariant}`;
+  batch.set(
+    db.doc(`events/${paidDisclosureEventId}`),
+    eventDoc({
+      title: paidDisclosureTitle,
+      feeType: "有料",
+      feeAmount: 1500,
+      commercialSellerName: "E2E主催団体",
+      commercialSellerAddress: "福島県会津若松市一箕町鶴賀",
+      commercialSellerPhone: "0242-00-0000",
+      commercialResponsiblePerson: "テスト責任者",
+      paymentMethod: "当日会場で現金払い",
+      paymentTiming: "イベント当日の受付時",
+      additionalFees: "会場までの交通費は参加者負担",
+      applicantCount: 0,
       ...organization,
     }),
   );
@@ -836,6 +856,13 @@ for (const variant of variantKeys) {
     }),
   );
   batch.set(
+    db.doc(`events/admin-reported-event-${variant}`),
+    eventDoc({
+      title: `E2E 管理通報イベント ${displayVariant}`,
+      applicantCount: 0,
+    }),
+  );
+  batch.set(
     db.doc(`events/admin-direct-event-${variant}`),
     eventDoc({
       title: `E2E 直接削除イベント ${displayVariant}`,
@@ -876,8 +903,8 @@ for (const variant of variantKeys) {
   batch.set(db.doc(`reports/admin-delete-report-${variant}`), {
     reporterId: "student-e2e",
     targetType: "event",
-    targetId: eventId,
-    targetTitle: `E2E 管理削除イベント ${displayVariant}`,
+    targetId: `admin-reported-event-${variant}`,
+    targetTitle: `E2E 管理通報イベント ${displayVariant}`,
     reason: "不適切な内容",
     description: `E2E管理削除通報 ${displayVariant}`,
     status: "submitted",
@@ -890,6 +917,16 @@ for (const variant of variantKeys) {
     targetTitle: "E2E 地域交流会",
     reason: "その他",
     description: `削除ユーザー通報の匿名化確認 ${displayVariant}`,
+    status: "submitted",
+    createdAt: timestamp,
+  });
+  batch.set(db.doc(`reports/admin-moderation-report-${variant}`), {
+    reporterId: "student-e2e",
+    targetType: "event",
+    targetId: "event-e2e-published",
+    targetTitle: "E2E 地域交流会",
+    reason: "その他",
+    description: `E2E モデレーション通報 ${displayVariant}`,
     status: "submitted",
     createdAt: timestamp,
   });
@@ -1066,9 +1103,7 @@ for (const variant of variantKeys) {
     },
   );
   batch.set(
-    db.doc(
-      `chatRooms/${participantApplicationId}/members/org-e2e-${variant}`,
-    ),
+    db.doc(`chatRooms/${participantApplicationId}/members/org-e2e-${variant}`),
     {
       userId: `org-e2e-${variant}`,
       role: "organization",
@@ -1306,12 +1341,13 @@ await Promise.all(
   variantKeys.flatMap((variant) => {
     const userId = `admin-delete-user-${variant}`;
     const eventId = `admin-delete-event-${variant}`;
+    const reportedEventId = `admin-reported-event-${variant}`;
     return [
       bucket
         .file(`profile-images/${userId}/profile-seed.png`)
         .save(Buffer.from("profile-image")),
       bucket
-        .file(`event-images/org-e2e/${eventId}/cover-seed.png`)
+        .file(`event-images/org-e2e/${reportedEventId}/cover-seed.png`)
         .save(Buffer.from("event-image")),
       bucket
         .file(

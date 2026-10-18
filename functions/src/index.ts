@@ -1087,11 +1087,15 @@ export const submitApplication = onCall(
       !submittedAnswers.every((answer: unknown) => {
         if (!answer || typeof answer !== "object") return false;
         const item = answer as Record<string, unknown>;
-        return typeof item.questionId === "string" &&
-          item.questionId.length >= 1 && item.questionId.length <= 40 &&
-          typeof item.label === "string" && item.label.length <= 120 &&
+        return (
+          typeof item.questionId === "string" &&
+          item.questionId.length >= 1 &&
+          item.questionId.length <= 40 &&
+          typeof item.label === "string" &&
+          item.label.length <= 120 &&
           ((typeof item.value === "string" && item.value.length <= 1000) ||
-            typeof item.value === "boolean");
+            typeof item.value === "boolean")
+        );
       })
     ) {
       throw new HttpsError(
@@ -1111,6 +1115,7 @@ export const submitApplication = onCall(
     let applicationStatus: "pending" | "waitlisted" = "pending";
     let waitlistPosition = 0;
     let waitlistSequence = 0;
+    let hasSensitiveAnswers = false;
     let validatedAnswers: Array<{
       questionId: string;
       label: string;
@@ -1121,6 +1126,7 @@ export const submitApplication = onCall(
       applicationStatus = "pending";
       waitlistPosition = 0;
       waitlistSequence = 0;
+      hasSensitiveAnswers = false;
       validatedAnswers = [];
       const [userSnapshot, eventSnapshot, applicationSnapshot] =
         await transaction.getAll(userRef, eventRef, applicationRef);
@@ -1171,6 +1177,35 @@ export const submitApplication = onCall(
         );
       }
       validatedAnswers = normalizedAnswers;
+      const sensitiveQuestionIds = new Set(
+        (Array.isArray(eventData.applicationQuestions) ?
+          eventData.applicationQuestions :
+          []
+        )
+          .filter(
+            (question: unknown) =>
+              question !== null &&
+              typeof question === "object" &&
+              (question as Record<string, unknown>).containsSensitiveInfo ===
+                true,
+          )
+          .map((question: unknown) =>
+            String((question as Record<string, unknown>).id ?? ""),
+          ),
+      );
+      hasSensitiveAnswers = normalizedAnswers.some(
+        (answer) =>
+          sensitiveQuestionIds.has(answer.questionId) &&
+          (typeof answer.value === "string" ?
+            answer.value.trim().length > 0 :
+            answer.value === true),
+      );
+      if (hasSensitiveAnswers && !sensitiveInfoConsent) {
+        throw new HttpsError(
+          "invalid-argument",
+          "要配慮個人情報を含む申込回答への明示的な同意が必要です。",
+        );
+      }
       const currentCount = Number(eventData.applicantCount ?? 0);
       const capacity = Number(eventData.capacity ?? 0);
       if (capacity > 0 && currentCount >= capacity) {
@@ -1208,10 +1243,12 @@ export const submitApplication = onCall(
         sensitiveInfoConsent,
         emergencyContactAuthorityConfirmed,
         answers: validatedAnswers,
-        ...(applicationStatus === "waitlisted" ? {
-          waitlistPosition,
-          waitlistSequence,
-        } : {}),
+        ...(applicationStatus === "waitlisted" ?
+          {
+            waitlistPosition,
+            waitlistSequence,
+          } :
+          {}),
         createdAt: FieldValue.serverTimestamp(),
       });
       if (applicationStatus === "pending") {
@@ -1317,6 +1354,7 @@ export const submitApplication = onCall(
           ...(userSnapshot.data()?.profileImageUrl ? ["プロフィール画像"] : []),
           "参加申請情報",
           ...(accessibilityNeeds ? ["必要な配慮"] : []),
+          ...(hasSensitiveAnswers ? ["要配慮個人情報を含む申込回答"] : []),
           ...(emergencyContact ? ["緊急連絡先"] : []),
         ],
         providedAt: FieldValue.serverTimestamp(),
@@ -1386,7 +1424,9 @@ export const manageChatMessage = onCall(
   {enforceAppCheck: enforceCallableAppCheck},
   async (request) => {
     const userId = request.auth?.uid;
-    if (!userId) throw new HttpsError("unauthenticated", "ログインが必要です。");
+    if (!userId) {
+      throw new HttpsError("unauthenticated", "ログインが必要です。");
+    }
     const roomId = requiredDocumentId(request.data?.roomId);
     const messageId = requiredDocumentId(request.data?.messageId);
     const action = String(request.data?.action ?? "");
@@ -1408,10 +1448,14 @@ export const manageChatMessage = onCall(
       const [roomSnapshot, memberSnapshot, messageSnapshot] =
         await transaction.getAll(roomRef, memberRef, messageRef);
       const roomData = roomSnapshot.data();
-      const legacyMember = Array.isArray(roomData?.participantIds) &&
+      const legacyMember =
+        Array.isArray(roomData?.participantIds) &&
         roomData.participantIds.includes(userId);
       if (!roomSnapshot.exists || (!memberSnapshot.exists && !legacyMember)) {
-        throw new HttpsError("permission-denied", "チャット参加者ではありません。");
+        throw new HttpsError(
+          "permission-denied",
+          "チャット参加者ではありません。",
+        );
       }
       const messageData = messageSnapshot.data();
       if (!messageSnapshot.exists || messageData?.senderId !== userId) {
@@ -1432,7 +1476,8 @@ export const manageChatMessage = onCall(
           );
         }
         const history = Array.isArray(messageData.editHistory) ?
-          messageData.editHistory.slice(-19) : [];
+          messageData.editHistory.slice(-19) :
+          [];
         transaction.update(messageRef, {
           text,
           editedAt: FieldValue.serverTimestamp(),

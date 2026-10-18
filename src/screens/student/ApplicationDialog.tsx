@@ -42,12 +42,24 @@ export function ApplicationDialog({
   ] = useState(false);
   const isWaitlist =
     Number(event.applicantCount ?? 0) >= Number(event.capacity ?? 0);
-  const dialogRef = useDialogAccessibility<HTMLFormElement>(onClose, () =>
-    Array.from(document.querySelectorAll<HTMLElement>("button")).find(
-      (element) =>
-        element.getAttribute("aria-label") ===
-        `${event.title}の詳細を見る`,
-    ) ?? null,
+  const hasSensitiveQuestionAnswer = (event.applicationQuestions ?? []).some(
+    (question) => {
+      if (question.containsSensitiveInfo !== true) return false;
+      const value = customAnswers[question.id];
+      return typeof value === "string"
+        ? value.trim().length > 0
+        : value === true;
+    },
+  );
+  const requiresSensitiveInfoConsent =
+    accessibilityNeeds.trim().length > 0 || hasSensitiveQuestionAnswer;
+  const dialogRef = useDialogAccessibility<HTMLFormElement>(
+    onClose,
+    () =>
+      Array.from(document.querySelectorAll<HTMLElement>("button")).find(
+        (element) =>
+          element.getAttribute("aria-label") === `${event.title}の詳細を見る`,
+      ) ?? null,
   );
   return createPortal(
     <div className="report-backdrop" role="presentation" onClick={onClose}>
@@ -61,7 +73,11 @@ export function ApplicationDialog({
         onClick={(clickEvent) => clickEvent.stopPropagation()}
         onSubmit={(submitEvent) => {
           submitEvent.preventDefault();
-          if (!consentAccepted) return;
+          if (
+            !consentAccepted ||
+            (requiresSensitiveInfoConsent && !sensitiveInfoConsent)
+          )
+            return;
           onSubmit({
             participantMessage: participantMessage.trim().slice(0, 500),
             accessibilityNeeds: accessibilityNeeds.trim().slice(0, 500),
@@ -125,13 +141,31 @@ export function ApplicationDialog({
         </div>
         {event.feeType === "有料" && (
           <div className="application-policy">
-            <strong>有料イベントの申込内容</strong>
+            <strong>有料イベントの最終確認</strong>
             <p>
               参加費 {Number(event.feeAmount ?? 0).toLocaleString("ja-JP")}
               円（税込） ／追加費用 {event.additionalFees || "なし"}
             </p>
+            <p>販売・役務提供事業者：{event.commercialSellerName}</p>
+            <p>運営責任者：{event.commercialResponsiblePerson}</p>
+            <p>所在地：{event.commercialSellerAddress}</p>
+            <p>電話番号：{event.commercialSellerPhone}</p>
             <p>支払方法：{event.paymentMethod}</p>
             <p>支払時期：{event.paymentTiming}</p>
+            <p>
+              提供時期：{event.startAtLabel}
+              {event.endAtLabel ? ` - ${event.endAtLabel}` : ""}
+            </p>
+            <p>申込期限：イベント開始前まで（満員時はキャンセル待ち）</p>
+            <p>
+              キャンセル・返金条件：
+              {event.cancellationPolicy ||
+                "申込み後のキャンセル・返金条件は主催者へご確認ください。"}
+            </p>
+            <p>
+              主催者が申請を承認した時点で、主催者との参加契約が成立します。
+              内容を修正する場合は「戻る」を選択してください。
+            </p>
           </div>
         )}
         <Field label="主催者へのメッセージ（任意）">
@@ -214,7 +248,7 @@ export function ApplicationDialog({
             }
           />
         </Field>
-        {accessibilityNeeds.trim() && (
+        {requiresSensitiveInfoConsent && (
           <label className="application-consent">
             <input
               required
@@ -225,7 +259,8 @@ export function ApplicationDialog({
               }
             />
             <span>
-              入力内容に健康・障害等の要配慮個人情報が含まれる場合、その取得と
+              配慮事項または要配慮情報を含むと表示された申込回答について、
+              健康・障害等の要配慮個人情報の取得と
               {event.organizationName}への提供に明示的に同意します
             </span>
           </label>
@@ -282,7 +317,7 @@ export function ApplicationDialog({
             disabled={
               isSubmitting ||
               !consentAccepted ||
-              Boolean(accessibilityNeeds.trim() && !sensitiveInfoConsent) ||
+              Boolean(requiresSensitiveInfoConsent && !sensitiveInfoConsent) ||
               Boolean(
                 emergencyContact.trim() && !emergencyContactAuthorityConfirmed,
               )

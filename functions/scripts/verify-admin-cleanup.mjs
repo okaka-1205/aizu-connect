@@ -28,6 +28,7 @@ const bucket = getStorage().bucket();
 for (const variant of ["desktop", "mobile", "tablet", "firefox", "webkit"]) {
   const userId = `admin-delete-user-${variant}`;
   const eventId = `admin-delete-event-${variant}`;
+  const reportedEventId = `admin-reported-event-${variant}`;
   const roomId = `${eventId}_${userId}`;
 
   assert.equal((await db.doc(`users/${userId}`).get()).exists, false);
@@ -35,13 +36,12 @@ for (const variant of ["desktop", "mobile", "tablet", "firefox", "webkit"]) {
     auth.getUser(userId),
     (error) => error?.code === "auth/user-not-found",
   );
-  assert.equal((await db.doc(`events/${eventId}`).get()).exists, false);
+  assert.equal((await db.doc(`events/${reportedEventId}`).get()).exists, false);
   assert.equal(
     (await db.doc(`eventApplications/${roomId}`).get()).exists,
     false,
   );
   assert.equal((await db.doc(`chatRooms/${roomId}`).get()).exists, false);
-  assert.equal((await db.doc(`eventCheckIns/${eventId}`).get()).exists, false);
   assert.equal(
     (await db.doc(`accountDeletionRequests/${userId}`).get()).exists,
     false,
@@ -64,7 +64,7 @@ for (const variant of ["desktop", "mobile", "tablet", "firefox", "webkit"]) {
   assert.ok(anonymizedReport.data()?.reporterDeletedAt);
 
   const eventOperation = await db
-    .doc(`adminOperations/delete_event_${eventId}`)
+    .doc(`adminOperations/delete_event_${reportedEventId}`)
     .get();
   const userOperation = await db
     .doc(`adminOperations/delete_user_${userId}`)
@@ -74,13 +74,13 @@ for (const variant of ["desktop", "mobile", "tablet", "firefox", "webkit"]) {
 
   const deletionNotices = await db
     .collection("notifications")
-    .where("targetId", "==", `delete_event_${eventId}`)
+    .where("targetId", "==", `delete_event_${reportedEventId}`)
     .get();
   assert.ok(deletionNotices.size >= 1);
 
   for (const prefix of [
     `profile-images/${userId}/`,
-    `event-images/org-e2e/${eventId}/`,
+    `event-images/org-e2e/${reportedEventId}/`,
     `chat-attachments/${roomId}/`,
   ]) {
     const [files] = await bucket.getFiles({ prefix });

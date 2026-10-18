@@ -125,6 +125,17 @@ export function LegalDialog({
               )}
             </section>
           ))}
+          {document === "terms" && (
+            <p>
+              <a
+                href="/open-source-notices.txt"
+                target="_blank"
+                rel="noreferrer"
+              >
+                オープンソースソフトウェアのライセンス表示
+              </a>
+            </p>
+          )}
         </div>
       </section>
     </div>,

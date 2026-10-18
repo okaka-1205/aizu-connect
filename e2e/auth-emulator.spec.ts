@@ -40,6 +40,9 @@ test.describe("lightweight emulator auth flows", () => {
         name: "利用規約とプライバシーポリシーに同意します",
       })
       .check();
+    await page
+      .getByRole("checkbox", { name: /18歳以上です。または16歳・17歳/ })
+      .check();
     await page.getByRole("button", { name: "アカウントを作成" }).click();
 
     await expect(
@@ -81,7 +84,9 @@ test.describe("lightweight emulator auth flows", () => {
     await page.getByRole("button", { name: "ログインする" }).click();
 
     await expect(
-      page.getByText("アカウント情報を準備しています。しばらくお待ちください。"),
+      page.getByText(
+        "アカウント情報を準備しています。しばらくお待ちください。",
+      ),
     ).toBeVisible();
     await expect(
       page.getByText(
@@ -111,6 +116,9 @@ test.describe("lightweight emulator auth flows", () => {
       .getByRole("checkbox", {
         name: "利用規約とプライバシーポリシーに同意します",
       })
+      .check();
+    await page
+      .getByRole("checkbox", { name: /18歳以上です。または16歳・17歳/ })
       .check();
     await page.getByRole("button", { name: "アカウントを作成" }).click();
 
