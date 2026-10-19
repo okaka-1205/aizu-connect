@@ -401,7 +401,7 @@ export const getFirebaseErrorMessage = (error: unknown) => {
       code === "auth/weak-password" ||
       error.message.includes("auth/weak-password")
     )
-      return "パスワードは6文字以上にしてください。";
+      return "パスワードは10文字以上にしてください。";
     if (
       code === "auth/too-many-requests" ||
       error.message.includes("auth/too-many-requests")

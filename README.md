@@ -210,14 +210,14 @@ npx -y firebase-tools@latest deploy \
 ## リリース前チェック
 
 - 開発・E2EテストはEmulatorだけで行い、`aizu-connect-prod`へテストデータを投入しない
-- 本番Authenticationに初期管理者を作成し、メール確認とMFAを完了する
+- 本番Authenticationの初期管理者が有効かつメール確認済みであることを確認する。MFAはクライアント対応後、各管理者本人が認証アプリで登録する
 - `.env.production`と`functions/.env.*`をGitへ追加しない
-- Firestore Rulesを本番データで検証する
+- Firestore・Storage RulesをEmulatorテストと本番dry-runで検証する
 - Authenticationのメール認証とパスワード再設定を確認する
 - Storageを使う場合はStorage Rulesを追加する
-- 運営者名、住所、代表者、問い合わせ先を本番環境変数へ設定する
+- 公開可能な問い合わせ先を本番環境変数へ設定する。運営者情報は非公開の運用記録で管理し、適法な請求時に申込み前に遅滞なく提供する
 - 主催者契約・審査手順に、参加者情報の目的外利用禁止と事故・漏えい時の連絡義務を定める
-- 有料イベントの販売主体、住所、電話番号、責任者、支払・返金条件を実在情報で確認する
+- 有料イベントごとに、主催者が販売主体、住所、電話番号、責任者、支払・返金条件を実在情報で登録したことを審査時に確認する
 - Cloud Schedulerで`purgeExpiredLegalRecords`が有効であることを確認する
 - Emulatorではなく本番Firebaseで学生・主催者・管理者の3導線をE2E確認する
 - 個人情報の開示等請求、漏えい等報告、委託先管理の社内手順を整備する
