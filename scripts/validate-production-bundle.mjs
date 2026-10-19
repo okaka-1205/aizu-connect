@@ -9,6 +9,7 @@ const forbiddenPatterns = [
   ["development admin password", /admin123/i],
   ["test password", /password123/i],
   ["placeholder image service", /placehold\.co/i],
+  ["university operator address", /会津大学内/i],
 ];
 const textExtensions = new Set([".css", ".html", ".js", ".json", ".map"]);
 const findings = [];

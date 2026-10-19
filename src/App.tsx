@@ -2241,39 +2241,58 @@ function LegalReconsentScreen({
   return (
     <main className="loading-screen">
       <section className="pending-card legal-reconsent-card">
-        <BrandMark large />
-        <p className="eyebrow">重要なお知らせ</p>
-        <h1>利用条件を更新しました</h1>
-        <p>
+        <div className="legal-reconsent-heading">
+          <BrandMark large />
+          <div>
+            <p className="eyebrow">重要なお知らせ</p>
+            <h1>利用条件を更新しました</h1>
+          </div>
+        </div>
+        <p className="legal-reconsent-lede">
           個人情報の共有範囲、退会時のデータ、有料イベントおよび未成年者の取扱いを
           明確にしました。利用を続ける前に内容を確認してください。
         </p>
+        <div className="legal-reconsent-summary" role="status">
+          <ShieldCheck size={18} aria-hidden="true" />
+          <span>確認する文書は2つです</span>
+        </div>
         <div className="legal-reconsent-links">
           <button type="button" onClick={() => setLegalDocument("terms")}>
-            利用規約（{TERMS_VERSION}）を読む
+            <span>
+              <strong>利用規約</strong>
+              <small>バージョン {TERMS_VERSION}</small>
+            </span>
+            <ChevronRight size={18} aria-hidden="true" />
           </button>
           <button type="button" onClick={() => setLegalDocument("privacy")}>
-            プライバシーポリシー（{PRIVACY_VERSION}）を読む
+            <span>
+              <strong>プライバシーポリシー</strong>
+              <small>バージョン {PRIVACY_VERSION}</small>
+            </span>
+            <ChevronRight size={18} aria-hidden="true" />
           </button>
         </div>
-        <label className="application-consent">
-          <input
-            type="checkbox"
-            checked={confirmed}
-            onChange={(event) => setConfirmed(event.target.checked)}
-          />
-          <span>両文書に同意します</span>
-        </label>
-        <label className="application-consent">
-          <input
-            type="checkbox"
-            checked={eligibilityConfirmed}
-            onChange={(event) => setEligibilityConfirmed(event.target.checked)}
-          />
-          <span>
-            18歳以上です。または16歳・17歳で、法定代理人から本サービスの利用について同意を得ています
-          </span>
-        </label>
+        <fieldset className="legal-reconsent-checks">
+          <legend>同意内容</legend>
+          <label className="legal-reconsent-consent">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(event) => setConfirmed(event.target.checked)}
+            />
+            <span>上記の両文書に同意します</span>
+          </label>
+          <label className="legal-reconsent-consent">
+            <input
+              type="checkbox"
+              checked={eligibilityConfirmed}
+              onChange={(event) => setEligibilityConfirmed(event.target.checked)}
+            />
+            <span>
+              18歳以上です。または16歳・17歳で、法定代理人から本サービスの利用について同意を得ています
+            </span>
+          </label>
+        </fieldset>
         {message && <NoticeBanner message={message} tone={messageTone} />}
         <button
           className="primary-action"

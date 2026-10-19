@@ -69,7 +69,7 @@ test.describe("auth entry", () => {
     await expect(
       page.getByRole("heading", { name: "第1条 適用とアカウント" }),
     ).toBeVisible();
-    await expect(page.getByText("2026年10月17日")).toBeVisible();
+    await expect(page.getByText("2026年10月19日")).toBeVisible();
     await expect(
       page.getByRole("link", {
         name: "オープンソースソフトウェアのライセンス表示",
