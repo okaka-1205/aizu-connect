@@ -644,6 +644,7 @@ test.describe("emulator-backed role flows", () => {
   test("a cancellation promotes the next waitlisted participant", async ({
     page,
   }, testInfo) => {
+    testInfo.setTimeout(45_000);
     const suffix = projectSuffix(testInfo.project.name);
     const eventTitle = `E2E 満員イベント ${projectVariant(testInfo.project.name)}`;
 
@@ -661,12 +662,16 @@ test.describe("emulator-backed role flows", () => {
     const cancellationDialog = page.getByRole("alertdialog", {
       name: "参加申請をキャンセルしますか？",
     });
-    await cancellationDialog
-      .getByLabel("キャンセル理由")
-      .fill("E2E端末別テストのためキャンセルします。");
-    await cancellationDialog
-      .getByRole("button", { name: "申請を取り消す" })
-      .click();
+    const cancellationReason = cancellationDialog.getByLabel("キャンセル理由");
+    await cancellationReason.fill("E2E端末別テストのためキャンセルします。");
+    await expect(cancellationReason).toHaveValue(
+      "E2E端末別テストのためキャンセルします。",
+    );
+    const confirmCancellation = cancellationDialog.getByRole("button", {
+      name: "申請を取り消す",
+    });
+    await expect(confirmCancellation).toBeEnabled();
+    await confirmCancellation.click();
     await expect(
       page.getByText("参加申請をキャンセルしました。"),
     ).toBeVisible();

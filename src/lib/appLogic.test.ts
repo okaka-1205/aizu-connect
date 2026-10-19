@@ -362,7 +362,7 @@ describe("firebase error messages", () => {
           code: "auth/weak-password",
         }),
       ),
-    ).toBe("パスワードは6文字以上にしてください。");
+    ).toBe("パスワードは10文字以上にしてください。");
   });
 
   it("maps storage failures without exposing Firebase internals", () => {
