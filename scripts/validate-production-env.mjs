@@ -10,9 +10,6 @@ const requiredKeys = [
   "VITE_FIREBASE_MESSAGING_SENDER_ID",
   "VITE_FIREBASE_APP_ID",
   "VITE_FIREBASE_APP_CHECK_SITE_KEY",
-  "VITE_LEGAL_OPERATOR_NAME",
-  "VITE_LEGAL_OPERATOR_ADDRESS",
-  "VITE_LEGAL_REPRESENTATIVE",
   "VITE_LEGAL_CONTACT_EMAIL",
 ];
 const missingKeys = requiredKeys.filter((key) => !env[key]?.trim());
@@ -43,18 +40,13 @@ if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env.VITE_LEGAL_CONTACT_EMAIL)) {
   throw new Error("VITE_LEGAL_CONTACT_EMAIL must be a valid public contact.");
 }
 
-const legalValues = [
-  env.VITE_LEGAL_OPERATOR_NAME,
-  env.VITE_LEGAL_OPERATOR_ADDRESS,
-  env.VITE_LEGAL_REPRESENTATIVE,
-  env.VITE_LEGAL_CONTACT_EMAIL,
-].join(" ");
+const legalValues = env.VITE_LEGAL_CONTACT_EMAIL;
 
 if (
   /未設定|todo|example\.(com|jp)|your[-_ ]?(name|address)/i.test(legalValues)
 ) {
   throw new Error(
-    "Production legal operator information contains placeholders.",
+    "Production public legal contact contains a placeholder.",
   );
 }
 

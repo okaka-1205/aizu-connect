@@ -1,7 +1,7 @@
 export type LegalDocument = "terms" | "privacy";
 
-export const TERMS_VERSION = "2026-10-17";
-export const PRIVACY_VERSION = "2026-10-17";
+export const TERMS_VERSION = "2026-10-19";
+export const PRIVACY_VERSION = "2026-10-19";
 
 type LegalMeta = {
   label: string;
@@ -25,24 +25,20 @@ type LegalDocumentContent = {
   sections: LegalSection[];
 };
 
-const operatorName =
-  import.meta.env.VITE_LEGAL_OPERATOR_NAME?.trim() || "（運営者名未設定）";
-const operatorAddress =
-  import.meta.env.VITE_LEGAL_OPERATOR_ADDRESS?.trim() || "（住所未設定）";
-const representative =
-  import.meta.env.VITE_LEGAL_REPRESENTATIVE?.trim() || "（代表者名未設定）";
 const contactEmail =
   import.meta.env.VITE_LEGAL_CONTACT_EMAIL?.trim() || "（連絡先未設定）";
+const publicOperatorLabel = "Aizu Connect運営";
+const legalDisclosureNotice =
+  "運営者の氏名・住所・電話番号その他法令上必要な事項は、ご請求があった場合、申込みの意思決定前に遅滞なく電子メールで提供します。";
 
 const operatorMeta: LegalMeta[] = [
-  { label: "運営者", value: operatorName },
-  { label: "所在地", value: operatorAddress },
-  { label: "代表者", value: representative },
+  { label: "運営窓口", value: publicOperatorLabel },
   {
     label: "お問い合わせ",
     value: contactEmail,
     ...(contactEmail.includes("@") ? { href: `mailto:${contactEmail}` } : {}),
   },
+  { label: "法令に基づく表示", value: legalDisclosureNotice },
 ];
 
 export const legalDocuments: Record<LegalDocument, LegalDocumentContent> = {
@@ -50,7 +46,7 @@ export const legalDocuments: Record<LegalDocument, LegalDocumentContent> = {
     eyebrow: "TERMS OF USE",
     title: "利用規約",
     version: TERMS_VERSION,
-    effectiveDate: "2026年10月17日",
+    effectiveDate: "2026年10月19日",
     introduction:
       "本規約は、Aizu Connect運営者（以下「運営者」）が提供するAizu Connect（以下「本サービス」）の利用条件を定めるものです。利用者は、内容を確認し同意したうえで本サービスを利用します。",
     meta: operatorMeta,
@@ -83,6 +79,7 @@ export const legalDocuments: Record<LegalDocument, LegalDocumentContent> = {
           "主催者は、開催内容、日時、場所、参加条件、費用、支払方法・時期、キャンセル・返金方針、安全上の注意、連絡方法を正確に表示し、変更または中止が生じた場合は参加者へ速やかに連絡してください。",
           "主催者は、開催に必要な許認可、施設利用、安全管理、保険、未成年者への配慮、個人情報の適切な取扱いその他の法令上・運営上の責任を負います。参加者情報はイベント運営に必要な範囲でのみ利用できます。",
           "有料イベントを事業として提供する主催者は、特定商取引法その他の適用法令に従い、販売業者または役務提供事業者の名称、住所、電話番号、責任者、対価、追加費用、支払時期・方法、提供時期およびキャンセル・返金条件を正確に表示しなければなりません。必要な表示がない有料イベントは掲載できません。",
+          "法令上認められる場合、主催者は氏名、住所または電話番号の公開表示を省略できます。ただし、申込みの意思決定前に請求があれば遅滞なく提供する旨を明示し、実際に電子メール等で提供できる体制を整えてください。",
           "主催者は、健康状態、障害、病歴その他の要配慮個人情報を申込質問で取得する場合、イベントの安全な運営に必要な項目に限り、質問作成時に要配慮情報を含むことを指定してください。取得した回答を選考、広告、勧誘その他表示した目的以外に利用してはいけません。",
         ],
       },
@@ -187,7 +184,7 @@ export const legalDocuments: Record<LegalDocument, LegalDocumentContent> = {
     eyebrow: "PRIVACY POLICY",
     title: "プライバシーポリシー",
     version: PRIVACY_VERSION,
-    effectiveDate: "2026年10月17日",
+    effectiveDate: "2026年10月19日",
     introduction:
       "Aizu Connect運営者（以下「運営者」）は、本サービスにおける利用者の個人情報その他の利用者情報を、個人情報の保護に関する法律その他の関係法令に従い、次のとおり取り扱います。",
     meta: operatorMeta,
@@ -298,7 +295,7 @@ export const legalDocuments: Record<LegalDocument, LegalDocumentContent> = {
       {
         heading: "12. お問い合わせ",
         paragraphs: [
-          `個人情報取扱事業者は${operatorName}です。所在地は${operatorAddress}、代表者は${representative}です。お問い合わせは${contactEmail}までご連絡ください。`,
+          `個人情報の取扱いに関する窓口は${publicOperatorLabel}です。お問い合わせは${contactEmail}までご連絡ください。${legalDisclosureNotice}`,
         ],
       },
     ],
