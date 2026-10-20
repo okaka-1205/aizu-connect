@@ -159,6 +159,8 @@ npm run release:check
 
 本番スモークテストは、先に`npm run smoke:production:plan`で専用アカウントを確認し、[本番スモークテスト手順](docs/production-smoke-test.md)に従います。計画表示コマンド自体は本番へ接続しません。
 
+公開後の日次・週次確認、障害対応、ロールバック、監視、バックアップ復元は[運用・障害対応手順](docs/operations-runbook.md)にまとめています。
+
 ## Firebase設定
 
 本番用設定は、プロジェクトのルートにある`.env.production`で管理します。このファイルはGitへ追加しません。設定項目は`.env.example`を参照してください。

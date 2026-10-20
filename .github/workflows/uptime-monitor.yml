@@ -1,0 +1,101 @@
+name: Production uptime monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub schedules can be delayed. This is a lightweight availability check,
+    # not a real-time SLA monitor.
+    - cron: "7,22,37,52 * * * *"
+
+concurrency:
+  group: production-uptime-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PRODUCTION_URL: https://aizu-connect-prod.web.app/
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check production availability
+        id: check
+        shell: bash
+        run: |
+          set +e
+          status=$(curl \
+            --retry 2 \
+            --retry-delay 5 \
+            --retry-connrefused \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --silent \
+            --show-error \
+            --output /tmp/aizu-connect-response.html \
+            --write-out '%{http_code}' \
+            "$PRODUCTION_URL")
+          curl_exit=$?
+          set -e
+
+          if [[ "$curl_exit" -eq 0 && "$status" =~ ^2[0-9][0-9]$ ]] && \
+             grep -q '<title>Aizu Connect' /tmp/aizu-connect-response.html; then
+            echo "healthy=true" >> "$GITHUB_OUTPUT"
+            echo "Production is healthy (HTTP $status)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "healthy=false" >> "$GITHUB_OUTPUT"
+            echo "Production check failed or returned unexpected content (curl=$curl_exit, HTTP=${status:-unknown})." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Open one incident issue
+        if: steps.check.outputs.healthy == 'false'
+        shell: bash
+        run: |
+          gh label create "ops:uptime" \
+            --repo "$GITHUB_REPOSITORY" \
+            --color D73A4A \
+            --description "本番サイトの可用性監視" \
+            --force
+
+          issue=$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --label "ops:uptime" \
+            --search '本番サイト監視アラート in:title' \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [[ -z "$issue" ]]; then
+            gh issue create \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "本番サイト監視アラート" \
+              --label "ops:uptime" \
+              --body "本番URLへの自動確認が失敗しました。Actionsの実行ログを確認し、運用手順書の障害対応フローに従ってください。\n\n- URL: $PRODUCTION_URL\n- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\n- 検知時刻 (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          fi
+
+          exit 1
+
+      - name: Close the incident issue after recovery
+        if: steps.check.outputs.healthy == 'true'
+        shell: bash
+        run: |
+          issue=$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --label "ops:uptime" \
+            --search '本番サイト監視アラート in:title' \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [[ -n "$issue" ]]; then
+            gh issue comment "$issue" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body "本番URLの正常応答を確認したため自動クローズします。復旧確認: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            gh issue close "$issue" \
+              --repo "$GITHUB_REPOSITORY" \
+              --reason completed
+          fi
