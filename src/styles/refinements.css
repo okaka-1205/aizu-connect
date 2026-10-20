@@ -2689,6 +2689,18 @@ body,
   line-height: 1.8;
 }
 
+.fatal-error-card > .fatal-error-reference {
+  margin-top: -10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.fatal-error-reference code {
+  color: var(--ink);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
 .fatal-error-card .primary-action {
   min-height: 48px;
 }

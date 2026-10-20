@@ -285,6 +285,15 @@ await Promise.all(
   ]),
 );
 
+await Promise.all([
+  auth.setCustomUserClaims("admin-e2e", {test_admin_mfa: true}),
+  ...variantKeys.map((variant) =>
+    auth.setCustomUserClaims(`admin-e2e-${variant}`, {
+      test_admin_mfa: true,
+    }),
+  ),
+]);
+
 const batch = db.batch();
 
 batch.set(

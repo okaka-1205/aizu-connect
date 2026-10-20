@@ -2,23 +2,40 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 
 type AppErrorBoundaryState = {
   hasError: boolean;
+  errorId: string;
 };
 
 export class AppErrorBoundary extends Component<
   { children: ReactNode },
   AppErrorBoundaryState
 > {
-  state: AppErrorBoundaryState = { hasError: false };
+  state: AppErrorBoundaryState = { hasError: false, errorId: "" };
 
   static getDerivedStateFromError(): AppErrorBoundaryState {
-    return { hasError: true };
+    return { hasError: true, errorId: "" };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    const fallbackReference = `${Date.now()}`.slice(-8);
     console.error("Aizu Connect could not render the current screen.", {
       error,
       componentStack: errorInfo.componentStack,
     });
+    void import("../services/errorReporting")
+      .then(({ createErrorReference, reportClientError }) => {
+        const errorId = createErrorReference();
+        this.setState({ errorId });
+        return reportClientError({
+          errorId,
+          name: error.name,
+          message: error.message,
+          componentStack: errorInfo.componentStack ?? "",
+          path: `${globalThis.location.pathname}${globalThis.location.search}`,
+        });
+      })
+      .catch(() => {
+        this.setState({ errorId: fallbackReference });
+      });
   }
 
   render() {
@@ -48,6 +65,11 @@ export class AppErrorBoundary extends Component<
           <p>
             入力内容はそのままにできない場合があります。通信環境を確認して、ページを読み込み直してください。
           </p>
+          {this.state.errorId && (
+            <p className="fatal-error-reference">
+              お問い合わせ番号: <code>{this.state.errorId}</code>
+            </p>
+          )}
           <button
             className="primary-action"
             type="button"

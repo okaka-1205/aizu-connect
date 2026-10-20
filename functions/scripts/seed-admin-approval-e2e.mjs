@@ -31,6 +31,7 @@ await auth.createUser({
   emailVerified: true,
   displayName: "Aizu Connect 運営",
 });
+await auth.setCustomUserClaims("admin-approval-e2e", {test_admin_mfa: true});
 
 await db.doc("users/admin-approval-e2e").set({
   uid: "admin-approval-e2e",

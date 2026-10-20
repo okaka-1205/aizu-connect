@@ -6,9 +6,9 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {loadFirebaseCliOAuth} from "./lib/firebase-cli-credential.mjs";
 
 const EXPECTED_PROJECT_ID = "aizu-connect-prod";
 const EXPECTED_STORAGE_BUCKET = "aizu-connect-prod.firebasestorage.app";
@@ -45,17 +45,11 @@ if (execute && confirmation !== CONFIRMATION) {
 
 const credential = () => {
   if (!useFirebaseCliCredentials) return applicationDefault();
-  const require = createRequire(import.meta.url);
-  const { getGlobalDefaultAccount } = require(
-    "../../node_modules/firebase-tools/lib/auth.js",
-  );
-  const { clientId, clientSecret } = require(
-    "../../node_modules/firebase-tools/lib/api.js",
-  );
-  const cliRefreshToken = getGlobalDefaultAccount()?.tokens?.refresh_token;
-  if (!cliRefreshToken) {
-    throw new Error("Firebase CLI is not logged in.");
-  }
+  const {
+    clientId,
+    clientSecret,
+    refreshToken: cliRefreshToken,
+  } = loadFirebaseCliOAuth();
   const temporaryCredentialDirectory = mkdtempSync(
     join(tmpdir(), "aizu-connect-adc-"),
   );
@@ -66,8 +60,8 @@ const credential = () => {
   writeFileSync(
     temporaryCredentialPath,
     JSON.stringify({
-      client_id: clientId(),
-      client_secret: clientSecret(),
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: cliRefreshToken,
       type: "authorized_user",
     }),

@@ -13,7 +13,11 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import { onAuthStateChanged, type User } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  type MultiFactorResolver,
+  type User,
+} from "firebase/auth";
 import { httpsCallable } from "firebase/functions";
 import {
   Bell,
@@ -111,6 +115,8 @@ import {
   resendVerificationEmail,
 } from "./services/authService";
 import { AdminDashboard } from "./screens/admin/AdminDashboard";
+import { AdminMfaEnrollmentScreen } from "./components/AdminMfaEnrollmentScreen";
+import { MfaSignInScreen } from "./components/MfaSignInScreen";
 import { OrganizationDashboard } from "./screens/organization/OrganizationDashboard";
 import { MessagesTab } from "./screens/shared/MessagesTab";
 import { EmptyRoleState } from "./screens/shared/RoleScreenPrimitives";
@@ -142,6 +148,11 @@ import type {
   SearchView,
   Tab,
 } from "./types/domain";
+import {
+  createMultiFactorResolver,
+  hasTotpEnrollment,
+  isMultiFactorRequiredError,
+} from "./services/mfaService";
 
 function App() {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
@@ -153,6 +164,11 @@ function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [mfaResolver, setMfaResolver] =
+    useState<MultiFactorResolver | null>(null);
+  const [newlyMfaEnrolledUserId, setNewlyMfaEnrolledUserId] = useState<
+    string | null
+  >(null);
   const [displayName, setDisplayName] = useState("");
   const [department, setDepartment] = useState("");
   const [grade, setGrade] = useState(1);
@@ -1189,6 +1205,12 @@ function App() {
       });
       setMessage(registrationMessage, registrationTone);
     } catch (error) {
+      if (authMode === "login" && isMultiFactorRequiredError(error)) {
+        setMfaResolver(createMultiFactorResolver(error));
+        setPassword("");
+        setMessage("");
+        return;
+      }
       let rollbackFailed = false;
       if (createdUser) {
         await deleteAuthUser(createdUser).catch(async () => {
@@ -1535,6 +1557,17 @@ function App() {
   };
 
   if (isAuthLoading) return <LoadingScreen />;
+  if (mfaResolver)
+    return (
+      <MfaSignInScreen
+        resolver={mfaResolver}
+        onComplete={() => setMfaResolver(null)}
+        onCancel={() => {
+          setMfaResolver(null);
+          setMessage("");
+        }}
+      />
+    );
   if (!firebaseUser || !appUser)
     return (
       <AuthScreen
@@ -1651,6 +1684,19 @@ function App() {
     );
   }
   if (appUser.role === "admin") {
+    if (
+      import.meta.env.PROD &&
+      !hasTotpEnrollment(firebaseUser) &&
+      newlyMfaEnrolledUserId !== firebaseUser.uid
+    ) {
+      return (
+        <AdminMfaEnrollmentScreen
+          user={firebaseUser}
+          onEnrolled={() => setNewlyMfaEnrolledUserId(firebaseUser.uid)}
+          onLogout={() => void handleLogout()}
+        />
+      );
+    }
     return <AdminDashboard onLogout={() => void handleLogout()} />;
   }
   if (isCreatorDashboardOpen) {

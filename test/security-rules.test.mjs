@@ -274,6 +274,23 @@ const contexts = () => ({
   admin: testEnv.authenticatedContext("admin-1", {
     email: "admin@example.com",
     email_verified: true,
+    firebase: {sign_in_second_factor: "totp"},
+  }),
+  adminWithoutMfa: testEnv.authenticatedContext("admin-1", {
+    email: "admin@example.com",
+    email_verified: true,
+  }),
+  emulatorAdmin: testEnv.authenticatedContext("admin-1", {
+    email: "admin@example.com",
+    email_verified: true,
+    aud: "demo-aizu-connect-e2e",
+    test_admin_mfa: true,
+  }),
+  productionAdminWithTestClaim: testEnv.authenticatedContext("admin-1", {
+    email: "admin@example.com",
+    email_verified: true,
+    aud: "aizu-connect-prod",
+    test_admin_mfa: true,
   }),
   unverifiedAdmin: testEnv.authenticatedContext("admin-1", {
     email: "admin@example.com",
@@ -552,6 +569,30 @@ describe("users and profiles", () => {
     );
     await assertFails(
       otherStudent.firestore().doc("studentProfiles/student-1").get(),
+    );
+  });
+
+  it("requires TOTP MFA for admin access while preserving self-service enrollment", async () => {
+    const {admin, adminWithoutMfa} = contexts();
+    await assertSucceeds(admin.firestore().doc("users/student-1").get());
+    await assertFails(
+      adminWithoutMfa.firestore().doc("users/student-1").get(),
+    );
+    await assertSucceeds(
+      adminWithoutMfa.firestore().doc("users/admin-1").get(),
+    );
+    await assertFails(
+      adminWithoutMfa.firestore().doc("auditLogs/audit-1").get(),
+    );
+  });
+
+  it("accepts the emulator-only MFA claim only for allowlisted demo projects", async () => {
+    const {emulatorAdmin, productionAdminWithTestClaim} = contexts();
+    await assertSucceeds(
+      emulatorAdmin.firestore().doc("auditLogs/audit-1").get(),
+    );
+    await assertFails(
+      productionAdminWithTestClaim.firestore().doc("auditLogs/audit-1").get(),
     );
   });
 
@@ -1875,6 +1916,13 @@ describe("saved searches and operational records", () => {
 });
 
 describe("storage rules", () => {
+  it("requires TOTP MFA for administrator file access", async () => {
+    const {admin, adminWithoutMfa} = contexts();
+    const target = "profile-images/student-1/avatar.png";
+    await assertSucceeds(admin.storage().ref(target).getMetadata());
+    await assertFails(adminWithoutMfa.storage().ref(target).getMetadata());
+  });
+
   it("allows active verified account reads and blocks inactive reads", async () => {
     const {
       anon,
