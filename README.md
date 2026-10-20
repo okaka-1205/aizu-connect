@@ -1,8 +1,80 @@
 # Aizu Connect
 
-学生が人と出会い、新しい経験や挑戦のきっかけを見つける、会津の活動プラットフォームです。
+[![CI](https://github.com/okaka-1205/aizu-connect/actions/workflows/ci.yml/badge.svg)](https://github.com/okaka-1205/aizu-connect/actions/workflows/ci.yml)
+![Node.js 24](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)
+![Firebase](https://img.shields.io/badge/Firebase-Hosting%20%2F%20Functions-FFCA28?logo=firebase&logoColor=black)
 
-利益を目的とするのではなく、まだやりたいことが見つかっていない人や、何かに挑戦したい人が、気軽に活動へ参加できる場所を目指します。
+学生が人と出会い、新しい経験や挑戦のきっかけを見つけるための、会津の活動プラットフォームです。
+
+まだやりたいことが見つかっていない人や、何かに挑戦したい人が、所属や知り合いの有無に左右されず、気軽に地域・学生団体の活動へ参加できる場所を目指しています。
+
+**公開サイト： [Aizu Connectを開く](https://aizu-connect-prod.web.app/)**
+
+> 現在は少人数で利用するクローズドβ段階です。掲載イベントや協力団体を増やしながら、実際の利用で見つかった分かりにくさや不具合を改善しています。
+
+## Aizu Connectでできること
+
+### 学生・参加者
+
+- 興味や開催日からイベントを検索し、新着順・人気順で比較
+- イベントへの参加申請、申込質問への回答、キャンセル待ち
+- 主催者との個別チャット、通知、イベントのお気に入り
+- QRコードまたは受付コードによるチェックイン
+- キャンセル、開催後アンケート、活動履歴の確認
+- 活動実績・活動証明のPDF保存
+
+### 主催者・団体
+
+- イベントの下書き、プレビュー、複製、公開申請
+- 定員・キャンセル待ち・申込質問・キャンセル期限の設定
+- 参加者の検索、承認、連絡、出欠・QR受付管理
+- 開催後アンケートの確認、写真付き活動報告の公開
+- 過去イベントや参加状況を含む運営履歴の確認
+
+### 管理者
+
+- 主催者アカウントとイベント公開申請の審査
+- 通報、問い合わせ、不適切ユーザーへの対応
+- 担当者・対応期限・監査履歴を含む運用管理
+- 法務関連記録の保管期限管理と定期削除
+
+## このプロジェクトで私がしていること
+
+Aizu Connectは、会津で新しい活動へ参加する際の「情報を見つけにくい」「初参加の連絡がしづらい」「主催者の申込管理が大変」といった課題を減らすために、個人で企画・開発・運営準備を進めているプロジェクトです。
+
+具体的には、次の領域を一貫して担当しています。
+
+- 学生と主催者が感じる課題の整理と、機能・画面設計
+- 学生、主催者、管理者それぞれの利用フローの設計と実装
+- Firebaseを利用した認証、データ管理、通知、定期処理、公開環境の構築
+- 個人情報、通報、利用規約、プライバシー、安全な権限管理を含む運用設計
+- 自動テスト、アクセシビリティ検査、負荷検証、Security Rules検証
+- 本番環境の監視、問い合わせ対応、協力団体の開拓とクローズドβの準備
+
+単にアプリを制作するだけでなく、学生と団体が実際のイベントで安心して使い続けられる状態を目標に、企画から実装、テスト、公開後の運用まで改善しています。
+
+## 現在の品質状況
+
+- Node.js 24、React、TypeScript、Firebaseで構成
+- GitHub Actionsでlint、単体テスト、ビルド、Security Rules、ブラウザE2Eを自動実行
+- Chromium、Firefox、WebKit、モバイル、タブレットをPlaywrightで検証
+- axeによる重大・深刻なアクセシビリティ違反0件を維持
+- 2026年10月19日のリリース確認で、明示的テスト277件・Playwright 190件が成功
+- Firestore・Storage・AuthenticationでApp Checkを適用し、Security Rulesを自動検証
+- 本番依存パッケージの既知の高重大度脆弱性0件を確認
+
+詳細は[リリース準備最終確認](docs/release-readiness-2026-10-19.md)を参照してください。
+
+## 技術構成
+
+| 領域 | 使用技術 |
+| --- | --- |
+| フロントエンド | React 19 / TypeScript / Vite / Tailwind CSS |
+| フォーム・データ取得 | React Hook Form / TanStack Query |
+| バックエンド | Firebase Authentication / Firestore / Storage / Cloud Functions |
+| 公開・定期処理 | Firebase Hosting / Cloud Scheduler |
+| テスト | Vitest / Playwright / Firebase Emulator Suite / axe-core |
+| CI | GitHub Actions |
 
 ## 参加者向け画面
 
@@ -112,9 +184,9 @@ VITE_USE_FIREBASE_EMULATORS=false
 
 ## ロール
 
-- `student`: イベント検索、申請、チャット、Activity Portfolio
-- `organization`: 活動の作成、審査申請、参加者確認、出欠登録
-- `admin`: アカウント審査、イベント承認
+- `student`: イベント検索、参加申請、キャンセル待ち、チャット、受付、アンケート、活動実績
+- `organization`: イベント作成・公開申請、参加者管理、チャット、受付、活動報告
+- `admin`: アカウント・イベント審査、通報・問い合わせ対応、運用監査
 
 最初の管理者は、Firebase Admin SDKなど信頼できるサーバー側の手順で`users/{uid}`に`role: "admin"`、`status: "active"`を設定してください。クライアントから管理者へ変更できないRulesになっています。
 
@@ -200,10 +272,12 @@ Functions側だけを有効化すると管理者操作が拒否されるため�
 
 ```bash
 npm run release:check
-npx -y firebase-tools@latest deploy \
-  --project aizu-connect-prod \
-  --only hosting,functions,firestore:rules,firestore:indexes,storage
+
+# 変更した対象だけを選んで公開する例
+npx -y firebase-tools@latest deploy --project aizu-connect-prod --only hosting
 ```
+
+Functions、Firestore Rules・Indexes、Storage Rulesを変更した場合は、影響範囲のテスト後に必要な対象だけを`--only`へ追加します。変更していないサービスをまとめて再デプロイしないでください。
 
 デプロイ前に、Firebase ConsoleでAuthentication、Firestore、Storage、必要なBlazeプラン、承認済みドメインを確認してください。
 
