@@ -36,7 +36,23 @@ service firebase.storage {
       return signedIn()
         && userRef(request.auth.uid).data.role == 'admin'
         && userRef(request.auth.uid).data.status == 'active'
-        && request.auth.token.email_verified == true;
+        && request.auth.token.email_verified == true
+        && (
+          (
+            request.auth.token.firebase is map
+            && request.auth.token.firebase.keys().hasAll(['sign_in_second_factor'])
+            && request.auth.token.firebase.sign_in_second_factor == 'totp'
+          ) || (
+            request.auth.token.keys().hasAll(['aud', 'test_admin_mfa'])
+            && request.auth.token.test_admin_mfa == true
+            && request.auth.token.aud in [
+              'demo-aizu-connect-admin-approval',
+              'demo-aizu-connect-e2e',
+              'demo-aizu-connect-a11y',
+              'demo-aizu-connect-local'
+            ]
+          )
+        );
     }
 
     function validImage() {

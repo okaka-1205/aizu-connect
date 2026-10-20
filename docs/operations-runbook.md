@@ -26,6 +26,26 @@
 - バックアップから新しい一時データベースへ復元できることを確認する。復元先を本番`(default)`へ向けない。
 - 依存関係の重大な脆弱性、Firebaseの廃止予定機能、GitHub Actionsの警告を確認する。
 
+## 管理者の多要素認証
+
+- 本番の管理者は初回ログイン時にTOTP対応の認証アプリを登録する。QRコードと秘密キーをチャット、Issue、画面共有へ残さない。
+- 管理者のメール確認が完了していない場合はMFAを登録しない。
+- 端末紛失時は、別の管理者またはFirebaseプロジェクト所有者が本人確認を行ってから解除する。通常の問い合わせだけで解除しない。
+- 解除前は必ずプレビューモードで対象メール、UID、登録要素数を確認する。
+
+```bash
+GCLOUD_PROJECT=aizu-connect-prod \
+npm --prefix functions run admin:reset-mfa -- admin@example.com \
+  --use-firebase-cli-credentials
+
+GCLOUD_PROJECT=aizu-connect-prod \
+npm --prefix functions run admin:reset-mfa -- admin@example.com \
+  --use-firebase-cli-credentials \
+  --execute --confirm=RESET_ADMIN_MFA
+```
+
+解除処理は登録済み要素を削除し、既存のリフレッシュトークンを失効させる。対象管理者はパスワードで再ログインし、新しい認証アプリを登録する。
+
 ## リリース手順
 
 1. PRの必須CIがすべて成功していることを確認する。
@@ -56,13 +76,22 @@
 
 ## 監視
 
-- `.github/workflows/uptime-monitor.yml`が本番URLを15分ごとに確認する。
-- 2回の再試行後もHTTP 2xxを得られない場合、`ops:uptime`ラベルのIssueを1件だけ作成する。
+- `.github/workflows/uptime-monitor.yml`がHostingとFunctionsヘルスチェックを15分ごとに確認する。
+- 2回の再試行後もHTTP 2xxとサービス固有の応答を得られない場合、`ops:uptime`ラベルのIssueを1件だけ作成する。
 - 復旧を検知するとIssueへ時刻を記録して自動クローズする。
 - GitHubのスケジュール実行は遅延・停止する場合があるため、厳密なSLA監視ではない。リポジトリ活動が60日以上ない場合は、Actions画面で定期実行が有効か確認する。
 - Issue通知を受け取れるよう、GitHubアカウントの通知設定を有効にする。
+- 画面描画に失敗した場合は利用者へ問い合わせ番号が表示され、FunctionsのCloud Loggingへ`Client render error`として記録される。問い合わせ番号でログを検索し、エラー本文に個人情報が含まれていないことも確認する。
 
 ## バックアップと復元
+
+PITRまたは定期バックアップから作成した一時データベースは、内容を表示せず主要コレクションの件数だけを本番と比較する。
+
+```bash
+GCLOUD_PROJECT=aizu-connect-prod npm --prefix functions run backup:verify-restore -- restore-drill-YYYYMMDD --use-firebase-cli-credentials
+```
+
+全件数が一致したことを確認してから、一時DBだけ削除する。本番の`(default)`、PITR、定期バックアップは削除しない。
 
 - Firestore `(default)`はPITRを有効にし、直近7日間の任意時点へ復元できる状態を維持する。
 - 週次バックアップは毎週日曜日、14日保持とする。バックアップにはFirestoreデータとインデックス構成が含まれるが、TTLポリシーは含まれない。

@@ -190,6 +190,8 @@ VITE_USE_FIREBASE_EMULATORS=false
 - `organization`: イベント作成・公開申請、参加者管理、チャット、受付、活動報告
 - `admin`: アカウント・イベント審査、通報・問い合わせ対応、運用監査
 
+本番の管理者アカウントは、初回ログイン時に認証アプリを使ったTOTP多要素認証の登録が必須です。端末紛失時の解除は、本人確認とプレビューを含む[運用・障害対応手順](docs/operations-runbook.md)に従います。
+
 最初の管理者は、Firebase Admin SDKなど信頼できるサーバー側の手順で`users/{uid}`に`role: "admin"`、`status: "active"`を設定してください。クライアントから管理者へ変更できないRulesになっています。
 
 ### 管理者の初期設定

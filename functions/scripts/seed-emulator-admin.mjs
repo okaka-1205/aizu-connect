@@ -43,6 +43,8 @@ try {
   });
 }
 
+await auth.setCustomUserClaims(user.uid, {test_admin_mfa: true});
+
 await db.doc(`users/${user.uid}`).set(
   {
     uid: user.uid,

@@ -167,6 +167,58 @@
   width: 100%;
   margin-top: 8px;
 }
+.admin-mfa-card {
+  width: min(100%, 460px);
+}
+.mfa-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 80px;
+  color: var(--muted);
+  font-weight: 800;
+}
+.mfa-qr-code {
+  display: block;
+  width: min(240px, 100%);
+  height: auto;
+  margin: 0 auto 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+.mfa-manual-key {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f6f8fb;
+  color: var(--muted);
+  font-size: 13px;
+}
+.mfa-manual-key summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 900;
+}
+.mfa-manual-key p {
+  margin: 10px 0 7px;
+}
+.mfa-manual-key code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--brand);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  user-select: all;
+}
+.mfa-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 18px;
+}
 .auth-legal-consent {
   display: grid;
   gap: 7px;

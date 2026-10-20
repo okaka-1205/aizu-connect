@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 5
     env:
       PRODUCTION_URL: https://aizu-connect-prod.web.app/
+      FUNCTIONS_HEALTH_URL: https://asia-northeast1-aizu-connect-prod.cloudfunctions.net/healthCheck
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Check production availability
@@ -40,15 +41,29 @@ jobs:
             --write-out '%{http_code}' \
             "$PRODUCTION_URL")
           curl_exit=$?
+          function_status=$(curl \
+            --retry 2 \
+            --retry-delay 5 \
+            --retry-connrefused \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --silent \
+            --show-error \
+            --output /tmp/aizu-connect-functions-response.json \
+            --write-out '%{http_code}' \
+            "$FUNCTIONS_HEALTH_URL")
+          function_curl_exit=$?
           set -e
 
           if [[ "$curl_exit" -eq 0 && "$status" =~ ^2[0-9][0-9]$ ]] && \
-             grep -q '<title>Aizu Connect' /tmp/aizu-connect-response.html; then
+             grep -q '<title>Aizu Connect' /tmp/aizu-connect-response.html && \
+             [[ "$function_curl_exit" -eq 0 && "$function_status" =~ ^2[0-9][0-9]$ ]] && \
+             grep -q '"status":"ok"' /tmp/aizu-connect-functions-response.json; then
             echo "healthy=true" >> "$GITHUB_OUTPUT"
-            echo "Production is healthy (HTTP $status)." >> "$GITHUB_STEP_SUMMARY"
+            echo "Hosting and Functions are healthy (HTTP $status / $function_status)." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "healthy=false" >> "$GITHUB_OUTPUT"
-            echo "Production check failed or returned unexpected content (curl=$curl_exit, HTTP=${status:-unknown})." >> "$GITHUB_STEP_SUMMARY"
+            echo "Production check failed or returned unexpected content (hosting curl=$curl_exit HTTP=${status:-unknown}; functions curl=$function_curl_exit HTTP=${function_status:-unknown})." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Open one incident issue
@@ -74,7 +89,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --title "本番サイト監視アラート" \
               --label "ops:uptime" \
-              --body "本番URLへの自動確認が失敗しました。Actionsの実行ログを確認し、運用手順書の障害対応フローに従ってください。\n\n- URL: $PRODUCTION_URL\n- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\n- 検知時刻 (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+              --body "本番HostingまたはFunctionsへの自動確認が失敗しました。Actionsの実行ログを確認し、運用手順書の障害対応フローに従ってください。\n\n- Hosting: $PRODUCTION_URL\n- Functions: $FUNCTIONS_HEALTH_URL\n- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\n- 検知時刻 (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           fi
 
           exit 1

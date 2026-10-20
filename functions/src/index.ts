@@ -2,7 +2,7 @@ import {FieldPath, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {randomInt} from "node:crypto";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import {logger, setGlobalOptions} from "firebase-functions";
-import {HttpsError, onCall} from "firebase-functions/v2/https";
+import {HttpsError, onCall, onRequest} from "firebase-functions/v2/https";
 import {
   isEventPlanEditableStatus,
   isCheckInWindowOpen,
@@ -57,6 +57,7 @@ type AdminActor = {
 const requireAdmin = async (
   userId: string | undefined,
   emailVerified: boolean,
+  secondFactor: unknown,
 ): Promise<AdminActor> => {
   if (!userId || !emailVerified) {
     throw new HttpsError("unauthenticated", "ログインが必要です。");
@@ -67,6 +68,15 @@ const requireAdmin = async (
     throw new HttpsError(
       "permission-denied",
       "有効な管理者権限を確認できませんでした。",
+    );
+  }
+  if (
+    process.env.FUNCTIONS_EMULATOR !== "true" &&
+    secondFactor !== "totp"
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "管理操作には認証アプリによる二段階認証が必要です。",
     );
   }
   return {
@@ -92,6 +102,59 @@ const requiredDocumentId = (value: unknown) => {
   }
   return value;
 };
+
+const optionalClientText = (value: unknown, maxLength: number) =>
+  typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+
+const clientErrorId = (value: unknown) => {
+  const normalized = optionalClientText(value, 32).toUpperCase();
+  return /^[A-Z0-9]{8,32}$/.test(normalized) ? normalized : "UNKNOWN";
+};
+
+export const healthCheck = onRequest(
+  {
+    invoker: "public",
+    timeoutSeconds: 10,
+    memory: "256MiB",
+    maxInstances: 2,
+  },
+  (request, response) => {
+    response.set("Cache-Control", "no-store");
+    if (!["GET", "HEAD"].includes(request.method)) {
+      response.status(405).json({status: "method_not_allowed"});
+      return;
+    }
+    response.status(200).json({
+      status: "ok",
+      service: "aizu-connect-functions",
+      checkedAt: new Date().toISOString(),
+    });
+  },
+);
+
+export const reportClientError = onCall(
+  {
+    enforceAppCheck: enforceCallableAppCheck,
+    timeoutSeconds: 15,
+    memory: "256MiB",
+    maxInstances: 3,
+  },
+  (request) => {
+    const errorId = clientErrorId(request.data?.errorId);
+    logger.error("Client render error", {
+      errorId,
+      userId: request.auth?.uid ?? null,
+      name: optionalClientText(request.data?.name, 80),
+      clientMessage: optionalClientText(request.data?.message, 500),
+      componentStack: optionalClientText(
+        request.data?.componentStack,
+        3000,
+      ),
+      path: optionalClientText(request.data?.path, 300),
+    });
+    return {accepted: true, errorId};
+  },
+);
 
 const writeAuditLog = async (
   actor: AdminActor,
@@ -524,6 +587,7 @@ export const adminManageResource = onCall(
     const actor = await requireAdmin(
       request.auth?.uid,
       request.auth?.token.email_verified === true,
+      request.auth?.token.firebase?.sign_in_second_factor,
     );
     const action = String(request.data?.action ?? "");
     const targetId = requiredDocumentId(request.data?.targetId);
