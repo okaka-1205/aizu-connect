@@ -25,6 +25,18 @@ const auth = getAuth();
 const db = getFirestore();
 const bucket = getStorage().bucket();
 
+const findCompletedOperation = async (action, targetId) => {
+  const operations = await db
+    .collection("adminOperations")
+    .where("targetId", "==", targetId)
+    .get();
+  return operations.docs.find(
+    (operation) =>
+      operation.data().action === action &&
+      operation.data().status === "completed",
+  );
+};
+
 for (const variant of ["desktop", "mobile", "tablet", "firefox", "webkit"]) {
   const userId = `admin-delete-user-${variant}`;
   const eventId = `admin-delete-event-${variant}`;
@@ -63,18 +75,17 @@ for (const variant of ["desktop", "mobile", "tablet", "firefox", "webkit"]) {
   assert.equal(anonymizedReport.data()?.reporterId, "deleted_user");
   assert.ok(anonymizedReport.data()?.reporterDeletedAt);
 
-  const eventOperation = await db
-    .doc(`adminOperations/delete_event_${reportedEventId}`)
-    .get();
-  const userOperation = await db
-    .doc(`adminOperations/delete_user_${userId}`)
-    .get();
-  assert.equal(eventOperation.data()?.status, "completed");
-  assert.equal(userOperation.data()?.status, "completed");
+  const eventOperation = await findCompletedOperation(
+    "delete_event",
+    reportedEventId,
+  );
+  const userOperation = await findCompletedOperation("delete_user", userId);
+  assert.ok(eventOperation);
+  assert.ok(userOperation);
 
   const deletionNotices = await db
     .collection("notifications")
-    .where("targetId", "==", `delete_event_${reportedEventId}`)
+    .where("targetId", "==", eventOperation.id)
     .get();
   assert.ok(deletionNotices.size >= 1);
 

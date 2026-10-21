@@ -164,8 +164,8 @@ const userDoc = (overrides) => ({
         organizationName: overrides.organizationName,
       }
     : {}),
-  createdAt: timestamp,
-  updatedAt: timestamp,
+  createdAt: overrides.createdAt ?? timestamp,
+  updatedAt: overrides.updatedAt ?? timestamp,
 });
 
 const eventDoc = (overrides = {}) => ({
@@ -271,6 +271,16 @@ await Promise.all(
       uid: `student-account-${variant}`,
       email: `student-account-${variant}@u-aizu.ac.jp`,
       displayName: `E2E アカウント ${variant}`,
+    }),
+    ensureUser({
+      uid: `student-suspended-checkin-${variant}`,
+      email: `student-suspended-checkin-${variant}@u-aizu.ac.jp`,
+      displayName: `E2E 停止中受付 ${variant}`,
+    }),
+    ensureUser({
+      uid: `student-message-delete-${variant}`,
+      email: `student-message-delete-${variant}@u-aizu.ac.jp`,
+      displayName: `E2E メッセージ削除 ${variant}`,
     }),
     ensureUser({
       uid: `admin-delete-user-${variant}`,
@@ -414,6 +424,104 @@ for (const variant of variantKeys) {
   const isolatedOrganizationId = `org-e2e-${variant}`;
   const isolatedAdminId = `admin-e2e-${variant}`;
   const profileEventId = `event-e2e-open-${variant}`;
+  const suspendedStudentId = `student-suspended-checkin-${variant}`;
+  const deleteMessageStudentId = `student-message-delete-${variant}`;
+  const suspendedStudent = userDoc({
+    uid: suspendedStudentId,
+    email: `${suspendedStudentId}@u-aizu.ac.jp`,
+    displayName: `E2E 停止中受付 ${displayVariant}`,
+    status: "suspended",
+    createdAt: Timestamp.fromMillis(timestamp.toMillis() - 86_400_000),
+  });
+  const deleteMessageStudent = userDoc({
+    uid: deleteMessageStudentId,
+    email: `${deleteMessageStudentId}@u-aizu.ac.jp`,
+    displayName: `E2E メッセージ削除 ${displayVariant}`,
+    createdAt: Timestamp.fromMillis(timestamp.toMillis() - 86_400_000),
+  });
+  batch.set(db.doc(`users/${suspendedStudentId}`), suspendedStudent);
+  batch.set(db.doc(`studentProfiles/${suspendedStudentId}`), {
+    ...suspendedStudent,
+    verificationMethod: "university_email",
+    profileCompletionRate: 80,
+    activityCount: 0,
+  });
+  batch.set(db.doc(`users/${deleteMessageStudentId}`), deleteMessageStudent);
+  batch.set(db.doc(`studentProfiles/${deleteMessageStudentId}`), {
+    ...deleteMessageStudent,
+    verificationMethod: "university_email",
+    profileCompletionRate: 80,
+    activityCount: 0,
+  });
+  const suspendedCheckInEventId = `event-suspended-checkin-${variant}`;
+  const suspendedApplicationId =
+    `${suspendedCheckInEventId}_${suspendedStudentId}`;
+  batch.set(
+    db.doc(`events/${suspendedCheckInEventId}`),
+    eventDoc({
+      title: `E2E 停止中受付 ${displayVariant}`,
+      startAtLabel: checkInStartLabel,
+      startAt: checkInStartTimestamp,
+      endAtLabel: checkInEndLabel,
+      endAt: checkInEndTimestamp,
+      ...organizationFields(variant),
+    }),
+  );
+  batch.set(db.doc(`eventApplications/${suspendedApplicationId}`), {
+    id: suspendedApplicationId,
+    eventId: suspendedCheckInEventId,
+    eventTitle: `E2E 停止中受付 ${displayVariant}`,
+    studentId: suspendedStudentId,
+    studentName: `E2E 停止中受付 ${displayVariant}`,
+    organizationName: "E2E主催団体",
+    organizationId: isolatedOrganizationId,
+    status: "confirmed",
+    consentAccepted: true,
+    createdAt: timestamp,
+  });
+  batch.set(db.doc(`eventCheckIns/${suspendedCheckInEventId}`), {
+    eventId: suspendedCheckInEventId,
+    organizerId: isolatedOrganizationId,
+    code: "112233",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+  const deleteMessageRoomId = `message-delete-${variant}`;
+  batch.set(db.doc(`chatRooms/${deleteMessageRoomId}`), {
+    id: deleteMessageRoomId,
+    roomType: "application",
+    applicationId: deleteMessageRoomId,
+    eventId: `event-message-delete-${variant}`,
+    eventTitle: `E2E メッセージ削除 ${displayVariant}`,
+    studentId: deleteMessageStudentId,
+    studentName: `E2E メッセージ削除 ${displayVariant}`,
+    organizationName: "E2E主催団体",
+    organizationId: isolatedOrganizationId,
+    status: "active",
+    createdAt: timestamp,
+  });
+  batch.set(
+    db.doc(`chatRooms/${deleteMessageRoomId}/members/${deleteMessageStudentId}`),
+    {
+      userId: deleteMessageStudentId,
+      role: "student",
+      displayName: `E2E メッセージ削除 ${displayVariant}`,
+      joinedAt: timestamp,
+    },
+  );
+  batch.set(
+    db.doc(`chatRooms/${deleteMessageRoomId}/messages/delete-target`),
+    {
+      roomId: deleteMessageRoomId,
+      senderId: deleteMessageStudentId,
+      senderName: `E2E メッセージ削除 ${displayVariant}`,
+      type: "text",
+      text: "現在の本文",
+      editedAt: timestamp,
+      editHistory: [{text: "削除前の秘密の本文", editedAt: timestamp}],
+      createdAt: timestamp,
+    },
+  );
   batch.set(
     db.doc(`users/${isolatedStudentId}`),
     userDoc({

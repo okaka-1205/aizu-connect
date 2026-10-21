@@ -10,6 +10,7 @@ import {
   shouldIncrementApplicantCount,
   shouldNotifyPublishedEventStudent,
   shouldSetChatRoomReadOnly,
+  tokyoYearMonth,
 } from "../applicationLogic";
 import {
   createNotificationOnce,
@@ -89,7 +90,7 @@ export const notifyApplicationUpdated = onDocumentUpdated(
       const eventStartAt = eventSnapshot.data()?.startAt;
       const occurredAt =
         eventStartAt instanceof Timestamp ? eventStartAt : Timestamp.now();
-      const occurredDate = occurredAt.toDate();
+      const {activityYear, activityMonth} = tokyoYearMonth(occurredAt.toDate());
       await db
         .collection("activities")
         .doc(event.params.applicationId)
@@ -109,8 +110,8 @@ export const notifyApplicationUpdated = onDocumentUpdated(
             verificationStatus: "verified",
             verifiedBy: after.organizationId,
             occurredAt,
-            activityMonth: occurredDate.getMonth() + 1,
-            activityYear: occurredDate.getFullYear(),
+            activityMonth,
+            activityYear,
             createdAt: FieldValue.serverTimestamp(),
           },
           {merge: true},

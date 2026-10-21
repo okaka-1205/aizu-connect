@@ -14,11 +14,48 @@ import {
   normalizeEventPlanInput,
   reminderBucketForHoursUntil,
   reminderNotificationPath,
+  sanitizeClientErrorText,
+  sanitizeClientPath,
   shouldDecrementApplicantCount,
   shouldIncrementApplicantCount,
   shouldNotifyPublishedEventStudent,
   shouldSetChatRoomReadOnly,
+  tokyoYearMonth,
 } from "../lib/applicationLogic.js";
+
+describe("client error report privacy", () => {
+  it("redacts common credentials and personal identifiers", () => {
+    assert.equal(
+      sanitizeClientErrorText("user@example.com Bearer abc.def", 500),
+      "[REDACTED_EMAIL] Bearer [REDACTED]",
+    );
+    assert.equal(
+      sanitizeClientErrorText("failed?token=secret&key=api-key", 500),
+      "failed?token=[REDACTED]&key=[REDACTED]",
+    );
+  });
+
+  it("keeps only the pathname from client locations", () => {
+    assert.equal(
+      sanitizeClientPath("/events/detail?token=secret#profile"),
+      "/events/detail",
+    );
+    assert.equal(sanitizeClientPath(null), "/");
+  });
+});
+
+describe("activity year and month", () => {
+  it("uses Asia/Tokyo at month and year boundaries", () => {
+    assert.deepEqual(tokyoYearMonth(new Date("2026-01-31T15:30:00.000Z")), {
+      activityYear: 2026,
+      activityMonth: 2,
+    });
+    assert.deepEqual(tokyoYearMonth(new Date("2026-12-31T15:30:00.000Z")), {
+      activityYear: 2027,
+      activityMonth: 1,
+    });
+  });
+});
 
 describe("administrative cleanup safeguards", () => {
   it("continues only when the configured Storage bucket is missing", () => {

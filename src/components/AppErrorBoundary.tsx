@@ -30,7 +30,7 @@ export class AppErrorBoundary extends Component<
           name: error.name,
           message: error.message,
           componentStack: errorInfo.componentStack ?? "",
-          path: `${globalThis.location.pathname}${globalThis.location.search}`,
+          path: globalThis.location.pathname,
         });
       })
       .catch(() => {
