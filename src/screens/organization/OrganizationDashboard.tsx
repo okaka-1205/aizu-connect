@@ -63,7 +63,6 @@ import {
   validateImageFile,
 } from "../../lib/appLogic";
 import {
-  csvEscape,
   preferredScrollBehavior,
   revokeObjectUrl,
   timestampMillis,
@@ -99,6 +98,13 @@ import {
 } from "../shared/RoleScreenPrimitives";
 import { applicationStatusLabel } from "../shared/applicationStatus";
 import { OrganizationNavigation } from "./components/OrganizationNavigation";
+import {
+  countUnreadChats,
+  downloadParticipantReport,
+  filterOrganizationApplications,
+  filterOrganizationEvents,
+  summarizeApplicants,
+} from "./organizationDashboardLogic";
 
 export function OrganizationDashboard({
   appUser,
@@ -241,70 +247,31 @@ export function OrganizationDashboard({
     eventTemplates[0];
   const visibleEvents = useMemo(
     () =>
-      [...events]
-        .filter(
-          (event) =>
-            eventStatusFilter === "all" || event.status === eventStatusFilter,
-        )
-        .filter((event) =>
-          [event.title, event.location, event.organizationName]
-            .join(" ")
-            .toLowerCase()
-            .includes(eventSearch.trim().toLowerCase()),
-        )
-        .sort((left, right) =>
-          eventSort === "newest"
-            ? timestampMillis(right.createdAt) - timestampMillis(left.createdAt)
-            : timestampMillis(left.startAt) - timestampMillis(right.startAt),
-        ),
+      filterOrganizationEvents(
+        events,
+        eventSearch,
+        eventStatusFilter,
+        eventSort,
+      ),
     [eventSearch, eventSort, eventStatusFilter, events],
   );
   const visibleApplications = useMemo(
     () =>
-      applications.filter(
-        (application) =>
-          (applicantStatusFilter === "all" ||
-            application.status === applicantStatusFilter) &&
-          [
-            application.studentName,
-            application.participantMessage ?? "",
-            application.accessibilityNeeds ?? "",
-            application.organizerNote ?? "",
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(applicantSearch.trim().toLowerCase()),
+      filterOrganizationApplications(
+        applications,
+        applicantSearch,
+        applicantStatusFilter,
       ),
     [applicantSearch, applicantStatusFilter, applications],
   );
   const applicantMetrics = useMemo(
-    () => ({
-      total: applications.length,
-      pending: applications.filter((item) => item.status === "pending").length,
-      waitlisted: applications.filter((item) => item.status === "waitlisted")
-        .length,
-      confirmed: applications.filter((item) => item.status === "confirmed")
-        .length,
-      attended: applications.filter((item) => item.status === "attended")
-        .length,
-      absent: applications.filter((item) => item.status === "absent").length,
-    }),
+    () => summarizeApplicants(applications),
     [applications],
   );
-  const unreadChatCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    notifications.forEach((notification) => {
-      if (
-        !notification.isRead &&
-        notification.targetType === "chat" &&
-        notification.targetId
-      ) {
-        counts[notification.targetId] =
-          (counts[notification.targetId] ?? 0) + 1;
-      }
-    });
-    return counts;
-  }, [notifications]);
+  const unreadChatCounts = useMemo(
+    () => countUnreadChats(notifications),
+    [notifications],
+  );
   const unreadChatTotal = Object.values(unreadChatCounts).reduce(
     (sum, count) => sum + count,
     0,
@@ -957,46 +924,7 @@ export function OrganizationDashboard({
       setNotice("レポートを出力するイベントを選択してください。", "error");
       return;
     }
-    const rows = [
-      [
-        "イベント名",
-        "開催日時",
-        "定員",
-        "申請数",
-        "参加者名",
-        "状態",
-        "申請日時",
-        "参加者メッセージ",
-        "必要な配慮",
-        "緊急連絡先",
-        "運営メモ",
-      ],
-      ...applications.map((application) => [
-        selectedEvent.title,
-        selectedEvent.startAtLabel,
-        selectedEvent.capacity,
-        selectedEvent.applicantCount,
-        application.studentName,
-        applicationStatusLabel(application.status),
-        application.createdAt?.toDate?.().toLocaleString("ja-JP") ?? "",
-        application.participantMessage ?? "",
-        application.accessibilityNeeds ?? "",
-        application.emergencyContact ?? "",
-        application.organizerNote ?? "",
-      ]),
-    ];
-    const csv = rows
-      .map((row) => row.map((value) => csvEscape(value)).join(","))
-      .join("\n");
-    const blob = new Blob([`\uFEFF${csv}`], {
-      type: "text/csv;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${selectedEvent.title}-参加者レポート.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadParticipantReport(selectedEvent, applications);
     setNotice("参加者レポートを出力しました。", "success");
   };
 
