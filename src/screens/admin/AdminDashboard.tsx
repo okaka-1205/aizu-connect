@@ -21,7 +21,7 @@ import {
   Trash2,
   UsersRound,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { NoticeBanner } from "../../components/ui/AppPrimitives";
 import { useNoticeState } from "../../hooks/useNoticeState";
@@ -106,6 +106,7 @@ function AssignmentControls({
 }
 
 export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
+  const pendingOperationIds = useRef(new Map<string, string>());
   const [pendingEvents, setPendingEvents] = useState<AizuEvent[]>([]);
   const [pendingUsers, setPendingUsers] = useState<AppUser[]>([]);
   const [pendingReports, setPendingReports] = useState<ReportRecord[]>([]);
@@ -560,14 +561,26 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setIsLoading(true);
     try {
       const manageResource = httpsCallable<
-        { action: AdminAction; targetId: string; reason: string },
+        {
+          action: AdminAction;
+          targetId: string;
+          reason: string;
+          requestId: string;
+        },
         { status: string }
       >(functions, "adminManageResource");
+      const operationKey = `${action}:${targetId}`;
+      const requestId =
+        pendingOperationIds.current.get(operationKey) ??
+        globalThis.crypto.randomUUID().replaceAll("-", "");
+      pendingOperationIds.current.set(operationKey, requestId);
       await manageResource({
         action,
         targetId,
         reason: reason.trim().slice(0, 1000),
+        requestId,
       });
+      pendingOperationIds.current.delete(operationKey);
       setReasonAction(null);
       setNotice(successMessage, "success");
     } catch (error) {

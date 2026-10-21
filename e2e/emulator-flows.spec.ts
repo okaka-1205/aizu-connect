@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { projectSuffix, projectVariant } from "./testVariants";
 
@@ -108,6 +108,92 @@ async function expectNoHorizontalOverflow(page) {
       }),
     )
     .toBe("");
+}
+
+async function callEmulatedFunction(
+  page: Page,
+  functionName: string,
+  data: Record<string, unknown>,
+) {
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
+  const port = process.env.VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT ?? "5001";
+  return page.evaluate(
+    async ({projectId: browserProjectId, port: browserPort, name, payload}) => {
+      const {auth} = await import("/src/lib/firebase.ts");
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("Authentication token is unavailable.");
+      const response = await fetch(
+        `http://127.0.0.1:${browserPort}/${browserProjectId}/asia-northeast1/${name}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({data: payload}),
+        },
+      );
+      return {
+        ok: response.ok,
+        body: (await response.json()) as {
+          result?: Record<string, unknown>;
+          error?: {status?: string; message?: string};
+        },
+      };
+    },
+    {projectId, port, name: functionName, payload: data},
+  );
+}
+
+async function readFirestoreDocument(pathname: string) {
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
+  const port = process.env.VITE_FIREBASE_FIRESTORE_EMULATOR_PORT ?? "8080";
+  const response = await fetch(
+    `http://127.0.0.1:${port}/v1/projects/${projectId}/databases/(default)/documents/${pathname}`,
+    {headers: {Authorization: "Bearer owner"}},
+  );
+  if (!response.ok) throw new Error(`Firestore read failed: ${response.status}`);
+  return (await response.json()) as {
+    fields?: Record<string, {stringValue?: string; integerValue?: string}>;
+  };
+}
+
+async function writeFirestoreDocument(
+  pathname: string,
+  fields: Record<
+    string,
+    {stringValue?: string; integerValue?: string}
+  >,
+  updateFields?: string[],
+) {
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
+  const port = process.env.VITE_FIREBASE_FIRESTORE_EMULATOR_PORT ?? "8080";
+  const updateMask = (updateFields ?? []).map(
+    (field) => `updateMask.fieldPaths=${encodeURIComponent(field)}`,
+  );
+  const query = updateMask.length > 0 ? `?${updateMask.join("&")}` : "";
+  const response = await fetch(
+    `http://127.0.0.1:${port}/v1/projects/${projectId}/databases/(default)/documents/${pathname}${query}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer owner",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({fields}),
+    },
+  );
+  if (!response.ok) throw new Error(`Firestore write failed: ${response.status}`);
+}
+
+async function deleteFirestoreDocument(pathname: string) {
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
+  const port = process.env.VITE_FIREBASE_FIRESTORE_EMULATOR_PORT ?? "8080";
+  const response = await fetch(
+    `http://127.0.0.1:${port}/v1/projects/${projectId}/databases/(default)/documents/${pathname}`,
+    {method: "DELETE", headers: {Authorization: "Bearer owner"}},
+  );
+  if (!response.ok) throw new Error(`Firestore delete failed: ${response.status}`);
 }
 
 async function confirmApplication(
@@ -727,6 +813,88 @@ test.describe("emulator-backed role flows", () => {
     ).toBeVisible();
     await expect(applicationItem.getByText("出席確認済み")).toBeVisible();
     await expectNoHorizontalOverflow(page);
+  });
+
+  test("suspended student cannot check in with a valid code", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    const studentId = `student-suspended-checkin-${suffix}`;
+    const eventId = `event-suspended-checkin-${suffix}`;
+    await login(page, `${studentId}@u-aizu.ac.jp`);
+
+    const response = await callEmulatedFunction(page, "checkInToEvent", {
+      eventId,
+      code: "112233",
+    });
+    expect(response.ok).toBe(false);
+    expect(response.body.error?.status).toBe("PERMISSION_DENIED");
+    const application = await readFirestoreDocument(
+      `eventApplications/${eventId}_${studentId}`,
+    );
+    expect(application.fields?.status?.stringValue).toBe("confirmed");
+  });
+
+  test("deleting a chat message removes its readable edit history", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    const studentId = `student-message-delete-${suffix}`;
+    const roomId = `message-delete-${suffix}`;
+    await login(page, `${studentId}@u-aizu.ac.jp`);
+
+    const response = await callEmulatedFunction(page, "manageChatMessage", {
+      roomId,
+      messageId: "delete-target",
+      action: "delete",
+    });
+    expect(response).toMatchObject({ok: true, body: {result: {status: "deleted"}}});
+    const message = await readFirestoreDocument(
+      `chatRooms/${roomId}/messages/delete-target`,
+    );
+    expect(message.fields?.text?.stringValue).toBe(
+      "このメッセージは削除されました。",
+    );
+    expect(message.fields?.editHistory).toBeUndefined();
+    expect(message.fields?.editedAt).toBeUndefined();
+  });
+
+  test("event chat provisioning preserves an existing room on trigger retry", async ({page: _page}, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    const eventId = `event-trigger-idempotency-${suffix}`;
+    const roomId = `event_${eventId}`;
+    const eventFields = {
+      title: {stringValue: `E2E トリガー再実行 ${suffix}`},
+      organizationName: {stringValue: "E2E主催団体"},
+      createdBy: {stringValue: `org-e2e-${suffix}`},
+    };
+    await writeFirestoreDocument(`events/${eventId}`, eventFields);
+    await expect.poll(async () => {
+      try {
+        const room = await readFirestoreDocument(`chatRooms/${roomId}`);
+        return room.fields?.status?.stringValue;
+      } catch {
+        return undefined;
+      }
+    }).toBe("active");
+    await writeFirestoreDocument(
+      `chatRooms/${roomId}`,
+      {
+        lastMessageText: {stringValue: "既存会話を保持"},
+        memberCount: {integerValue: "7"},
+      },
+      ["lastMessageText", "memberCount"],
+    );
+
+    await deleteFirestoreDocument(`events/${eventId}`);
+    await writeFirestoreDocument(`events/${eventId}`, eventFields);
+    await expect.poll(async () => {
+      const room = await readFirestoreDocument(`chatRooms/${roomId}`);
+      return {
+        lastMessageText: room.fields?.lastMessageText?.stringValue,
+        memberCount: room.fields?.memberCount?.integerValue,
+      };
+    }).toEqual({lastMessageText: "既存会話を保持", memberCount: "7"});
   });
 
   test("student can manage notifications, saved events, profile, calendar, and reports", async ({

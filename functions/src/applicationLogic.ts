@@ -22,6 +22,52 @@ const applicationStatusMessages: Record<string, string> = {
 export const applicationStatusMessage = (status: string): string =>
   applicationStatusMessages[status] ?? "参加申請の状態が更新されました。";
 
+export const sanitizeClientErrorText = (
+  value: unknown,
+  maxLength: number,
+): string => {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(
+      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+      "[REDACTED_EMAIL]",
+    )
+    .replace(
+      /([?&](?:token|key|code|password|secret)=)[^&#\s]*/gi,
+      "$1[REDACTED]",
+    )
+    .trim()
+    .slice(0, maxLength);
+};
+
+export const sanitizeClientPath = (value: unknown): string => {
+  if (typeof value !== "string") return "/";
+  try {
+    const path = new URL(value, "https://aizu-connect.invalid").pathname;
+    return path.startsWith("/") ? path.slice(0, 300) : "/";
+  } catch {
+    return "/";
+  }
+};
+
+export const tokyoYearMonth = (
+  date: Date,
+): {activityYear: number; activityMonth: number} => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "numeric",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return {
+    activityYear: Number(values.year),
+    activityMonth: Number(values.month),
+  };
+};
+
 export const shouldDecrementApplicantCount = (
   beforeStatus: string,
   afterStatus: string,

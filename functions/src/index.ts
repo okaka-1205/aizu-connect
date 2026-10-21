@@ -11,6 +11,8 @@ import {
   normalizeApplicationAnswers,
   evaluateCheckInAttempt,
   normalizeEventPlanInput,
+  sanitizeClientErrorText,
+  sanitizeClientPath,
   shouldDecrementApplicantCount,
 } from "./applicationLogic";
 import {createNotificationOnce} from "./services/notifications";
@@ -111,6 +113,13 @@ const clientErrorId = (value: unknown) => {
   return /^[A-Z0-9]{8,32}$/.test(normalized) ? normalized : "UNKNOWN";
 };
 
+const requiredRequestId = (value: unknown) => {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{16,80}$/.test(value)) {
+    throw new HttpsError("invalid-argument", "操作識別子が不正です。");
+  }
+  return value;
+};
+
 export const healthCheck = onRequest(
   {
     invoker: "public",
@@ -144,13 +153,13 @@ export const reportClientError = onCall(
     logger.error("Client render error", {
       errorId,
       userId: request.auth?.uid ?? null,
-      name: optionalClientText(request.data?.name, 80),
-      clientMessage: optionalClientText(request.data?.message, 500),
-      componentStack: optionalClientText(
+      name: sanitizeClientErrorText(request.data?.name, 80),
+      clientMessage: sanitizeClientErrorText(request.data?.message, 500),
+      componentStack: sanitizeClientErrorText(
         request.data?.componentStack,
         3000,
       ),
-      path: optionalClientText(request.data?.path, 300),
+      path: sanitizeClientPath(request.data?.path),
     });
     return {accepted: true, errorId};
   },
@@ -590,31 +599,75 @@ export const adminManageResource = onCall(
       request.auth?.token.firebase?.sign_in_second_factor,
     );
     const action = String(request.data?.action ?? "");
+    if (
+      ![
+        "resolve_report",
+        "dismiss_report",
+        "approve_user",
+        "reject_user",
+        "suspend_user",
+        "restore_user",
+        "delete_user",
+        "approve_event",
+        "request_event_revision",
+        "unpublish_event",
+        "restore_event",
+        "delete_event",
+      ].includes(action)
+    ) {
+      throw new HttpsError("invalid-argument", "管理操作が不正です。");
+    }
     const targetId = requiredDocumentId(request.data?.targetId);
     const reason = requiredAdminText(request.data?.reason, "対応理由");
-    const operationId = `${action}_${targetId}`;
+    const requestId = requiredRequestId(request.data?.requestId);
+    const operationId = `${actor.uid}_${action}_${targetId}_${requestId}`;
     const operationRef = db.doc(`adminOperations/${operationId}`);
-    const previousOperation = await operationRef.get();
-    if (previousOperation.data()?.status === "completed") {
+    const reservation = await db.runTransaction(async (transaction) => {
+      const previousOperation = await transaction.get(operationRef);
+      if (previousOperation.data()?.status === "completed") {
+        return {
+          state: "completed" as const,
+          resultStatus: String(
+            previousOperation.data()?.resultStatus || "completed",
+          ),
+        };
+      }
+      const startedAt = previousOperation.data()?.startedAt;
+      const leaseIsActive =
+        previousOperation.data()?.status === "running" &&
+        startedAt instanceof Timestamp &&
+        Date.now() - startedAt.toMillis() < 15 * 60 * 1000;
+      if (leaseIsActive) return {state: "running" as const};
+      transaction.set(
+        operationRef,
+        {
+          action,
+          targetId,
+          requestId,
+          actorId: actor.uid,
+          actorName: actor.displayName,
+          reason,
+          status: "running",
+          attemptCount: FieldValue.increment(1),
+          startedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+      );
+      return {state: "acquired" as const};
+    });
+    if (reservation.state === "completed") {
       return {
-        status: String(previousOperation.data()?.resultStatus || "completed"),
+        status: reservation.resultStatus,
         operationId,
       };
     }
-    await operationRef.set(
-      {
-        action,
-        targetId,
-        actorId: actor.uid,
-        actorName: actor.displayName,
-        reason,
-        status: "running",
-        attemptCount: FieldValue.increment(1),
-        startedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      {merge: true},
-    );
+    if (reservation.state === "running") {
+      throw new HttpsError(
+        "aborted",
+        "同じ管理操作を処理中です。完了後にもう一度お試しください。",
+      );
+    }
     const completeOperation = async (status: string) => {
       await operationRef.set(
         {
@@ -1436,50 +1489,62 @@ export const createEventChatRoom = onDocumentCreated(
     const eventData = event.data?.data();
     if (!eventData || typeof eventData.createdBy !== "string") return;
     const roomId = eventChatRoomId(event.params.eventId);
-    await db.doc(`chatRooms/${roomId}`).set(
-      {
-        id: roomId,
-        roomType: "event",
-        applicationId: roomId,
-        eventId: event.params.eventId,
-        eventTitle: eventData.title,
-        studentId: "",
-        studentName: "",
-        organizationName: eventData.organizationName,
-        organizationId: eventData.createdBy,
-        memberCount: 1,
-        status: "active",
-        lastMessageText: "イベント全体チャットを作成しました。",
-        lastMessageAt: FieldValue.serverTimestamp(),
-        createdAt: FieldValue.serverTimestamp(),
-      },
-      {merge: true},
-    );
-    await db.doc(`chatRooms/${roomId}/members/${eventData.createdBy}`).set({
-      userId: eventData.createdBy,
-      role: "organization",
-      displayName: eventData.organizationName,
-      joinedAt: FieldValue.serverTimestamp(),
-    });
-    await db.doc(`chatRooms/${roomId}/messages/welcome`).set({
-      roomId,
-      senderId: "system",
-      senderName: "Aizu Connect",
-      type: "system",
-      text: "イベント全体チャットです。参加者は参加前のやり取りも確認できます。",
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    const roomRef = db.doc(`chatRooms/${roomId}`);
+    const memberRef = roomRef.collection("members").doc(eventData.createdBy);
+    const welcomeRef = roomRef.collection("messages").doc("welcome");
     const checkInRef = db.doc(`eventCheckIns/${event.params.eventId}`);
     await db.runTransaction(async (transaction) => {
-      const checkInSnapshot = await transaction.get(checkInRef);
-      if (checkInSnapshot.exists) return;
-      transaction.create(checkInRef, {
-        eventId: event.params.eventId,
-        organizerId: eventData.createdBy,
-        code: createCheckInCode(),
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      const [room, member, welcome, checkIn] = await transaction.getAll(
+        roomRef,
+        memberRef,
+        welcomeRef,
+        checkInRef,
+      );
+      if (!room.exists) {
+        transaction.create(roomRef, {
+          id: roomId,
+          roomType: "event",
+          applicationId: roomId,
+          eventId: event.params.eventId,
+          eventTitle: eventData.title,
+          studentId: "",
+          studentName: "",
+          organizationName: eventData.organizationName,
+          organizationId: eventData.createdBy,
+          memberCount: 1,
+          status: "active",
+          lastMessageText: "イベント全体チャットを作成しました。",
+          lastMessageAt: FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+      if (!member.exists) {
+        transaction.create(memberRef, {
+          userId: eventData.createdBy,
+          role: "organization",
+          displayName: eventData.organizationName,
+          joinedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      if (!welcome.exists) {
+        transaction.create(welcomeRef, {
+          roomId,
+          senderId: "system",
+          senderName: "Aizu Connect",
+          type: "system",
+          text: "イベント全体チャットです。参加者は参加前のやり取りも確認できます。",
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+      if (!checkIn.exists) {
+        transaction.create(checkInRef, {
+          eventId: event.params.eventId,
+          organizerId: eventData.createdBy,
+          code: createCheckInCode(),
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
     });
   },
 );
@@ -1562,6 +1627,8 @@ export const manageChatMessage = onCall(
           attachmentName: FieldValue.delete(),
           attachmentType: FieldValue.delete(),
           attachmentSize: FieldValue.delete(),
+          editedAt: FieldValue.delete(),
+          editHistory: FieldValue.delete(),
           deletedAt: FieldValue.serverTimestamp(),
         });
         return;
@@ -1593,18 +1660,31 @@ export const checkInToEvent = onCall(
     const checkInRef = db.doc(`eventCheckIns/${eventId}`);
     const eventRef = db.doc(`events/${eventId}`);
     const attemptRef = db.doc(`checkInAttempts/${applicationId}`);
+    const userRef = db.doc(`users/${userId}`);
     const outcome = await db.runTransaction(async (transaction) => {
       const [
+        userSnapshot,
         applicationSnapshot,
         checkInSnapshot,
         eventSnapshot,
         attemptSnapshot,
       ] = await transaction.getAll(
+        userRef,
         applicationRef,
         checkInRef,
         eventRef,
         attemptRef,
       );
+      if (
+        !userSnapshot.exists ||
+        userSnapshot.data()?.status !== "active" ||
+        userSnapshot.data()?.role !== "student"
+      ) {
+        throw new HttpsError(
+          "permission-denied",
+          "Active student account required.",
+        );
+      }
       if (
         !applicationSnapshot.exists ||
         applicationSnapshot.data()?.studentId !== userId ||

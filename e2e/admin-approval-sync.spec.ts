@@ -21,12 +21,25 @@ async function readFirestoreDocument(path: string) {
   return body;
 }
 
-async function repeatApproval(page: Page, uid: string) {
+type AdminAction = "approve_user" | "suspend_user" | "restore_user";
+
+async function runAdminAction(
+  page: Page,
+  uid: string,
+  action: AdminAction,
+  requestId: string,
+) {
   const projectId =
     process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-admin-approval";
   const port = process.env.VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT ?? "5001";
   return page.evaluate(
-    async ({ projectId: browserProjectId, port: browserPort, targetId }) => {
+    async ({
+      projectId: browserProjectId,
+      port: browserPort,
+      targetId,
+      requestedAction,
+      clientRequestId,
+    }) => {
       const { auth } = await import("/src/lib/firebase.ts");
       const token = await auth.currentUser?.getIdToken();
       if (!token) throw new Error("Admin authentication token is unavailable.");
@@ -40,9 +53,10 @@ async function repeatApproval(page: Page, uid: string) {
           },
           body: JSON.stringify({
             data: {
-              action: "approve_user",
+              action: requestedAction,
               targetId,
-              reason: "同一承認操作の再実行テスト",
+              reason: "管理操作の再実行と状態遷移を確認",
+              requestId: clientRequestId,
             },
           }),
         },
@@ -53,12 +67,18 @@ async function repeatApproval(page: Page, uid: string) {
       };
       if (!response.ok || !body.result) {
         throw new Error(
-          `Approval retry failed: ${body.error?.message ?? response.status}`,
+          `Admin action failed: ${body.error?.message ?? response.status}`,
         );
       }
       return body.result;
     },
-    { projectId, port, targetId: uid },
+    {
+      projectId,
+      port,
+      targetId: uid,
+      requestedAction: action,
+      clientRequestId: requestId,
+    },
   );
 }
 
@@ -136,16 +156,41 @@ test("admin approval synchronizes the user and student profile", async ({
     })
     .toEqual({ user: "active", profile: "active" });
 
-  expect(await repeatApproval(page, uid)).toEqual({
+  const adminId = "admin-approval-e2e";
+  const replayRequestId = `approvalretry${variant}0001`;
+  const replayOperationId =
+    `${adminId}_approve_user_${uid}_${replayRequestId}`;
+  const firstReplay = await runAdminAction(
+    page,
+    uid,
+    "approve_user",
+    replayRequestId,
+  );
+  expect(await runAdminAction(page, uid, "approve_user", replayRequestId))
+    .toEqual(firstReplay);
+  expect(firstReplay).toEqual({
     status: "active",
-    operationId: `approve_user_${uid}`,
+    operationId: replayOperationId,
   });
+
+  const statusTransitions = [
+    ["suspend_user", `suspendfirst${variant}0001`, "suspended"],
+    ["restore_user", `restorefirst${variant}0001`, "active"],
+    ["suspend_user", `suspendagain${variant}0001`, "suspended"],
+    ["restore_user", `restoreagain${variant}0001`, "active"],
+  ] as const;
+  for (const [action, requestId, expectedStatus] of statusTransitions) {
+    expect(await runAdminAction(page, uid, action, requestId)).toMatchObject({
+      status: expectedStatus,
+      operationId: `${adminId}_${action}_${uid}_${requestId}`,
+    });
+  }
   const [notification, auditLog, operation] = await Promise.all([
     readFirestoreDocument(
-      `notifications/account_review_approve_user_${uid}`,
+      `notifications/account_review_${replayOperationId}`,
     ),
-    readFirestoreDocument(`auditLogs/approve_user_${uid}`),
-    readFirestoreDocument(`adminOperations/approve_user_${uid}`),
+    readFirestoreDocument(`auditLogs/${replayOperationId}`),
+    readFirestoreDocument(`adminOperations/${replayOperationId}`),
   ]);
   expect(notification.fields?.type?.stringValue).toBe("account_approved");
   expect(auditLog.fields?.action?.stringValue).toBe("user_approve");
