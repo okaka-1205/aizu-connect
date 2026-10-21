@@ -7,7 +7,6 @@ import {
   onSnapshot,
   orderBy,
   query,
-  Timestamp,
   where,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
@@ -25,17 +24,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { NoticeBanner } from "../../components/ui/AppPrimitives";
 import { useNoticeState } from "../../hooks/useNoticeState";
-import { auth, db, functions } from "../../lib/firebase";
-import { saveAdminAssignment } from "../../repositories/engagementRepository";
+import { db, functions } from "../../lib/firebase";
 import {
   getFirebaseErrorMessage,
   isAizuUniversityEmail,
 } from "../../lib/appLogic";
-import {
-  formatChatTime,
-  preferredScrollBehavior,
-  timestampMillis,
-} from "../../lib/eventUtils";
+import { formatChatTime, preferredScrollBehavior } from "../../lib/eventUtils";
 import type {
   AccountDeletionRequest,
   AizuEvent,
@@ -50,60 +44,8 @@ import {
   RoleShell,
 } from "../shared/RoleScreenPrimitives";
 import { AdminOverview } from "./components/AdminOverview";
-
-function AssignmentControls({
-  targetType,
-  targetId,
-}: {
-  targetType: "event" | "user" | "report" | "deletion";
-  targetId: string;
-}) {
-  const [dueDate, setDueDate] = useState("");
-  const [status, setStatus] = useState<"open" | "in_progress" | "done">(
-    "open",
-  );
-  const [saved, setSaved] = useState(false);
-  return (
-    <div className="admin-assignment-controls">
-      <select
-        aria-label="対応状況"
-        value={status}
-        onChange={(event) =>
-          setStatus(event.target.value as "open" | "in_progress" | "done")
-        }
-      >
-        <option value="open">未対応</option>
-        <option value="in_progress">対応中</option>
-        <option value="done">完了</option>
-      </select>
-      <input
-        type="date"
-        aria-label="対応期限"
-        value={dueDate}
-        onChange={(event) => setDueDate(event.target.value)}
-      />
-      <button
-        type="button"
-        onClick={() => {
-          const user = auth.currentUser;
-          if (!user) return;
-          void saveAdminAssignment({
-            targetType,
-            targetId,
-            assigneeId: user.uid,
-            assigneeName: user.email ?? "管理者",
-            status,
-            dueAt: dueDate
-              ? Timestamp.fromDate(new Date(`${dueDate}T23:59:59`))
-              : undefined,
-          }).then(() => setSaved(true));
-        }}
-      >
-        {saved ? "担当済み" : "自分が担当"}
-      </button>
-    </div>
-  );
-}
+import { AssignmentControls } from "./components/AssignmentControls";
+import { deriveAdminDashboardView } from "./adminDashboardLogic";
 
 export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const pendingOperationIds = useRef(new Map<string, string>());
@@ -156,94 +98,27 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     action: () => Promise<void>;
   } | null>(null);
 
-  const normalizedAdminSearch = adminSearch.trim().toLowerCase();
-  const matchesAdminSearch = (...values: (string | null | undefined)[]) =>
-    !normalizedAdminSearch ||
-    values
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedAdminSearch);
-  const visiblePendingEvents = [...pendingEvents]
-    .filter((event) =>
-      matchesAdminSearch(event.title, event.organizationName, event.location),
-    )
-    .sort(
-      (left, right) =>
-        timestampMillis(right.createdAt) - timestampMillis(left.createdAt),
-    );
-  const visiblePendingUsers = [...pendingUsers]
-    .filter((user) =>
-      matchesAdminSearch(user.displayName, user.email, user.university),
-    )
-    .sort(
-      (left, right) =>
-        timestampMillis(right.createdAt) - timestampMillis(left.createdAt),
-    );
-  const visiblePendingReports = [...pendingReports]
-    .filter((report) =>
-      matchesAdminSearch(report.targetTitle, report.reason, report.description),
-    )
-    .sort(
-      (left, right) =>
-        timestampMillis(right.createdAt) - timestampMillis(left.createdAt),
-    );
-  const visibleDeletionRequests = [...deletionRequests]
-    .filter((request) => {
-      const user =
-        deletionRequestUsers[request.userId] ??
-        managedUsers.find((item) => item.uid === request.userId);
-      return matchesAdminSearch(
-        request.userId,
-        request.reason,
-        user?.displayName,
-        user?.email,
-      );
-    })
-    .sort(
-      (left, right) =>
-        timestampMillis(right.requestedAt) - timestampMillis(left.requestedAt),
-    );
-  const visibleManagedUsers = [...managedUsers]
-    .filter((user) => user.status === managedUserStatus)
-    .filter((user) =>
-      matchesAdminSearch(user.displayName, user.email, user.university),
-    )
-    .sort(
-      (left, right) =>
-        timestampMillis(right.createdAt) - timestampMillis(left.createdAt),
-    );
-  const visibleManagedEvents = [...managedEvents]
-    .filter((event) =>
-      matchesAdminSearch(event.title, event.organizationName, event.location),
-    )
-    .sort(
-      (left, right) =>
-        timestampMillis(right.createdAt) - timestampMillis(left.createdAt),
-    );
-  const pendingCreatedTimes = [
-    ...pendingEvents.map((event) => timestampMillis(event.createdAt)),
-    ...pendingUsers.map((user) => timestampMillis(user.createdAt)),
-    ...pendingReports.map((report) => timestampMillis(report.createdAt)),
-  ].filter((value) => value > 0);
-  const oldestPendingDays =
-    pendingCreatedTimes.length > 0
-      ? Math.max(
-          0,
-          Math.floor(
-            (Date.now() - Math.min(...pendingCreatedTimes)) / 86_400_000,
-          ),
-        )
-      : 0;
-  const processedToday = auditLogs.filter((audit) => {
-    const date = audit.createdAt?.toDate();
-    const now = new Date();
-    return (
-      date?.getFullYear() === now.getFullYear() &&
-      date?.getMonth() === now.getMonth() &&
-      date?.getDate() === now.getDate()
-    );
-  }).length;
+  const {
+    visiblePendingEvents,
+    visiblePendingUsers,
+    visiblePendingReports,
+    visibleDeletionRequests,
+    visibleManagedUsers,
+    visibleManagedEvents,
+    oldestPendingDays,
+    processedToday,
+  } = deriveAdminDashboardView({
+    search: adminSearch,
+    pendingEvents,
+    pendingUsers,
+    pendingReports,
+    deletionRequests,
+    deletionRequestUsers,
+    managedUsers,
+    managedEvents,
+    managedUserStatus,
+    auditLogs,
+  });
   const reviewQueueHasMore =
     hasMorePendingEvents ||
     hasMorePendingUsers ||
