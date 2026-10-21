@@ -17,6 +17,7 @@ import {requiredDocumentId} from "./lib/callableValidation";
 
 export {healthCheck} from "./http/healthCheck";
 export {reportClientError} from "./callables/reportClientError";
+export {getAdminDashboardMetrics} from "./callables/adminDashboardMetrics";
 
 setGlobalOptions({maxInstances: 10, region: "asia-northeast1"});
 const isFunctionsEmulator = process.env.FUNCTIONS_EMULATOR === "true";

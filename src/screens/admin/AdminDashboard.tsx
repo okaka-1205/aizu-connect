@@ -32,6 +32,7 @@ import {
 import { formatChatTime, preferredScrollBehavior } from "../../lib/eventUtils";
 import type {
   AccountDeletionRequest,
+  AdminUsageMetrics,
   AizuEvent,
   AppUser,
   AuditLog,
@@ -46,6 +47,7 @@ import {
 import { AdminOverview } from "./components/AdminOverview";
 import { AssignmentControls } from "./components/AssignmentControls";
 import { deriveAdminDashboardView } from "./adminDashboardLogic";
+import { AdminUsageOverview } from "./components/AdminUsageOverview";
 
 export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const pendingOperationIds = useRef(new Map<string, string>());
@@ -76,6 +78,11 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [notice, noticeTone, setNotice] = useNoticeState();
   const [isLoading, setIsLoading] = useState(false);
+  const [usageMetrics, setUsageMetrics] = useState<AdminUsageMetrics | null>(
+    null,
+  );
+  const [isUsageMetricsLoading, setIsUsageMetricsLoading] = useState(true);
+  const [usageMetricsError, setUsageMetricsError] = useState("");
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [adminSearch, setAdminSearch] = useState("");
   const [managedUserStatus, setManagedUserStatus] = useState<
@@ -124,6 +131,27 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     hasMorePendingUsers ||
     hasMorePendingReports ||
     hasMoreDeletionRequests;
+
+  const loadUsageMetrics = useCallback(async () => {
+    setIsUsageMetricsLoading(true);
+    setUsageMetricsError("");
+    try {
+      const callable = httpsCallable<void, AdminUsageMetrics>(
+        functions,
+        "getAdminDashboardMetrics",
+      );
+      const result = await callable();
+      setUsageMetrics(result.data);
+    } catch (error) {
+      setUsageMetricsError(getFirebaseErrorMessage(error));
+    } finally {
+      setIsUsageMetricsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadUsageMetrics();
+  }, [loadUsageMetrics]);
 
   const loadReviewQueue = useCallback(async () => {
     setIsLoading(true);
@@ -574,6 +602,12 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         oldestPendingDays={oldestPendingDays}
         processedToday={processedToday}
         reviewQueueHasMore={reviewQueueHasMore}
+      />
+      <AdminUsageOverview
+        metrics={usageMetrics}
+        isLoading={isUsageMetricsLoading}
+        error={usageMetricsError}
+        onRefresh={() => void loadUsageMetrics()}
       />
       <div className="role-grid">
         <section className="role-card">

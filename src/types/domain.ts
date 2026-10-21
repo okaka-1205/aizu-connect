@@ -14,6 +14,20 @@ export type Tab = "home" | "search" | "activity" | "messages" | "profile";
 export type NoticeTone = "success" | "error" | "info";
 export type SetNotice = (message: string, tone?: NoticeTone) => void;
 export type UserRole = "student" | "organization" | "admin";
+
+export type AdminUsageMetrics = {
+  totalUsers: number;
+  activeUsers: number;
+  organizationUsers: number;
+  newUsers30Days: number;
+  publishedEvents: number;
+  totalApplications: number;
+  applications30Days: number;
+  applicationCompletionRate: number;
+  cancellationRate: number;
+  clientErrors7Days: number;
+  generatedAt: string;
+};
 export type SearchDateFilter = "すべて" | "今週" | "今月";
 export type SearchSort = "開催が近い順" | "人気順" | "新着順";
 export type SearchDayFilter = "すべて" | "平日" | "土日";
