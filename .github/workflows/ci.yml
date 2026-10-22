@@ -41,7 +41,9 @@ jobs:
 
   browser-e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # The full cross-browser suite normally finishes in about 22 minutes, but
+    # shared GitHub runners can run at roughly half speed during peak periods.
+    timeout-minutes: 50
     permissions:
       contents: read
     steps:
