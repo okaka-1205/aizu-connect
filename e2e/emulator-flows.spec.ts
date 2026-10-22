@@ -1216,6 +1216,14 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("heading", { name: "イベント審査" }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "利用状況" }),
+    ).toBeVisible();
+    await expect(page.getByText("登録ユーザー", { exact: true })).toBeVisible();
+    await expect(page.getByText("申込完了率", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("直近7日の画面エラー", { exact: true }),
+    ).toBeVisible();
     const adminSearch = page.getByLabel("管理対象を検索");
     await adminSearch.fill("E2E");
     await page.getByRole("button", { name: "ホームへ戻る" }).first().click();

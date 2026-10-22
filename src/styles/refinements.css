@@ -1,6 +1,89 @@
 .role-metrics {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
+.admin-usage-overview {
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  background: #fff;
+}
+.admin-usage-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.admin-usage-metrics > div {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  border: 1px solid #dce7f3;
+  border-radius: 10px;
+  padding: 14px;
+  background: #f8fbff;
+}
+.admin-usage-metrics > div.is-warning {
+  border-color: #f2c6c6;
+  background: #fff8f8;
+}
+.admin-usage-metrics strong {
+  color: var(--brand);
+  font-size: 22px;
+  line-height: 1.1;
+}
+.admin-usage-metrics > div.is-warning strong,
+.admin-usage-metrics > div.is-warning .admin-metric-icon {
+  color: #b34747;
+}
+.admin-usage-metrics span:not(.admin-metric-icon) {
+  color: #4c6178;
+  font-size: 11px;
+  font-weight: 850;
+}
+.admin-usage-metrics small {
+  color: #556a80;
+  font-size: 9px;
+  line-height: 1.45;
+}
+.admin-metric-icon {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: #6e8eb2;
+}
+.admin-metrics-updated {
+  margin: 10px 0 0;
+  color: #596e84;
+  font-size: 9px;
+  text-align: right;
+}
+.admin-metrics-loading,
+.admin-metrics-error {
+  margin: 0;
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 11px;
+}
+.admin-metrics-error {
+  background: #fff3f3;
+  color: #a23f3f;
+}
+@media (max-width: 1000px) {
+  .admin-usage-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 620px) {
+  .admin-usage-overview {
+    padding: 14px;
+  }
+  .admin-usage-metrics {
+    grid-template-columns: 1fr;
+  }
+}
 .applicant-metrics {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }

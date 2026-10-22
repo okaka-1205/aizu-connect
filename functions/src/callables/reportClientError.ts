@@ -1,9 +1,12 @@
 import {logger} from "firebase-functions";
+import {FieldValue} from "firebase-admin/firestore";
 import {onCall} from "firebase-functions/v2/https";
 import {
   sanitizeClientErrorText,
   sanitizeClientPath,
 } from "../applicationLogic";
+import {utcDateKey} from "../lib/adminMetrics";
+import {db} from "../lib/firebaseAdmin";
 
 const isFunctionsEmulator = process.env.FUNCTIONS_EMULATOR === "true";
 const enforceCallableAppCheck =
@@ -27,7 +30,7 @@ export const reportClientError = onCall(
     memory: "256MiB",
     maxInstances: 3,
   },
-  (request) => {
+  async (request) => {
     const errorId = clientErrorId(request.data?.errorId);
     logger.error("Client render error", {
       errorId,
@@ -40,6 +43,24 @@ export const reportClientError = onCall(
       ),
       path: sanitizeClientPath(request.data?.path),
     });
+    const metricDate = utcDateKey(new Date());
+    await db
+      .doc(`operationalMetrics/clientErrors_${metricDate}`)
+      .set(
+        {
+          kind: "client_errors",
+          date: metricDate,
+          count: FieldValue.increment(1),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+      )
+      .catch((error) => {
+        logger.warn("Unable to update client error metrics", {
+          errorId,
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      });
     return {accepted: true, errorId};
   },
 );
