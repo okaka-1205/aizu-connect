@@ -13,6 +13,9 @@ const enforceCallableAppCheck =
 export const getAdminDashboardMetrics = onCall(
   {
     region: "asia-northeast1",
+    // Allow the callable transport to reach Firebase's token validation. The
+    // handler still requires an active admin with verified email and TOTP.
+    invoker: "public",
     enforceAppCheck: enforceCallableAppCheck,
     timeoutSeconds: 30,
     memory: "256MiB",

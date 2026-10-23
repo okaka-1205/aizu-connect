@@ -311,6 +311,12 @@ export const getFirebaseErrorMessage = (error: unknown) => {
       return "このイベントにはすでに参加申請済みです。";
     if (code === "functions/resource-exhausted")
       return "このイベントは定員に達しています。";
+    if (
+      code === "functions/internal" ||
+      code === "functions/unavailable" ||
+      code === "functions/deadline-exceeded"
+    )
+      return "サーバーから情報を取得できませんでした。少し時間を空けて、もう一度お試しください。";
     if (error.message.includes("Email verification is required."))
       return "メールアドレスの確認が必要です。確認メールのリンクを開いてから、もう一度お試しください。";
     if (
