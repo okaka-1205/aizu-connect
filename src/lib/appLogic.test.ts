@@ -382,6 +382,18 @@ describe("firebase error messages", () => {
     ).toContain("通信状態");
   });
 
+  it("hides callable service internals behind a retryable message", () => {
+    expect(
+      getFirebaseErrorMessage(
+        Object.assign(new Error("internal [0]"), {
+          code: "functions/internal",
+        }),
+      ),
+    ).toBe(
+      "サーバーから情報を取得できませんでした。少し時間を空けて、もう一度お試しください。",
+    );
+  });
+
   it("identifies a missing Firestore index without claiming Firebase is disabled", () => {
     expect(
       getFirebaseErrorMessage(
