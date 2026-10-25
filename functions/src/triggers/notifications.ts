@@ -9,7 +9,6 @@ import {
   shouldDecrementApplicantCount,
   shouldIncrementApplicantCount,
   shouldNotifyPublishedEventStudent,
-  shouldSetChatRoomReadOnly,
   tokyoYearMonth,
 } from "../applicationLogic";
 import {
@@ -201,18 +200,6 @@ export const notifyApplicationUpdated = onDocumentUpdated(
           });
         });
       }
-    }
-    if (
-      shouldSetChatRoomReadOnly(after.status) &&
-      typeof event.params.applicationId === "string"
-    ) {
-      await db.doc(`chatRooms/${event.params.applicationId}`).set(
-        {
-          status: "read_only",
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        {merge: true},
-      );
     }
   },
 );

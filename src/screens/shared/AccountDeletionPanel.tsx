@@ -32,11 +32,9 @@ export function AccountDeletionPanel({
           <strong>
             {isSubmitted ? "退会・データ削除を申請中" : "退会・データ削除"}
           </strong>
-          <small>
-            {isSubmitted
-              ? "運営が本人確認後にアカウントと関連データを削除します"
-              : "アプリ内から運営へ削除を申請できます"}
-          </small>
+          {isSubmitted && (
+            <small>運営が本人確認後にアカウントと関連データを削除します</small>
+          )}
         </span>
       </div>
       {isSubmitted && request?.reason && (
@@ -68,7 +66,7 @@ export function AccountDeletionPanel({
       {isRequestOpen && (
         <ActionReasonDialog
           title="退会・データ削除を申請"
-          description="運営が内容を確認した後、認証アカウント、プロフィール、参加申請、個別チャットなどを削除します。全体チャットの投稿は送信者を匿名化して残る場合があり、法令上必要な記録は所定期間保存します。削除完了後は元に戻せません。"
+          description="運営が内容を確認した後、認証アカウント、プロフィール、参加申請などを削除します。全体チャットの投稿は送信者を匿名化して残る場合があり、法令上必要な記録は所定期間保存します。削除完了後は元に戻せません。"
           label="退会理由・削除に関する連絡"
           placeholder="退会理由や、削除前に確認してほしいことを入力してください"
           confirmLabel="削除を申請する"

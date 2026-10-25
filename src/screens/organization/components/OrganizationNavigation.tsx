@@ -1,4 +1,10 @@
-import { CalendarDays, MessageCircle, Plus, UsersRound } from "lucide-react";
+import {
+  CalendarDays,
+  MessageCircle,
+  Plus,
+  Settings,
+  UsersRound,
+} from "lucide-react";
 
 export function OrganizationNavigation({
   eventCount,
@@ -9,6 +15,7 @@ export function OrganizationNavigation({
   onEvents,
   onApplicants,
   onMessages,
+  onSettings,
 }: {
   eventCount: number;
   hasSelectedEvent: boolean;
@@ -18,6 +25,7 @@ export function OrganizationNavigation({
   onEvents: () => void;
   onApplicants: () => void;
   onMessages: () => void;
+  onSettings: () => void;
 }) {
   return (
     <nav className="management-nav" aria-label="企画管理メニュー">
@@ -45,9 +53,15 @@ export function OrganizationNavigation({
       />
       <NavigationButton
         icon={<MessageCircle size={18} />}
-        title="連絡"
+        title="全体チャット"
         detail={unreadChatTotal > 0 ? `未読 ${unreadChatTotal}件` : "未読なし"}
         onClick={onMessages}
+      />
+      <NavigationButton
+        icon={<Settings size={18} />}
+        title="設定"
+        detail="アカウント管理"
+        onClick={onSettings}
       />
     </nav>
   );

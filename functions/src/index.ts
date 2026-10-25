@@ -36,6 +36,47 @@ const thirdPartyRecordExpiry = () => {
   return Timestamp.fromDate(expiry);
 };
 
+export const markAllNotificationsRead = onCall(
+  {enforceAppCheck: enforceCallableAppCheck},
+  async (request) => {
+    const userId = request.auth?.uid;
+    if (!userId) throw new HttpsError("unauthenticated", "Login required.");
+
+    const userSnapshot = await db.doc(`users/${userId}`).get();
+    if (!userSnapshot.exists || userSnapshot.data()?.status !== "active") {
+      throw new HttpsError(
+        "permission-denied",
+        "Active account required.",
+      );
+    }
+
+    let updatedCount = 0;
+    let hasUnreadNotifications = true;
+    while (hasUnreadNotifications) {
+      const unreadSnapshot = await db
+        .collection("notifications")
+        .where("recipientId", "==", userId)
+        .where("isRead", "==", false)
+        .limit(400)
+        .get();
+      if (unreadSnapshot.empty) break;
+
+      const batch = db.batch();
+      unreadSnapshot.docs.forEach((notification) => {
+        batch.update(notification.ref, {
+          isRead: true,
+          readAt: FieldValue.serverTimestamp(),
+        });
+      });
+      await batch.commit();
+      updatedCount += unreadSnapshot.size;
+      hasUnreadNotifications = unreadSnapshot.size === 400;
+    }
+
+    return {updatedCount};
+  },
+);
+
 export {adminManageResource} from "./callables/adminManageResource";
 export const saveEventPlan = onCall(
   {enforceAppCheck: enforceCallableAppCheck},
@@ -253,8 +294,6 @@ export const submitApplication = onCall(
     const applicationRef = db.doc(`eventApplications/${applicationId}`);
     const eventRef = db.doc(`events/${eventId}`);
     const userRef = db.doc(`users/${userId}`);
-    const roomRef = db.doc(`chatRooms/${applicationId}`);
-    const messageRef = roomRef.collection("messages").doc();
     const eventRoomRef = db.doc(`chatRooms/${eventChatRoomId(eventId)}`);
     const provisionLogRef = db.doc(`thirdPartyProvisionLogs/${applicationId}`);
     let applicationStatus: "pending" | "waitlisted" = "pending";
@@ -409,26 +448,6 @@ export const submitApplication = onCall(
           updatedAt: FieldValue.serverTimestamp(),
         });
       }
-      transaction.create(roomRef, {
-        id: applicationId,
-        roomType: "application",
-        applicationId,
-        eventId,
-        eventTitle: eventData.title,
-        studentId: userId,
-        studentName: userSnapshot.data()?.displayName ?? "学生",
-        organizationName: eventData.organizationName,
-        organizationId,
-        participantIds: [userId, organizationId],
-        memberCount: 2,
-        status: "active",
-        lastMessageText:
-          applicationStatus === "waitlisted" ?
-            "キャンセル待ちに登録しました。" :
-            "参加申請を送信しました。主催者からの連絡をお待ちください。",
-        lastMessageAt: FieldValue.serverTimestamp(),
-        createdAt: FieldValue.serverTimestamp(),
-      });
       transaction.set(
         eventRoomRef,
         {
@@ -451,18 +470,6 @@ export const submitApplication = onCall(
         },
         {merge: true},
       );
-      transaction.set(roomRef.collection("members").doc(userId), {
-        userId,
-        role: "student",
-        displayName: userSnapshot.data()?.displayName ?? "学生",
-        joinedAt: FieldValue.serverTimestamp(),
-      });
-      transaction.set(roomRef.collection("members").doc(organizationId), {
-        userId: organizationId,
-        role: "organization",
-        displayName: eventData.organizationName,
-        joinedAt: FieldValue.serverTimestamp(),
-      });
       transaction.set(eventRoomRef.collection("members").doc(userId), {
         userId,
         role: "student",
@@ -474,14 +481,6 @@ export const submitApplication = onCall(
         role: "organization",
         displayName: eventData.organizationName,
         joinedAt: FieldValue.serverTimestamp(),
-      });
-      transaction.create(messageRef, {
-        roomId: applicationId,
-        senderId: userId,
-        senderName: "Aizu Connect",
-        type: "text",
-        text: "参加申請を送信しました。主催者からの連絡をお待ちください。",
-        createdAt: FieldValue.serverTimestamp(),
       });
       transaction.create(provisionLogRef, {
         applicationId,

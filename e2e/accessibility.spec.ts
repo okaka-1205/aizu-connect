@@ -153,29 +153,40 @@ test.describe("accessibility", () => {
     await page.keyboard.press("Enter");
 
     const applicationDialog = page.getByRole("dialog", {
-      name: "参加申請を確認",
+      name: "参加申請",
     });
     await expect(applicationDialog).toBeVisible();
     await expect(applicationDialog.getByTitle("閉じる")).toBeFocused();
+    await applicationDialog.getByRole("button", { name: "次へ" }).click();
     await expect(applicationDialog.getByLabel("参加目的")).toBeVisible();
     await applicationDialog
       .getByLabel("参加目的")
       .fill("食物アレルギーについて相談したいです");
-    const sensitiveConsent = applicationDialog.getByRole("checkbox", {
-      name: /要配慮個人情報の取得と.*への提供に明示的に同意します/,
-    });
-    await expect(sensitiveConsent).toBeVisible();
-    await sensitiveConsent.focus();
-    await expect(sensitiveConsent).toBeFocused();
     await expect(applicationDialog.getByLabel("参加経験")).toBeVisible();
     await expect(
       applicationDialog.getByRole("checkbox", {
         name: /参加ルールの確認.*確認しました/,
       }),
     ).toBeVisible();
+    await applicationDialog.getByLabel("参加経験").selectOption("初めて");
+    await applicationDialog
+      .getByRole("checkbox", { name: /参加ルールの確認.*確認しました/ })
+      .check();
+    await applicationDialog.getByRole("button", { name: "次へ" }).click();
+    const sensitiveConsent = applicationDialog.getByRole("checkbox", {
+      name: /要配慮個人情報の取得と.*への提供に同意します/,
+    });
+    await expect(sensitiveConsent).toBeVisible();
+    await sensitiveConsent.focus();
+    await expect(sensitiveConsent).toBeFocused();
     await expectNoSeriousAccessibilityViolations(page);
 
     await page.keyboard.press("Escape");
+    const discardDialog = page.getByRole("alertdialog", {
+      name: "入力内容を破棄しますか？",
+    });
+    await expect(discardDialog).toBeVisible();
+    await discardDialog.getByRole("button", { name: "破棄して閉じる" }).click();
     await expect(applicationDialog).toBeHidden();
     await expect(eventTrigger).toBeFocused();
   });
@@ -201,7 +212,7 @@ test.describe("accessibility", () => {
     await page.getByRole("button", { name: "このイベントに参加する" }).click();
 
     const applicationDialog = page.getByRole("dialog", {
-      name: "参加申請を確認",
+      name: "参加申請",
     });
     await expect(applicationDialog).toContainText("有料イベントの最終確認");
     await expect(applicationDialog).toContainText(
@@ -324,41 +335,16 @@ test.describe("accessibility", () => {
     await page.keyboard.press("Escape");
     await expect(reportButton).toBeFocused();
 
-    const blockButton = otherMessage.getByRole("button", {
-      name: /さんをブロック/,
-    });
-    const [reportBox, blockBox, composerHeight, composerInputHeight] =
-      await Promise.all([
-        reportButton.boundingBox(),
-        blockButton.boundingBox(),
-        page
-          .locator(".chat-composer")
-          .evaluate((element) => element.getBoundingClientRect().height),
-        page
-          .locator('.chat-composer input:not([type="file"])')
-          .evaluate((element) => element.getBoundingClientRect().height),
-      ]);
-    expect(reportBox).not.toBeNull();
-    expect(blockBox).not.toBeNull();
-    expect(
-      reportBox!.x + reportBox!.width <= blockBox!.x ||
-        blockBox!.x + blockBox!.width <= reportBox!.x,
-    ).toBe(true);
-    expect(composerHeight).toBeLessThanOrEqual(80);
+    const [composerHeight, composerInputHeight] = await Promise.all([
+      page
+        .locator(".chat-composer")
+        .evaluate((element) => element.getBoundingClientRect().height),
+      page
+        .locator(".chat-composer textarea")
+        .evaluate((element) => element.getBoundingClientRect().height),
+    ]);
+    expect(composerHeight).toBeLessThanOrEqual(96);
     expect(composerInputHeight).toBeLessThanOrEqual(48);
-
-    await blockButton.focus();
-    await page.keyboard.press("Enter");
-    const blockDialog = page.getByRole("alertdialog", {
-      name: /さんをブロックしますか？/,
-    });
-    await expect(blockDialog).toBeVisible();
-    await expect(
-      blockDialog.getByRole("button", { name: "戻る" }),
-    ).toBeFocused();
-    await expectNoSeriousAccessibilityViolations(page);
-    await page.keyboard.press("Escape");
-    await expect(blockButton).toBeFocused();
   });
 
   test("organization dashboard has no serious automated violations", async ({
@@ -367,7 +353,7 @@ test.describe("accessibility", () => {
     const suffix = projectSuffix(testInfo.project.name);
     await login(page, `org-e2e-${suffix}@example.com`);
     await expect(
-      page.getByRole("heading", { name: "登録したイベント" }),
+      page.getByRole("heading", { name: "イベント運営" }),
     ).toBeVisible();
     await expectNoSeriousAccessibilityViolations(page);
   });
@@ -379,6 +365,7 @@ test.describe("accessibility", () => {
     const variant = projectVariant(testInfo.project.name);
     const eventTitle = `E2E 参加者管理 ${variant}`;
     await login(page, `org-e2e-${suffix}@example.com`);
+    await page.getByRole("button", { name: /^イベント/ }).click();
 
     const managedEvent = page
       .locator(".managed-event-row")
@@ -411,14 +398,10 @@ test.describe("accessibility", () => {
       .toBe(1);
     await expectNoSeriousAccessibilityViolations(page);
 
-    const applicant = page
-      .locator(".applicant-row")
-      .filter({ hasText: `E2E 後参加 ${variant}` });
-    const contactButton = applicant.getByRole("button", { name: "個別連絡" });
-    await contactButton.focus();
-    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: /団体ホーム/ }).click();
+    await page.getByRole("button", { name: /^全体チャット/ }).click();
     await expect(
-      page.getByPlaceholder("参加者にメッセージを送る"),
+      page.getByPlaceholder("全体チャットにメッセージを送る"),
     ).toBeVisible();
     await expectNoSeriousAccessibilityViolations(page);
   });

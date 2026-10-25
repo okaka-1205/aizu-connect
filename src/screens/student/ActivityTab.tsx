@@ -92,6 +92,9 @@ export function ActivityTab(props: {
     Record<string, { rating: number; comment: string; recommend: boolean }>
   >({});
   const [savedSurveyIds, setSavedSurveyIds] = useState<string[]>([]);
+  const [activityView, setActivityView] = useState<
+    "upcoming" | "history" | "records"
+  >("upcoming");
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const eventId = params.get("checkInEvent");
@@ -102,7 +105,14 @@ export function ActivityTab(props: {
     );
     if (!application) return;
     setCheckInCodes((current) => ({ ...current, [application.id]: code }));
-    window.history.replaceState({}, "", window.location.pathname);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("checkInEvent");
+    url.searchParams.delete("checkInCode");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
   }, [props.applications]);
   const verifiedActivities = props.activities.filter(
     (activity) => activity.verificationStatus === "verified",
@@ -125,6 +135,33 @@ export function ActivityTab(props: {
           <span>申請</span>
         </div>
       </div>
+      <nav className="activity-view-tabs" aria-label="参加履歴の表示切り替え">
+        <button
+          className={activityView === "upcoming" ? "active" : ""}
+          type="button"
+          aria-pressed={activityView === "upcoming"}
+          onClick={() => setActivityView("upcoming")}
+        >
+          参加予定
+        </button>
+        <button
+          className={activityView === "history" ? "active" : ""}
+          type="button"
+          aria-pressed={activityView === "history"}
+          onClick={() => setActivityView("history")}
+        >
+          参加履歴
+        </button>
+        <button
+          className={activityView === "records" ? "active" : ""}
+          type="button"
+          aria-pressed={activityView === "records"}
+          onClick={() => setActivityView("records")}
+        >
+          活動証明
+        </button>
+      </nav>
+      <div hidden={activityView !== "upcoming"}>
       <SectionHeading
         className="activity-upcoming-heading"
         title="これから参加するイベント"
@@ -377,6 +414,8 @@ export function ActivityTab(props: {
           過去の申請をさらに50件読み込む
         </button>
       )}
+      </div>
+      <div hidden={activityView !== "records"}>
       <div className="activity-card activity-overview">
         <div className="activity-card-head">
           <div>
@@ -443,6 +482,8 @@ export function ActivityTab(props: {
         <FileText size={15} />
         活動実績をPDFで保存
       </button>
+      </div>
+      <div hidden={activityView !== "history"}>
       {props.hasMoreActivities && (
         <button
           className="secondary-action"
@@ -478,9 +519,10 @@ export function ActivityTab(props: {
                     : "無効"}
                 </small>
                 <div className="certificate-card">
-                  <span>
+                  <span className="certificate-id">
                     <ShieldCheck size={14} />
-                    活動証明 {activity.certificateId ?? activity.id}
+                    <b>活動証明</b>
+                    <code>{activity.certificateId ?? activity.id}</code>
                   </span>
                   <small>{activity.participantRole ?? "参加者"}</small>
                 </div>
@@ -503,6 +545,7 @@ export function ActivityTab(props: {
             </article>
           ))
         )}
+      </div>
       </div>
       {selectedCertificate && (
         <CertificateDialog

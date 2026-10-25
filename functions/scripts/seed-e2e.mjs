@@ -686,7 +686,7 @@ for (const variant of variantKeys) {
   });
   batch.set(db.doc(`chatRooms/${dashboardApplicationId}`), {
     id: dashboardApplicationId,
-    roomType: "application",
+    roomType: "event",
     applicationId: dashboardApplicationId,
     eventId: dashboardEventId,
     eventTitle: dashboardEventTitle,

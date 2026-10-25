@@ -7,8 +7,10 @@ import {
   List,
   RefreshCw,
   Search,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import {
   EmptyEvents,
   EmptySearchResults,
@@ -212,6 +214,7 @@ export function SearchTab(props: {
   savedSearches?: SavedSearch[];
   onSaveSearch: () => void;
   onApplySavedSearch: (search?: SavedSearch) => void;
+  onDeleteSavedSearch: (search: SavedSearch) => Promise<void>;
   onlyAvailableEvents: boolean;
   setOnlyAvailableEvents: (value: boolean) => void;
   onlyBeginnerEvents: boolean;
@@ -220,6 +223,17 @@ export function SearchTab(props: {
   onReport: (event: AizuEvent) => void;
 }) {
   const [areAdvancedFiltersOpen, setAreAdvancedFiltersOpen] = useState(false);
+  const [selectedSavedSearchId, setSelectedSavedSearchId] = useState("");
+  const [savedSearchFilter, setSavedSearchFilter] = useState("");
+  const [savedSearchToDelete, setSavedSearchToDelete] =
+    useState<SavedSearch | null>(null);
+  const visibleSavedSearches = (props.savedSearches ?? []).filter((search) =>
+    [search.name, search.searchText, search.category]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("ja-JP")
+      .includes(savedSearchFilter.trim().toLocaleLowerCase("ja-JP")),
+  );
   const activeAdvancedFilterCount = [
     props.searchDateFilter !== "すべて",
     props.onlyAvailableEvents,
@@ -442,7 +456,9 @@ export function SearchTab(props: {
           </label>
         </div>
       </div>
-      <div className="search-toolbar">
+      <details className="search-display-options">
+        <summary>表示方法</summary>
+        <div className="search-toolbar">
         <div className="view-switch" role="group" aria-label="表示形式">
           <button
             className={props.searchView === "list" ? "active" : ""}
@@ -453,6 +469,7 @@ export function SearchTab(props: {
             onClick={() => props.setSearchView("list")}
           >
             <List size={16} />
+            <span>一覧</span>
           </button>
           <button
             className={props.searchView === "calendar" ? "active" : ""}
@@ -463,27 +480,70 @@ export function SearchTab(props: {
             onClick={() => props.setSearchView("calendar")}
           >
             <CalendarDays size={16} />
+            <span>日付別</span>
           </button>
         </div>
+        </div>
+      </details>
+      <details className="search-display-options search-saved-options">
+        <summary>検索条件を保存</summary>
         <div className="saved-search-actions">
           {(props.savedSearches?.length ?? 0) > 0 ? (
-            <select
-              aria-label="保存した検索条件"
-              defaultValue=""
-              onChange={(event) => {
-                const search = props.savedSearches?.find(
-                  (item) => item.id === event.target.value,
-                );
-                if (search) props.onApplySavedSearch(search);
-              }}
-            >
-              <option value="">保存条件を選択</option>
-              {props.savedSearches?.map((search) => (
-                <option key={search.id} value={search.id}>
-                  {search.name || search.searchText || "保存した条件"}
-                </option>
-              ))}
-            </select>
+            <div className="saved-search-manager">
+              <div className="saved-search-manager-head">
+                <strong>保存した条件</strong>
+                <span>{props.savedSearches?.length ?? 0}件</span>
+              </div>
+              {(props.savedSearches?.length ?? 0) > 5 && (
+                <label className="saved-search-filter">
+                  <Search size={14} />
+                  <input
+                    aria-label="保存した検索条件を検索"
+                    value={savedSearchFilter}
+                    onChange={(event) => setSavedSearchFilter(event.target.value)}
+                    placeholder="名前・キーワードで絞り込み"
+                  />
+                </label>
+              )}
+              <div className="saved-search-list" role="list">
+                {visibleSavedSearches.map((search) => {
+                  const label =
+                    search.name || search.searchText || "保存した条件";
+                  const details = [
+                    search.category !== "すべて" ? search.category : "",
+                    search.dateFilter !== "すべて" ? search.dateFilter : "",
+                    search.feeFilter !== "すべて" ? search.feeFilter : "",
+                  ].filter(Boolean);
+                  return (
+                    <div className="saved-search-row" role="listitem" key={search.id}>
+                      <button
+                        className={selectedSavedSearchId === search.id ? "active" : ""}
+                        type="button"
+                        aria-pressed={selectedSavedSearchId === search.id}
+                        onClick={() => {
+                          setSelectedSavedSearchId(search.id ?? "");
+                          props.onApplySavedSearch(search);
+                        }}
+                      >
+                        <strong>{label}</strong>
+                        <small>{details.join("・") || "すべてのイベント"}</small>
+                      </button>
+                      <button
+                        className="saved-search-row-delete"
+                        type="button"
+                        aria-label={`「${label}」を削除`}
+                        onClick={() => setSavedSearchToDelete(search)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  );
+                })}
+                {visibleSavedSearches.length === 0 && (
+                  <p className="saved-search-empty">一致する保存条件はありません。</p>
+                )}
+              </div>
+            </div>
           ) : props.savedSearch ? (
             <button
               type="button"
@@ -497,7 +557,7 @@ export function SearchTab(props: {
             この条件を保存
           </button>
         </div>
-      </div>
+      </details>
       {props.filteredEvents.length === 0 ? (
         <EmptySearchResults
           hasMoreEvents={props.hasMoreEvents}
@@ -576,6 +636,21 @@ export function SearchTab(props: {
           isLoading={props.isActionLoading}
           onReport={() => props.onReport(props.selectedEvent!)}
           onClose={() => props.setSelectedEventId("")}
+        />
+      )}
+      {savedSearchToDelete && (
+        <ConfirmDialog
+          title="保存した検索条件を削除"
+          description={`「${savedSearchToDelete.name || savedSearchToDelete.searchText || "保存した条件"}」を削除します。`}
+          confirmLabel="削除する"
+          danger
+          onClose={() => setSavedSearchToDelete(null)}
+          onConfirm={() => {
+            const target = savedSearchToDelete;
+            setSavedSearchToDelete(null);
+            setSelectedSavedSearchId("");
+            void props.onDeleteSavedSearch(target);
+          }}
         />
       )}
     </section>

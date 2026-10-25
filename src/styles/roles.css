@@ -27,31 +27,27 @@
   padding: 20px 0 70px;
 }
 .management-nav {
-  position: sticky;
-  z-index: 24;
-  top: 10px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
   margin-bottom: 16px;
-  padding: 8px;
-  border: 1px solid #dce7f2;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 4px 14px rgba(39, 77, 117, 0.07);
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 .management-nav button {
   display: flex;
   align-items: center;
   gap: 9px;
   min-width: 0;
-  min-height: 52px;
-  padding: 8px 10px;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  background: transparent;
+  min-height: 92px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
   color: #61758d;
   text-align: left;
+  box-shadow: 0 4px 14px rgba(39, 77, 117, 0.05);
 }
 .management-nav button:hover,
 .management-nav button:focus-visible {
@@ -61,6 +57,8 @@
 }
 .management-nav button > svg {
   flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
 }
 .management-nav button > span {
   display: grid;
@@ -75,12 +73,114 @@
 }
 .management-nav strong {
   color: #2f4966;
-  font-size: 11px;
+  font-size: 14px;
 }
 .management-nav small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
+}
+.organization-home-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px;
+  background: #fff;
+}
+.organization-home-card h1,
+.organization-page-heading h1 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: clamp(24px, 3vw, 32px);
+}
+.organization-home-card > div:first-child > p:last-child {
+  max-width: 58ch;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.organization-home-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(92px, 1fr));
+  gap: 8px;
+}
+.organization-home-summary span {
+  display: grid;
+  gap: 4px;
+  min-width: 92px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface-soft);
+}
+.organization-home-summary strong {
+  color: var(--brand);
+  font-size: 22px;
+}
+.organization-home-summary small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+.organization-page-heading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.organization-page-heading > button {
+  flex: 0 0 auto;
+}
+.role-grid.organization-workspace-grid {
+  grid-template-columns: minmax(0, 1fr);
+  width: min(100%, 880px);
+  margin-right: auto;
+  margin-left: auto;
+}
+.organization-event-picker,
+.organization-settings-page {
+  width: min(100%, 880px);
+  margin: 0 auto;
+}
+.organization-event-picker-list {
+  display: grid;
+  gap: 8px;
+}
+.organization-event-picker-list > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--surface-soft);
+  color: var(--text);
+  text-align: left;
+}
+.organization-event-picker-list > button > span {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.organization-event-picker-list strong,
+.organization-event-picker-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.organization-event-picker-list small {
+  color: var(--muted);
+}
+.organization-settings-page .account-deletion-panel {
+  margin-top: 0;
 }
 .organization-messages-section {
   scroll-margin-top: 88px;
@@ -740,6 +840,22 @@
   font-size: 10px;
   font-weight: 900;
 }
+.certificate-card .certificate-id {
+  min-width: 0;
+}
+.certificate-card .certificate-id svg {
+  flex: 0 0 auto;
+}
+.certificate-card .certificate-id b {
+  flex: 0 0 auto;
+}
+.certificate-card .certificate-id code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font: inherit;
+  word-break: break-word;
+}
 .certificate-card small {
   font-size: 10px;
 }
@@ -1166,6 +1282,8 @@
 }
 .account-deletion-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 11px;
   margin-top: 16px;
   border: 1px solid #ead7dc;
@@ -1198,10 +1316,43 @@
   line-height: 1.55;
 }
 .account-deletion-reason {
+  grid-column: 1 / -1;
   margin: 0;
 }
 .account-deletion-panel .row-actions {
   justify-content: flex-end;
+}
+.account-deletion-panel > .notice {
+  grid-column: 1 / -1;
+}
+.event-report-editor {
+  display: grid;
+  gap: 12px;
+}
+.event-report-editor h3 {
+  margin-bottom: 0;
+}
+.event-report-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.event-report-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.event-report-field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+}
+.event-report-files input[type="file"] {
+  display: block;
+  width: 100%;
+  min-width: 0;
 }
 .admin-deletion-card {
   margin-bottom: 16px;

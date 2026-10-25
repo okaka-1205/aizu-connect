@@ -82,9 +82,6 @@ export const shouldIncrementApplicantCount = (
   beforeStatus === "waitlisted" &&
   ["pending", "confirmed"].includes(afterStatus);
 
-export const shouldSetChatRoomReadOnly = (status: string): boolean =>
-  ["cancelled", "rejected"].includes(status);
-
 export const isEventPlanEditableStatus = (status: unknown): boolean =>
   ["pending_review", "published", "revision_required", "unpublished"].includes(
     String(status),

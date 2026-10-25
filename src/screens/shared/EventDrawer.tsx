@@ -276,7 +276,7 @@ export function EventDrawer({
                 <dt>連絡方法</dt>
                 <dd>
                   {event.contactMethod ||
-                    "申請後の個別チャットで主催者へ連絡できます"}
+                    "申請後の全体チャットで主催者へ連絡できます"}
                 </dd>
               </div>
             </dl>
@@ -402,7 +402,10 @@ export function EventDrawer({
                 aria-pressed={organizerSaved}
                 onClick={() => void toggleOrganizerSaved()}
               >
-                <Heart size={15} fill={organizerSaved ? "currentColor" : "none"} />
+                <Heart
+                  size={15}
+                  fill={organizerSaved ? "currentColor" : "none"}
+                />
                 {organizerSaved ? "主催者を保存済み" : "主催者を保存"}
               </button>
             )}

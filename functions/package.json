@@ -35,5 +35,8 @@
     "eslint-plugin-import": "^2.25.4",
     "typescript": "^6.0.0"
   },
+  "overrides": {
+    "body-parser": "2.4.0"
+  },
   "private": true
 }

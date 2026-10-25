@@ -1,6 +1,8 @@
 import {
   CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   History,
   Loader2,
   MapPin,
@@ -9,6 +11,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Field } from "../../components/Field";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
 import type {
@@ -28,6 +31,7 @@ export function ApplicationDialog({
   onClose: () => void;
   onSubmit: (details: ApplicationDetails) => void;
 }) {
+  const [applicationStep, setApplicationStep] = useState<1 | 2 | 3>(1);
   const [participantMessage, setParticipantMessage] = useState("");
   const [accessibilityNeeds, setAccessibilityNeeds] = useState("");
   const [emergencyContact, setEmergencyContact] = useState("");
@@ -36,6 +40,7 @@ export function ApplicationDialog({
   const [customAnswers, setCustomAnswers] = useState<
     Record<string, string | boolean>
   >({});
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [
     emergencyContactAuthorityConfirmed,
     setEmergencyContactAuthorityConfirmed,
@@ -53,288 +58,410 @@ export function ApplicationDialog({
   );
   const requiresSensitiveInfoConsent =
     accessibilityNeeds.trim().length > 0 || hasSensitiveQuestionAnswer;
+  const hasEnteredDetails = Boolean(
+    participantMessage.trim() ||
+    accessibilityNeeds.trim() ||
+    emergencyContact.trim() ||
+    Object.values(customAnswers).some(
+      (value) => value === true || String(value).trim(),
+    ),
+  );
+  const requestClose = () => {
+    if (hasEnteredDetails && !isSubmitting) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
+  };
   const dialogRef = useDialogAccessibility<HTMLFormElement>(
-    onClose,
+    requestClose,
     () =>
       Array.from(document.querySelectorAll<HTMLElement>("button")).find(
         (element) =>
           element.getAttribute("aria-label") === `${event.title}の詳細を見る`,
       ) ?? null,
   );
+  const moveToStep = (step: 1 | 2 | 3) => {
+    if (step > applicationStep) {
+      const section = dialogRef.current?.querySelector<HTMLElement>(
+        `[data-application-step="${applicationStep}"]`,
+      );
+      const invalid = section?.querySelector<
+        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+      >("input:invalid, textarea:invalid, select:invalid");
+      if (invalid) {
+        invalid.reportValidity();
+        invalid.focus();
+        return;
+      }
+    }
+    setApplicationStep(step);
+    dialogRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return createPortal(
-    <div className="report-backdrop" role="presentation" onClick={onClose}>
-      <form
-        ref={dialogRef}
-        className="application-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="application-dialog-title"
-        tabIndex={-1}
-        onClick={(clickEvent) => clickEvent.stopPropagation()}
-        onSubmit={(submitEvent) => {
-          submitEvent.preventDefault();
-          if (
-            !consentAccepted ||
-            (requiresSensitiveInfoConsent && !sensitiveInfoConsent)
-          )
-            return;
-          onSubmit({
-            participantMessage: participantMessage.trim().slice(0, 500),
-            accessibilityNeeds: accessibilityNeeds.trim().slice(0, 500),
-            emergencyContact: emergencyContact.trim().slice(0, 200),
-            consentAccepted,
-            sensitiveInfoConsent,
-            emergencyContactAuthorityConfirmed,
-            answers: (event.applicationQuestions ?? []).map(
-              (question): ApplicationAnswer => ({
-                questionId: question.id,
-                label: question.label,
-                value: customAnswers[question.id] ?? "",
-              }),
-            ),
-          });
-        }}
+    <>
+      <div
+        className="report-backdrop"
+        role="presentation"
+        onClick={requestClose}
       >
-        <div className="report-dialog-head">
-          <div>
-            <p className="eyebrow">
-              {isWaitlist ? "キャンセル待ち" : "参加申請"}
-            </p>
-            <h2 id="application-dialog-title">
-              {isWaitlist ? "キャンセル待ちに登録" : "参加申請を確認"}
-            </h2>
-          </div>
-          <button
-            className="icon-button"
-            type="button"
-            title="閉じる"
-            data-dialog-initial-focus
-            onClick={onClose}
-          >
-            <X size={17} />
-          </button>
-        </div>
-        <div className="application-event-summary">
-          <strong>{event.title}</strong>
-          <span>
-            <CalendarDays size={14} />
-            {event.startAtLabel}
-            {event.endAtLabel ? ` - ${event.endAtLabel}` : ""}
-          </span>
-          <span>
-            <MapPin size={14} />
-            {event.meetingPoint || event.location}
-          </span>
-          <span>
-            <UsersRound size={14} />
-            {isWaitlist
-              ? "現在満員です。空きが出た場合に通知します。"
-              : `残り${Math.max(event.capacity - event.applicantCount, 0)}名`}
-          </span>
-        </div>
-        <div className="application-policy">
-          <strong>キャンセルについて</strong>
-          <p>
-            {event.cancellationPolicy ||
-              "参加できなくなった場合は、活動ページから早めにキャンセルしてください。"}
-          </p>
-        </div>
-        {event.feeType === "有料" && (
-          <div className="application-policy">
-            <strong>有料イベントの最終確認</strong>
-            <p>
-              参加費 {Number(event.feeAmount ?? 0).toLocaleString("ja-JP")}
-              円（税込） ／追加費用 {event.additionalFees || "なし"}
-            </p>
-            <p>販売・役務提供事業者：{event.commercialSellerName}</p>
-            <p>運営責任者：{event.commercialResponsiblePerson}</p>
-            <p>所在地：{event.commercialSellerAddress}</p>
-            <p>電話番号：{event.commercialSellerPhone}</p>
-            <p>支払方法：{event.paymentMethod}</p>
-            <p>支払時期：{event.paymentTiming}</p>
-            <p>
-              提供時期：{event.startAtLabel}
-              {event.endAtLabel ? ` - ${event.endAtLabel}` : ""}
-            </p>
-            <p>申込期限：イベント開始前まで（満員時はキャンセル待ち）</p>
-            <p>
-              キャンセル・返金条件：
-              {event.cancellationPolicy ||
-                "申込み後のキャンセル・返金条件は主催者へご確認ください。"}
-            </p>
-            <p>
-              主催者が申請を承認した時点で、主催者との参加契約が成立します。
-              内容を修正する場合は「戻る」を選択してください。
-            </p>
-          </div>
-        )}
-        <Field label="主催者へのメッセージ（任意）">
-          <textarea
-            maxLength={500}
-            value={participantMessage}
-            placeholder="参加したい理由や事前に伝えたいこと"
-            onChange={(changeEvent) =>
-              setParticipantMessage(changeEvent.target.value)
+        <form
+          ref={dialogRef}
+          className="application-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="application-dialog-title"
+          tabIndex={-1}
+          noValidate
+          onClick={(clickEvent) => clickEvent.stopPropagation()}
+          onSubmit={(submitEvent) => {
+            submitEvent.preventDefault();
+            if (applicationStep !== 3) {
+              moveToStep((applicationStep + 1) as 2 | 3);
+              return;
             }
-          />
-        </Field>
-        {(event.applicationQuestions ?? []).map((question) => (
-          <Field key={question.id} label={question.label}>
-            {question.type === "textarea" ? (
+            if (
+              !consentAccepted ||
+              (requiresSensitiveInfoConsent && !sensitiveInfoConsent) ||
+              (emergencyContact.trim() && !emergencyContactAuthorityConfirmed)
+            )
+              return;
+            onSubmit({
+              participantMessage: participantMessage.trim().slice(0, 500),
+              accessibilityNeeds: accessibilityNeeds.trim().slice(0, 500),
+              emergencyContact: emergencyContact.trim().slice(0, 200),
+              consentAccepted,
+              sensitiveInfoConsent,
+              emergencyContactAuthorityConfirmed,
+              answers: (event.applicationQuestions ?? []).map(
+                (question): ApplicationAnswer => ({
+                  questionId: question.id,
+                  label: question.label,
+                  value: customAnswers[question.id] ?? "",
+                }),
+              ),
+            });
+          }}
+        >
+          <div className="report-dialog-head application-dialog-head">
+            <div>
+              <p className="eyebrow">
+                {isWaitlist ? "キャンセル待ち" : "参加申請"}
+              </p>
+              <h2 id="application-dialog-title">
+                {isWaitlist ? "キャンセル待ちに登録" : "参加申請"}
+              </h2>
+            </div>
+            <button
+              className="icon-button"
+              type="button"
+              title="閉じる"
+              aria-label="参加申請を閉じる"
+              data-dialog-initial-focus
+              onClick={requestClose}
+            >
+              <X size={17} />
+            </button>
+          </div>
+
+          <nav className="application-progress" aria-label="参加申請の手順">
+            {([1, 2, 3] as const).map((step) => (
+              <button
+                key={step}
+                type="button"
+                className={
+                  applicationStep === step
+                    ? "active"
+                    : applicationStep > step
+                      ? "complete"
+                      : ""
+                }
+                aria-current={applicationStep === step ? "step" : undefined}
+                onClick={() => moveToStep(step)}
+              >
+                <span>{step}</span>
+                {step === 1 ? "内容" : step === 2 ? "回答" : "確認"}
+              </button>
+            ))}
+          </nav>
+
+          <section data-application-step="1" hidden={applicationStep !== 1}>
+            <div className="application-event-summary">
+              <strong>{event.title}</strong>
+              <span>
+                <CalendarDays size={14} />
+                {event.startAtLabel}
+                {event.endAtLabel ? ` - ${event.endAtLabel}` : ""}
+              </span>
+              <span>
+                <MapPin size={14} />
+                {event.meetingPoint || event.location}
+              </span>
+              <span>
+                <UsersRound size={14} />
+                {isWaitlist
+                  ? "現在満員です。空きが出た場合に通知します。"
+                  : `残り${Math.max(event.capacity - event.applicantCount, 0)}名`}
+              </span>
+            </div>
+            <div className="application-policy">
+              <strong>キャンセルについて</strong>
+              <p>
+                {event.cancellationPolicy ||
+                  "参加できなくなった場合は、活動ページから早めにキャンセルしてください。"}
+              </p>
+            </div>
+            {event.feeType === "有料" && (
+              <div className="application-policy">
+                <strong>有料イベントの最終確認</strong>
+                <p>
+                  参加費 {Number(event.feeAmount ?? 0).toLocaleString("ja-JP")}
+                  円（税込） ／追加費用 {event.additionalFees || "なし"}
+                </p>
+                <p>販売・役務提供事業者：{event.commercialSellerName}</p>
+                <p>運営責任者：{event.commercialResponsiblePerson}</p>
+                <p>所在地：{event.commercialSellerAddress}</p>
+                <p>電話番号：{event.commercialSellerPhone}</p>
+                <p>支払方法：{event.paymentMethod}</p>
+                <p>支払時期：{event.paymentTiming}</p>
+                <p>
+                  提供時期：{event.startAtLabel}
+                  {event.endAtLabel ? ` - ${event.endAtLabel}` : ""}
+                </p>
+                <p>申込期限：イベント開始前まで（満員時はキャンセル待ち）</p>
+                <p>
+                  キャンセル・返金条件：
+                  {event.cancellationPolicy || "主催者へご確認ください。"}
+                </p>
+                <p>
+                  主催者が申請を承認した時点で、主催者との参加契約が成立します。
+                </p>
+              </div>
+            )}
+            <Field label="主催者へのメッセージ（任意）">
               <textarea
-                required={question.required}
-                maxLength={1000}
-                value={String(customAnswers[question.id] ?? "")}
+                maxLength={500}
+                value={participantMessage}
+                placeholder="参加したい理由や事前に伝えたいこと"
                 onChange={(changeEvent) =>
-                  setCustomAnswers((current) => ({
-                    ...current,
-                    [question.id]: changeEvent.target.value,
-                  }))
+                  setParticipantMessage(changeEvent.target.value)
                 }
               />
-            ) : question.type === "select" ? (
-              <select
-                required={question.required}
-                value={String(customAnswers[question.id] ?? "")}
+            </Field>
+          </section>
+
+          <section data-application-step="2" hidden={applicationStep !== 2}>
+            {(event.applicationQuestions ?? []).map((question) => (
+              <Field key={question.id} label={question.label}>
+                {question.type === "textarea" ? (
+                  <textarea
+                    required={question.required}
+                    maxLength={1000}
+                    value={String(customAnswers[question.id] ?? "")}
+                    onChange={(changeEvent) =>
+                      setCustomAnswers((current) => ({
+                        ...current,
+                        [question.id]: changeEvent.target.value,
+                      }))
+                    }
+                  />
+                ) : question.type === "select" ? (
+                  <select
+                    required={question.required}
+                    value={String(customAnswers[question.id] ?? "")}
+                    onChange={(changeEvent) =>
+                      setCustomAnswers((current) => ({
+                        ...current,
+                        [question.id]: changeEvent.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">選択してください</option>
+                    {(question.options ?? []).map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
+                  </select>
+                ) : question.type === "checkbox" ? (
+                  <label className="application-check-row">
+                    <input
+                      type="checkbox"
+                      required={question.required}
+                      checked={Boolean(customAnswers[question.id])}
+                      onChange={(changeEvent) =>
+                        setCustomAnswers((current) => ({
+                          ...current,
+                          [question.id]: changeEvent.target.checked,
+                        }))
+                      }
+                    />
+                    確認しました
+                  </label>
+                ) : (
+                  <input
+                    required={question.required}
+                    maxLength={1000}
+                    value={String(customAnswers[question.id] ?? "")}
+                    onChange={(changeEvent) =>
+                      setCustomAnswers((current) => ({
+                        ...current,
+                        [question.id]: changeEvent.target.value,
+                      }))
+                    }
+                  />
+                )}
+              </Field>
+            ))}
+            <Field label="配慮してほしいこと（任意）">
+              <textarea
+                maxLength={500}
+                value={accessibilityNeeds}
+                placeholder="移動、聴覚、食事など必要な配慮"
                 onChange={(changeEvent) =>
-                  setCustomAnswers((current) => ({
-                    ...current,
-                    [question.id]: changeEvent.target.value,
-                  }))
+                  setAccessibilityNeeds(changeEvent.target.value)
                 }
-              >
-                <option value="">選択してください</option>
-                {(question.options ?? []).map((option) => (
-                  <option key={option}>{option}</option>
-                ))}
-              </select>
-            ) : question.type === "checkbox" ? (
-              <label>
+              />
+            </Field>
+            <Field label="緊急時の連絡先（任意・主催者のみ閲覧）">
+              <input
+                maxLength={200}
+                value={emergencyContact}
+                placeholder="電話番号または連絡方法"
+                onChange={(changeEvent) =>
+                  setEmergencyContact(changeEvent.target.value)
+                }
+              />
+            </Field>
+          </section>
+
+          <section data-application-step="3" hidden={applicationStep !== 3}>
+            <div className="application-review-summary">
+              <strong>送信前の確認</strong>
+              <span>イベント：{event.title}</span>
+              <span>
+                主催者へのメッセージ：{participantMessage.trim() || "なし"}
+              </span>
+              <span>配慮事項：{accessibilityNeeds.trim() || "なし"}</span>
+              <span>緊急連絡先：{emergencyContact.trim() || "なし"}</span>
+            </div>
+            {requiresSensitiveInfoConsent && (
+              <label className="application-consent">
                 <input
+                  required
                   type="checkbox"
-                  required={question.required}
-                  checked={Boolean(customAnswers[question.id])}
+                  checked={sensitiveInfoConsent}
                   onChange={(changeEvent) =>
-                    setCustomAnswers((current) => ({
-                      ...current,
-                      [question.id]: changeEvent.target.checked,
-                    }))
+                    setSensitiveInfoConsent(changeEvent.target.checked)
                   }
                 />
-                確認しました
+                <span>
+                  配慮事項または要配慮情報を含む回答について、健康・障害等の要配慮個人情報の取得と
+                  {event.organizationName}への提供に同意します
+                </span>
               </label>
-            ) : (
+            )}
+            {emergencyContact.trim() && (
+              <label className="application-consent">
+                <input
+                  required
+                  type="checkbox"
+                  checked={emergencyContactAuthorityConfirmed}
+                  onChange={(changeEvent) =>
+                    setEmergencyContactAuthorityConfirmed(
+                      changeEvent.target.checked,
+                    )
+                  }
+                />
+                <span>
+                  本人以外の連絡先の場合、その方へ利用目的と主催者への提供を知らせ、適法に提供できることを確認しました
+                </span>
+              </label>
+            )}
+            <label className="application-consent">
               <input
-                required={question.required}
-                maxLength={1000}
-                value={String(customAnswers[question.id] ?? "")}
+                required
+                type="checkbox"
+                checked={consentAccepted}
                 onChange={(changeEvent) =>
-                  setCustomAnswers((current) => ({
-                    ...current,
-                    [question.id]: changeEvent.target.value,
-                  }))
+                  setConsentAccepted(changeEvent.target.checked)
                 }
               />
-            )}
-          </Field>
-        ))}
-        <Field label="配慮してほしいこと（任意）">
-          <textarea
-            maxLength={500}
-            value={accessibilityNeeds}
-            placeholder="移動、聴覚、食事など必要な配慮"
-            onChange={(changeEvent) =>
-              setAccessibilityNeeds(changeEvent.target.value)
-            }
-          />
-        </Field>
-        {requiresSensitiveInfoConsent && (
-          <label className="application-consent">
-            <input
-              required
-              type="checkbox"
-              checked={sensitiveInfoConsent}
-              onChange={(changeEvent) =>
-                setSensitiveInfoConsent(changeEvent.target.checked)
-              }
-            />
-            <span>
-              配慮事項または要配慮情報を含むと表示された申込回答について、
-              健康・障害等の要配慮個人情報の取得と
-              {event.organizationName}への提供に明示的に同意します
-            </span>
-          </label>
-        )}
-        <Field label="緊急時の連絡先（任意・主催者のみ閲覧）">
-          <input
-            maxLength={200}
-            value={emergencyContact}
-            placeholder="電話番号または連絡方法"
-            onChange={(changeEvent) =>
-              setEmergencyContact(changeEvent.target.value)
-            }
-          />
-        </Field>
-        {emergencyContact.trim() && (
-          <label className="application-consent">
-            <input
-              required
-              type="checkbox"
-              checked={emergencyContactAuthorityConfirmed}
-              onChange={(changeEvent) =>
-                setEmergencyContactAuthorityConfirmed(
-                  changeEvent.target.checked,
-                )
-              }
-            />
-            <span>
-              本人以外の連絡先の場合、その方へ利用目的と主催者への提供を知らせ、
-              適法に提供できることを確認しました
-            </span>
-          </label>
-        )}
-        <label className="application-consent">
-          <input
-            required
-            type="checkbox"
-            checked={consentAccepted}
-            onChange={(changeEvent) =>
-              setConsentAccepted(changeEvent.target.checked)
-            }
-          />
-          <span>
-            表示名、プロフィール画像、申請内容、配慮事項、緊急連絡先、参加・出欠情報を
-            {event.organizationName}へイベント運営のため提供することに同意します
-          </span>
-        </label>
-        <div className="report-dialog-actions">
-          <button className="text-button" type="button" onClick={onClose}>
-            戻る
-          </button>
-          <button
-            className="primary-action"
-            type="submit"
-            disabled={
-              isSubmitting ||
-              !consentAccepted ||
-              Boolean(requiresSensitiveInfoConsent && !sensitiveInfoConsent) ||
-              Boolean(
-                emergencyContact.trim() && !emergencyContactAuthorityConfirmed,
-              )
-            }
-          >
-            {isSubmitting ? (
-              <Loader2 size={16} className="spin" />
-            ) : isWaitlist ? (
-              <History size={16} />
+              <span>
+                表示名、プロフィール画像、申請内容、配慮事項、緊急連絡先、参加・出欠情報を
+                {event.organizationName}
+                へイベント運営のため提供することに同意します
+              </span>
+            </label>
+          </section>
+
+          <div className="report-dialog-actions application-dialog-actions">
+            {applicationStep === 1 ? (
+              <button
+                className="text-button"
+                type="button"
+                onClick={requestClose}
+              >
+                キャンセル
+              </button>
             ) : (
-              <Check size={16} />
+              <button
+                className="text-button"
+                type="button"
+                onClick={() => moveToStep((applicationStep - 1) as 1 | 2)}
+              >
+                <ChevronLeft size={16} />
+                戻る
+              </button>
             )}
-            {isWaitlist ? "キャンセル待ちに登録" : "参加申請を送信"}
-          </button>
-        </div>
-      </form>
-    </div>,
+            {applicationStep < 3 ? (
+              <button
+                className="primary-action"
+                type="button"
+                onClick={() => moveToStep((applicationStep + 1) as 2 | 3)}
+              >
+                次へ
+                <ChevronRight size={16} />
+              </button>
+            ) : (
+              <button
+                className="primary-action"
+                type="submit"
+                disabled={
+                  isSubmitting ||
+                  !consentAccepted ||
+                  Boolean(
+                    requiresSensitiveInfoConsent && !sensitiveInfoConsent,
+                  ) ||
+                  Boolean(
+                    emergencyContact.trim() &&
+                    !emergencyContactAuthorityConfirmed,
+                  )
+                }
+              >
+                {isSubmitting ? (
+                  <Loader2 size={16} className="spin" />
+                ) : isWaitlist ? (
+                  <History size={16} />
+                ) : (
+                  <Check size={16} />
+                )}
+                {isWaitlist ? "キャンセル待ちに登録" : "参加申請を送信"}
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+      {confirmDiscard && (
+        <ConfirmDialog
+          title="入力内容を破棄しますか？"
+          description="入力した参加申請の内容は保存されません。"
+          confirmLabel="破棄して閉じる"
+          danger
+          onClose={() => setConfirmDiscard(false)}
+          onConfirm={onClose}
+        />
+      )}
+    </>,
     document.body,
   );
 }

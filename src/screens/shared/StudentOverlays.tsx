@@ -1,29 +1,40 @@
 import { Bell, Flag, Loader2, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Field } from "../../components/Field";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
 import { EmptyRoleState } from "../shared/RoleScreenPrimitives";
 import type { NotificationItem, ReportTarget } from "../../types/domain";
+import { timestampMillis } from "../../lib/eventUtils";
 
 export function NotificationPanel({
   notifications,
+  unreadTotal,
   hasMore,
   onLoadMore,
   onClose,
   onRead,
+  onReadAll,
 }: {
   notifications: NotificationItem[];
+  unreadTotal?: number;
   hasMore?: boolean;
   onLoadMore?: () => void;
   onClose: () => void;
   onRead: (notification: NotificationItem) => Promise<void>;
+  onReadAll: () => Promise<void>;
 }) {
   const panelRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     panelRef.current?.focus();
   }, []);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const loadedUnreadCount = notifications.filter(
+    (notification) => !notification.isRead,
+  ).length;
+  const unreadCount = unreadTotal ?? loadedUnreadCount;
 
   return (
     <aside
@@ -42,7 +53,19 @@ export function NotificationPanel({
       <div className="notification-panel-head">
         <div>
           <h2>通知</h2>
+          <small>
+            {unreadCount > 0 ? `未読${unreadCount}件` : "すべて確認済み"}
+          </small>
         </div>
+        {unreadCount > 0 && (
+          <button
+            className="notification-read-all"
+            type="button"
+            onClick={() => void onReadAll()}
+          >
+            すべて既読
+          </button>
+        )}
         <button
           className="icon-button"
           title="通知パネルを閉じる"
@@ -57,22 +80,46 @@ export function NotificationPanel({
         <EmptyRoleState text="新しい通知はありません。" />
       ) : (
         <div className="notification-list">
-          {notifications.map((notification) => (
-            <button
-              className={`notification-item ${notification.isRead ? "" : "unread"}`}
-              key={notification.id}
-              type="button"
-              onClick={() => void onRead(notification)}
-            >
-              <span className="notification-icon">
-                <Bell size={15} />
-              </span>
-              <span>
-                <strong>{notification.title}</strong>
-                <small>{notification.body}</small>
-              </span>
-            </button>
-          ))}
+          {notifications.map((notification, index) => {
+            const millis = timestampMillis(notification.createdAt);
+            const group = millis >= todayStart.getTime() ? "今日" : "過去";
+            const previous = notifications[index - 1];
+            const previousGroup = previous
+              ? timestampMillis(previous.createdAt) >= todayStart.getTime()
+                ? "今日"
+                : "過去"
+              : null;
+            return (
+              <Fragment key={notification.id}>
+                {group !== previousGroup && (
+                  <h3 className="notification-group-label">{group}</h3>
+                )}
+                <button
+                  className={`notification-item ${notification.isRead ? "" : "unread"}`}
+                  type="button"
+                  onClick={() => void onRead(notification)}
+                >
+                  <span className="notification-icon">
+                    <Bell size={15} />
+                  </span>
+                  <span>
+                    <strong>{notification.title}</strong>
+                    <small>{notification.body}</small>
+                    <time>
+                      {millis
+                        ? new Intl.DateTimeFormat("ja-JP", {
+                            month: "numeric",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          }).format(new Date(millis))
+                        : "日時不明"}
+                    </time>
+                  </span>
+                </button>
+              </Fragment>
+            );
+          })}
           {hasMore && onLoadMore && (
             <button type="button" onClick={onLoadMore}>
               過去の通知をさらに30件読み込む

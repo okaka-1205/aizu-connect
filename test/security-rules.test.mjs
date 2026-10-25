@@ -18,8 +18,8 @@ const farFutureTimestamp = firebase.firestore.Timestamp.fromDate(
   new Date("2099-01-01T00:00:00.000Z"),
 );
 const legalConsent = {
-  termsVersion: "2026-10-19",
-  privacyVersion: "2026-10-19",
+  termsVersion: "2026-10-23",
+  privacyVersion: "2026-10-23",
   legalAcceptedAt: timestamp,
   eligibilityConfirmedAt: timestamp,
 };
@@ -993,19 +993,19 @@ describe("users and profiles", () => {
     const { student, otherStudent, admin } = contexts();
     const db = student.firestore();
     const acceptedAt = firebase.firestore.FieldValue.serverTimestamp();
-    const consentRef = db.doc("legalConsents/student-1_2026-10-19_2026-10-19");
+    const consentRef = db.doc("legalConsents/student-1_2026-10-23_2026-10-23");
     const batch = db.batch();
     batch.update(db.doc("users/student-1"), {
-      termsVersion: "2026-10-19",
-      privacyVersion: "2026-10-19",
+      termsVersion: "2026-10-23",
+      privacyVersion: "2026-10-23",
       legalAcceptedAt: acceptedAt,
       eligibilityConfirmedAt: acceptedAt,
       updatedAt: acceptedAt,
     });
     batch.set(consentRef, {
       userId: "student-1",
-      termsVersion: "2026-10-19",
-      privacyVersion: "2026-10-19",
+      termsVersion: "2026-10-23",
+      privacyVersion: "2026-10-23",
       acceptedAt,
       eligibilityConfirmedAt: acceptedAt,
       source: "reconsent",
@@ -1015,21 +1015,21 @@ describe("users and profiles", () => {
     await assertSucceeds(
       admin
         .firestore()
-        .doc("legalConsents/student-1_2026-10-19_2026-10-19")
+        .doc("legalConsents/student-1_2026-10-23_2026-10-23")
         .get(),
     );
     await assertFails(
       otherStudent
         .firestore()
-        .doc("legalConsents/student-1_2026-10-19_2026-10-19")
+        .doc("legalConsents/student-1_2026-10-23_2026-10-23")
         .get(),
     );
     await assertFails(consentRef.update({ source: "registration" }));
     await assertFails(
       student.firestore().doc("legalConsents/arbitrary-id").set({
         userId: "student-1",
-        termsVersion: "2026-10-19",
-        privacyVersion: "2026-10-19",
+        termsVersion: "2026-10-23",
+        privacyVersion: "2026-10-23",
         acceptedAt: firebase.firestore.FieldValue.serverTimestamp(),
         eligibilityConfirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
         source: "reconsent",

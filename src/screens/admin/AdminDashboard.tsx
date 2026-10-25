@@ -75,6 +75,8 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [managedEventQueryLimit, setManagedEventQueryLimit] = useState(50);
   const [hasMoreManagedUsers, setHasMoreManagedUsers] = useState(false);
   const [hasMoreManagedEvents, setHasMoreManagedEvents] = useState(false);
+  const [auditLogQueryLimit, setAuditLogQueryLimit] = useState(50);
+  const [hasMoreAuditLogs, setHasMoreAuditLogs] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [notice, noticeTone, setNotice] = useNoticeState();
   const [isLoading, setIsLoading] = useState(false);
@@ -372,15 +374,17 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       query(
         collection(db, "auditLogs"),
         orderBy("createdAt", "desc"),
-        limit(100),
+        limit(auditLogQueryLimit + 1),
       ),
-      (snapshot) =>
+      (snapshot) => {
+        setHasMoreAuditLogs(snapshot.size > auditLogQueryLimit);
         setAuditLogs(
-          snapshot.docs.map((auditDoc) => ({
+          snapshot.docs.slice(0, auditLogQueryLimit).map((auditDoc) => ({
             id: auditDoc.id,
             ...auditDoc.data(),
           })) as AuditLog[],
-        ),
+        );
+      },
       () => setNotice("監査履歴を取得できませんでした。", "error"),
     );
     return () => {
@@ -388,7 +392,12 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       eventsUnsubscribe();
       auditUnsubscribe();
     };
-  }, [managedEventQueryLimit, managedUserQueryLimit, setNotice]);
+  }, [
+    auditLogQueryLimit,
+    managedEventQueryLimit,
+    managedUserQueryLimit,
+    setNotice,
+  ]);
 
   const approveEvent = async (event: AizuEvent) => {
     await runAdminAction(
@@ -1328,7 +1337,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             aria-label={auditLogs.length > 10 ? "操作履歴一覧" : undefined}
             tabIndex={auditLogs.length > 10 ? 0 : undefined}
           >
-            {auditLogs.slice(0, 50).map((audit) => (
+            {auditLogs.map((audit) => (
               <div key={audit.id}>
                 <span>
                   <strong>{audit.targetTitle}</strong>
@@ -1341,6 +1350,16 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
             ))}
           </div>
+        )}
+        {hasMoreAuditLogs && (
+          <button
+            className="admin-load-more"
+            type="button"
+            disabled={isLoading}
+            onClick={() => setAuditLogQueryLimit((current) => current + 50)}
+          >
+            過去の操作履歴をさらに50件読み込む
+          </button>
         )}
       </section>
       {confirmation && (
