@@ -32,12 +32,15 @@ import {
   UserRound,
 } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import {
   BrandMark,
@@ -101,16 +104,11 @@ import {
   reloadAuthUser,
   resendVerificationEmail,
 } from "./services/authService";
-import { AdminDashboard } from "./screens/admin/AdminDashboard";
 import { AdminMfaEnrollmentScreen } from "./components/AdminMfaEnrollmentScreen";
 import { MfaSignInScreen } from "./components/MfaSignInScreen";
-import { OrganizationDashboard } from "./screens/organization/OrganizationDashboard";
-import { MessagesTab } from "./screens/shared/MessagesTab";
 import { ActionReasonDialog } from "./screens/shared/RoleScreenPrimitives";
-import { ActivityTab } from "./screens/student/ActivityTab";
 import { ApplicationDialog } from "./screens/student/ApplicationDialog";
 import { HomeTab, SearchTab } from "./screens/student/DiscoverTabs";
-import { ProfileTab } from "./screens/student/ProfileTab";
 import { AuthScreen, LegalReconsentScreen } from "./screens/auth/AuthScreens";
 import {
   AccountRejectedScreen,
@@ -145,6 +143,42 @@ import type {
   SearchView,
   Tab,
 } from "./types/domain";
+
+const AdminDashboard = lazy(() =>
+  import("./screens/admin/AdminDashboard").then((module) => ({
+    default: module.AdminDashboard,
+  })),
+);
+const OrganizationDashboard = lazy(() =>
+  import("./screens/organization/OrganizationDashboard").then((module) => ({
+    default: module.OrganizationDashboard,
+  })),
+);
+const ActivityTab = lazy(() =>
+  import("./screens/student/ActivityTab").then((module) => ({
+    default: module.ActivityTab,
+  })),
+);
+const MessagesTab = lazy(() =>
+  import("./screens/shared/MessagesTab").then((module) => ({
+    default: module.MessagesTab,
+  })),
+);
+const ProfileTab = lazy(() =>
+  import("./screens/student/ProfileTab").then((module) => ({
+    default: module.ProfileTab,
+  })),
+);
+
+const withDashboardLoading = (screen: ReactNode) => (
+  <Suspense fallback={<LoadingScreen />}>{screen}</Suspense>
+);
+
+const DeferredContentLoading = () => (
+  <div className="empty-state" role="status" aria-live="polite">
+    <span>画面を読み込んでいます</span>
+  </div>
+);
 import {
   createMultiFactorResolver,
   hasTotpEnrollment,
@@ -1746,14 +1780,14 @@ function App() {
     );
   }
   if (appUser.role === "organization") {
-    return (
+    return withDashboardLoading(
       <OrganizationDashboard
         appUser={appUser}
         accountDeletionRequest={accountDeletionRequest}
         onRequestAccountDeletion={requestAccountDeletion}
         onCancelAccountDeletion={cancelAccountDeletion}
         onLogout={() => void handleLogout()}
-      />
+      />,
     );
   }
   if (appUser.role === "admin") {
@@ -1770,10 +1804,12 @@ function App() {
         />
       );
     }
-    return <AdminDashboard onLogout={() => void handleLogout()} />;
+    return withDashboardLoading(
+      <AdminDashboard onLogout={() => void handleLogout()} />,
+    );
   }
   if (isCreatorDashboardOpen) {
-    return (
+    return withDashboardLoading(
       <OrganizationDashboard
         appUser={appUser}
         accountDeletionRequest={accountDeletionRequest}
@@ -1781,7 +1817,7 @@ function App() {
         onCancelAccountDeletion={cancelAccountDeletion}
         onClose={() => setIsCreatorDashboardOpen(false)}
         onLogout={() => void handleLogout()}
-      />
+      />,
     );
   }
 
@@ -2217,37 +2253,40 @@ function App() {
           />
         )}
         {activeTab === "activity" && (
-          <ActivityTab
-            {...{
-              applications,
-              activities,
-              userName: appUser.displayName,
-              activityYear,
-              activityByMonth,
-              events,
-              setSelectedEventId,
-              setActiveTab,
-              onOpenMessages: (eventId: string) => {
-                const room = chatRooms.find(
-                  (item) =>
-                    item.eventId === eventId && item.roomType === "event",
-                );
-                if (room) selectChatRoom(room.id);
-                setActiveTab("messages");
-              },
-              onCancelApplication: setApplicationToCancel,
-              onCheckIn: (application: EventApplication, code: string) =>
-                checkInApplication(application, code),
-              hasMoreApplications,
-              onLoadMoreApplications: () =>
-                setApplicationQueryLimit((current) => current + 50),
-              hasMoreActivities,
-              onLoadMoreActivities: () => void loadMoreActivities(),
-            }}
-          />
+          <Suspense fallback={<DeferredContentLoading />}>
+            <ActivityTab
+              {...{
+                applications,
+                activities,
+                userName: appUser.displayName,
+                activityYear,
+                activityByMonth,
+                events,
+                setSelectedEventId,
+                setActiveTab,
+                onOpenMessages: (eventId: string) => {
+                  const room = chatRooms.find(
+                    (item) =>
+                      item.eventId === eventId && item.roomType === "event",
+                  );
+                  if (room) selectChatRoom(room.id);
+                  setActiveTab("messages");
+                },
+                onCancelApplication: setApplicationToCancel,
+                onCheckIn: (application: EventApplication, code: string) =>
+                  checkInApplication(application, code),
+                hasMoreApplications,
+                onLoadMoreApplications: () =>
+                  setApplicationQueryLimit((current) => current + 50),
+                hasMoreActivities,
+                onLoadMoreActivities: () => void loadMoreActivities(),
+              }}
+            />
+          </Suspense>
         )}
         {activeTab === "messages" && (
-          <MessagesTab
+          <Suspense fallback={<DeferredContentLoading />}>
+            <MessagesTab
             rooms={chatRooms}
             hasMoreRooms={hasMoreChatRooms}
             activeRoomId={activeRoomId}
@@ -2299,10 +2338,12 @@ function App() {
             currentUserRole="student"
             onOpenActivity={() => setActiveTab("activity")}
             onOpenEvent={(eventId) => void openPublishedEvent(eventId)}
-          />
+            />
+          </Suspense>
         )}
         {activeTab === "profile" && (
-          <ProfileTab
+          <Suspense fallback={<DeferredContentLoading />}>
+            <ProfileTab
             appUser={appUser}
             applications={applications}
             activities={activities}
@@ -2366,7 +2407,8 @@ function App() {
             onOpenCreatorDashboard={() => setIsCreatorDashboardOpen(true)}
             onOpenSavedEvent={(eventId) => void openPublishedEvent(eventId)}
             onLogout={() => void handleLogout()}
-          />
+            />
+          </Suspense>
         )}
       </main>
       {reportTarget && (

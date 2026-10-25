@@ -5,7 +5,6 @@ import {
   getDoc,
   getDocs,
   limit,
-  limitToLast,
   onSnapshot,
   orderBy,
   query,
@@ -51,6 +50,7 @@ import { ImageCropDialog } from "../../components/ImageCropDialog";
 import { NoticeBanner } from "../../components/ui/AppPrimitives";
 import { defaultTakeaways, eventTemplates } from "../../config/events";
 import { useNoticeState } from "../../hooks/useNoticeState";
+import { useRoomConversation } from "../../hooks/useRoomConversation";
 import {
   categories,
   formatEventStart,
@@ -80,9 +80,7 @@ import type {
   AizuEvent,
   ApplicationQuestion,
   AppUser,
-  ChatMessage,
   ChatPreference,
-  ChatReadReceipt,
   ChatRoom,
   EventApplication,
   NotificationItem,
@@ -212,14 +210,19 @@ export function OrganizationDashboard({
   const [chatRoomQueryLimit, setChatRoomQueryLimit] = useState(50);
   const [hasMoreChatRooms, setHasMoreChatRooms] = useState(false);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatMessageLimit, setChatMessageLimit] = useState(100);
-  const [hasOlderChatMessages, setHasOlderChatMessages] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
-  const [chatReadReceipts, setChatReadReceipts] = useState<ChatReadReceipt[]>(
-    [],
-  );
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
+  const {
+    chatMessages,
+    hasOlderChatMessages,
+    chatReadReceipts,
+    loadOlderMessages,
+    resetMessageWindow,
+  } = useRoomConversation({
+    roomId: activeRoomId,
+    userId: appUser.uid,
+    setNotice,
+  });
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationQueryLimit, setNotificationQueryLimit] = useState(50);
   const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
@@ -791,55 +794,6 @@ export function OrganizationDashboard({
   }, [appUser.uid, setNotice]);
 
   useEffect(() => {
-    if (!activeRoomId) {
-      setChatMessages([]);
-      setHasOlderChatMessages(false);
-      return;
-    }
-    return onSnapshot(
-      query(
-        collection(db, "chatRooms", activeRoomId, "messages"),
-        orderBy("createdAt", "asc"),
-        limitToLast(chatMessageLimit),
-      ),
-      (snapshot) => {
-        setChatMessages(
-          snapshot.docs.map((messageDoc) => ({
-            id: messageDoc.id,
-            ...messageDoc.data(),
-          })) as ChatMessage[],
-        );
-        setHasOlderChatMessages(snapshot.size === chatMessageLimit);
-      },
-      () => setNotice("チャットを取得できませんでした。", "error"),
-    );
-  }, [activeRoomId, chatMessageLimit, setNotice]);
-
-  useEffect(() => {
-    if (!activeRoomId) {
-      setChatReadReceipts([]);
-      return;
-    }
-    void setDoc(
-      doc(db, "chatRooms", activeRoomId, "reads", appUser.uid),
-      { userId: appUser.uid, readAt: serverTimestamp() },
-      { merge: true },
-    ).catch((error: unknown) =>
-      setNotice(getFirebaseErrorMessage(error), "error"),
-    );
-    return onSnapshot(
-      collection(db, "chatRooms", activeRoomId, "reads"),
-      (snapshot) =>
-        setChatReadReceipts(
-          snapshot.docs.map(
-            (receiptDoc) => receiptDoc.data() as ChatReadReceipt,
-          ),
-        ),
-      () => setNotice("既読情報を取得できませんでした。", "error"),
-    );
-  }, [activeRoomId, appUser.uid, setNotice]);
-
-  useEffect(() => {
     setSelectedApplicantIds([]);
     if (!selectedEventId) {
       setCheckInCode("");
@@ -913,7 +867,7 @@ export function OrganizationDashboard({
 
   const selectOrganizationChatRoom = (roomId: string) => {
     if (roomId !== activeRoomId) {
-      setChatMessageLimit(100);
+      resetMessageWindow();
     }
     setActiveRoomId(roomId);
     const unread = notifications.filter(
@@ -2853,7 +2807,7 @@ export function OrganizationDashboard({
             activeRoomId={activeRoomId}
             messages={chatMessages}
             hasOlderMessages={hasOlderChatMessages}
-            onLoadOlder={() => setChatMessageLimit((current) => current + 100)}
+            onLoadOlder={loadOlderMessages}
             draft={messageDraft}
             unreadCounts={unreadChatCounts}
             readReceipts={chatReadReceipts}
