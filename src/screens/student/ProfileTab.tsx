@@ -1,6 +1,7 @@
 import {
   Bell,
   Check,
+  ChevronLeft,
   ChevronRight,
   CircleUserRound,
   Heart,
@@ -9,9 +10,8 @@ import {
   Plus,
   Settings,
   ShieldCheck,
-  X,
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Field } from "../../components/Field";
 import { ImageCropDialog } from "../../components/ImageCropDialog";
 import { LegalDialog } from "../../components/LegalDialog";
@@ -137,6 +137,23 @@ export function ProfileTab({
     setIsEditing(true);
   };
 
+  const cancelEditing = () => {
+    revokeObjectUrl(profileImagePreview);
+    setProfileImageFile(null);
+    setProfileImagePreview(appUser.profileImageUrl ?? null);
+    setIsProfileImageReviewOpen(false);
+    setIsEditing(false);
+  };
+
+  useEffect(() => {
+    if (!isEditing || !window.matchMedia("(max-width: 620px)").matches) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isEditing]);
+
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const interests = interestText
@@ -167,6 +184,10 @@ export function ProfileTab({
       setIsSaving(false);
     }
   };
+
+  const visibleSavedEvents = savedEventIds
+    .map((eventId) => events.find((event) => event.id === eventId))
+    .filter((event): event is AizuEvent => event !== undefined);
 
   return (
     <section className="tab-page">
@@ -213,27 +234,41 @@ export function ProfileTab({
       {isEditing && (
         <form
           className="profile-edit-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="profile-edit-title"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") cancelEditing();
+          }}
           onSubmit={(event) => void saveProfile(event)}
         >
           <div className="profile-edit-head">
             <div>
               <p className="eyebrow">編集</p>
-              <h3>プロフィール編集</h3>
+              <h3 id="profile-edit-title">プロフィール編集</h3>
             </div>
-            <button
-              className="icon-button"
-              title="閉じる"
-              type="button"
-              onClick={() => {
-                revokeObjectUrl(profileImagePreview);
-                setProfileImageFile(null);
-                setProfileImagePreview(appUser.profileImageUrl ?? null);
-                setIsProfileImageReviewOpen(false);
-                setIsEditing(false);
-              }}
-            >
-              <X size={17} />
-            </button>
+            <div className="profile-edit-actions">
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={cancelEditing}
+              >
+                <ChevronLeft size={16} />
+                キャンセル
+              </button>
+              <button
+                className="primary-action"
+                type="submit"
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <Loader2 size={17} className="spin" />
+                ) : (
+                  <Check size={17} />
+                )}
+                保存
+              </button>
+            </div>
           </div>
           <Field label="プロフィール画像">
             <div className="image-picker">
@@ -318,14 +353,6 @@ export function ProfileTab({
               onChange={(event) => setWantToTry(event.target.value)}
             />
           </Field>
-          <button className="primary-action" type="submit" disabled={isSaving}>
-            {isSaving ? (
-              <Loader2 size={17} className="spin" />
-            ) : (
-              <Check size={17} />
-            )}
-            保存する
-          </button>
         </form>
       )}
       {isProfileImageReviewOpen && profileImagePreview && profileImageFile && (
@@ -387,38 +414,38 @@ export function ProfileTab({
       </div>
       <div className="profile-section saved-events-section">
         <SectionHeading eyebrow="保存済み" title="保存したイベント" />
-        {savedEventIds.length === 0 ? (
+        {visibleSavedEvents.length === 0 ? (
           <div className="empty-inline">
             <Heart size={22} />
-            <p>気になるイベントを保存すると、ここからすぐ開けます。</p>
+            <p>
+              {savedEventIds.length === 0
+                ? "気になるイベントを保存すると、ここからすぐ開けます。"
+                : "保存したイベントは現在公開されていません。"}
+            </p>
           </div>
         ) : (
           <div className="saved-event-list">
-            {savedEventIds.map((eventId) => {
-              const event = events.find((item) => item.id === eventId);
-              if (!event) return null;
-              return (
-                <button
-                  className="saved-event-item"
-                  key={event.id}
-                  type="button"
-                  onClick={() => onOpenSavedEvent(event.id)}
-                >
-                  <img
-                    src={event.imageUrl}
-                    alt={`${event.title}の画像`}
-                    loading="lazy"
-                  />
-                  <span>
-                    <strong>{event.title}</strong>
-                    <small>
-                      {event.startAtLabel} · {event.location}
-                    </small>
-                  </span>
-                  <ChevronRight size={17} />
-                </button>
-              );
-            })}
+            {visibleSavedEvents.map((event) => (
+              <button
+                className="saved-event-item"
+                key={event.id}
+                type="button"
+                onClick={() => onOpenSavedEvent(event.id)}
+              >
+                <img
+                  src={event.imageUrl}
+                  alt={`${event.title}の画像`}
+                  loading="lazy"
+                />
+                <span>
+                  <strong>{event.title}</strong>
+                  <small>
+                    {event.startAtLabel} · {event.location}
+                  </small>
+                </span>
+                <ChevronRight size={17} />
+              </button>
+            ))}
           </div>
         )}
       </div>

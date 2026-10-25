@@ -115,11 +115,17 @@ async function callEmulatedFunction(
   functionName: string,
   data: Record<string, unknown>,
 ) {
-  const projectId = process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
+  const projectId =
+    process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
   const port = process.env.VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT ?? "5001";
   return page.evaluate(
-    async ({projectId: browserProjectId, port: browserPort, name, payload}) => {
-      const {auth} = await import("/src/lib/firebase.ts");
+    async ({
+      projectId: browserProjectId,
+      port: browserPort,
+      name,
+      payload,
+    }) => {
+      const { auth } = await import("/src/lib/firebase.ts");
       const token = await auth.currentUser?.getIdToken();
       if (!token) throw new Error("Authentication token is unavailable.");
       const response = await fetch(
@@ -130,43 +136,43 @@ async function callEmulatedFunction(
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({data: payload}),
+          body: JSON.stringify({ data: payload }),
         },
       );
       return {
         ok: response.ok,
         body: (await response.json()) as {
           result?: Record<string, unknown>;
-          error?: {status?: string; message?: string};
+          error?: { status?: string; message?: string };
         },
       };
     },
-    {projectId, port, name: functionName, payload: data},
+    { projectId, port, name: functionName, payload: data },
   );
 }
 
 async function readFirestoreDocument(pathname: string) {
-  const projectId = process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
+  const projectId =
+    process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
   const port = process.env.VITE_FIREBASE_FIRESTORE_EMULATOR_PORT ?? "8080";
   const response = await fetch(
     `http://127.0.0.1:${port}/v1/projects/${projectId}/databases/(default)/documents/${pathname}`,
-    {headers: {Authorization: "Bearer owner"}},
+    { headers: { Authorization: "Bearer owner" } },
   );
-  if (!response.ok) throw new Error(`Firestore read failed: ${response.status}`);
+  if (!response.ok)
+    throw new Error(`Firestore read failed: ${response.status}`);
   return (await response.json()) as {
-    fields?: Record<string, {stringValue?: string; integerValue?: string}>;
+    fields?: Record<string, { stringValue?: string; integerValue?: string }>;
   };
 }
 
 async function writeFirestoreDocument(
   pathname: string,
-  fields: Record<
-    string,
-    {stringValue?: string; integerValue?: string}
-  >,
+  fields: Record<string, { stringValue?: string; integerValue?: string }>,
   updateFields?: string[],
 ) {
-  const projectId = process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
+  const projectId =
+    process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
   const port = process.env.VITE_FIREBASE_FIRESTORE_EMULATOR_PORT ?? "8080";
   const updateMask = (updateFields ?? []).map(
     (field) => `updateMask.fieldPaths=${encodeURIComponent(field)}`,
@@ -180,20 +186,23 @@ async function writeFirestoreDocument(
         Authorization: "Bearer owner",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({fields}),
+      body: JSON.stringify({ fields }),
     },
   );
-  if (!response.ok) throw new Error(`Firestore write failed: ${response.status}`);
+  if (!response.ok)
+    throw new Error(`Firestore write failed: ${response.status}`);
 }
 
 async function deleteFirestoreDocument(pathname: string) {
-  const projectId = process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
+  const projectId =
+    process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
   const port = process.env.VITE_FIREBASE_FIRESTORE_EMULATOR_PORT ?? "8080";
   const response = await fetch(
     `http://127.0.0.1:${port}/v1/projects/${projectId}/databases/(default)/documents/${pathname}`,
-    {method: "DELETE", headers: {Authorization: "Bearer owner"}},
+    { method: "DELETE", headers: { Authorization: "Bearer owner" } },
   );
-  if (!response.ok) throw new Error(`Firestore delete failed: ${response.status}`);
+  if (!response.ok)
+    throw new Error(`Firestore delete failed: ${response.status}`);
 }
 
 async function confirmApplication(
@@ -203,9 +212,11 @@ async function confirmApplication(
     message = "E2Eから参加を希望します。",
   }: { waitlist?: boolean; message?: string } = {},
 ) {
-  const title = waitlist ? "キャンセル待ちに登録" : "参加申請を確認";
+  const title = waitlist ? "キャンセル待ちに登録" : "参加申請";
   await expect(page.getByRole("dialog", { name: title })).toBeVisible();
   await page.getByLabel("主催者へのメッセージ（任意）").fill(message);
+  await page.getByRole("button", { name: "次へ" }).click();
+  await page.getByRole("button", { name: "次へ" }).click();
   await page
     .getByRole("checkbox", {
       name: /イベント運営のため提供することに同意します/,
@@ -273,6 +284,7 @@ test.describe("emulator-backed role flows", () => {
     ).toBeVisible();
     await page.getByRole("button", { name: "条件をリセット" }).click();
     await expect(searchInput).toHaveValue("");
+    await searchInput.fill("E2E 地域交流会");
 
     await page
       .getByRole("button", { name: "E2E 地域交流会の詳細を見る" })
@@ -297,14 +309,20 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("heading", { name: "参加履歴", exact: true }),
     ).toBeVisible();
+    await page.getByRole("button", { name: "活動証明" }).click();
     await expect(page.getByText("証明済み活動")).toBeVisible();
-    await expect(page.getByText(`活動証明 AC-app-e2e-${suffix}`)).toBeVisible();
     await expect(
       page.getByRole("heading", {
         name: `${new Date().getFullYear()}年`,
       }),
     ).toBeVisible();
+    await page.getByRole("button", { name: "参加履歴", exact: true }).click();
+    await expect(page.locator(".certificate-id")).toContainText(
+      `活動証明AC-app-e2e-${suffix}`,
+    );
+    await page.getByRole("button", { name: "参加予定" }).click();
     await expect(page.getByText("主催者確認中").first()).toBeVisible();
+    await expectNoHorizontalOverflow(page);
     const applicationItem = page
       .locator(".application-item")
       .filter({ hasText: "E2E 地域交流会" });
@@ -467,22 +485,16 @@ test.describe("emulator-backed role flows", () => {
     });
 
     await expect(
-      page.getByText(
-        "参加申請を送信しました。主催者からの連絡を待ちましょう。",
-      ),
+      page.getByText("参加申請を送信しました。全体チャットを確認できます。"),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "メッセージ", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", {
-        name: new RegExp(`^E2E主催団体 ${escapeRegExp(eventTitle)}`),
-      }),
+      page.getByRole("strong").filter({ hasText: eventTitle }),
     ).toBeVisible();
     await expect(
-      page.locator("p", {
-        hasText: "参加申請を送信しました。主催者からの連絡をお待ちください。",
-      }),
+      page.getByRole("region", { name: "メッセージ履歴" }),
     ).toBeVisible();
   });
 
@@ -493,9 +505,8 @@ test.describe("emulator-backed role flows", () => {
     await login(page, studentEmail(testInfo.project.name));
 
     await page.getByRole("button", { name: "企画" }).click();
-    await page.getByRole("button", { name: "勉強会" }).click();
     await expect(
-      page.getByRole("heading", { name: "登録したイベント" }),
+      page.getByRole("heading", { name: "イベント運営" }),
     ).toBeVisible();
     const managementNav = page.getByRole("navigation", {
       name: "企画管理メニュー",
@@ -510,19 +521,30 @@ test.describe("emulator-backed role flows", () => {
       managementNav.getByRole("button", { name: /^参加者/ }),
     ).toBeVisible();
     await expect(
-      managementNav.getByRole("button", { name: /^連絡/ }),
+      managementNav.getByRole("button", { name: /^全体チャット/ }),
     ).toBeVisible();
+    await managementNav.getByRole("button", { name: /^企画作成/ }).click();
     await expect(
       page.getByRole("heading", { name: "新しいイベント" }),
     ).toBeVisible();
+    await page.getByRole("button", { name: "勉強会" }).click();
 
     const titleField = page.getByLabel("活動名");
     const summaryField = page.getByLabel("活動の概要");
     const takeawaysField =
       page.getByLabel("イベントで体験できること（1行ずつ）");
-    await expect(page.getByText("基本情報", { exact: true })).toBeVisible();
-    await expect(page.getByText("開催情報", { exact: true })).toBeVisible();
-    await expect(page.getByText("詳細設定", { exact: true })).toBeVisible();
+    const eventFormProgress = page.getByRole("navigation", {
+      name: "企画作成の手順",
+    });
+    await expect(
+      eventFormProgress.getByRole("button", { name: /基本情報/ }),
+    ).toBeVisible();
+    await expect(
+      eventFormProgress.getByRole("button", { name: /開催情報/ }),
+    ).toBeVisible();
+    await expect(
+      eventFormProgress.getByRole("button", { name: /詳細・確認/ }),
+    ).toBeVisible();
     await expect(page.getByLabel("過去の雰囲気・当日の空気感")).toHaveCount(0);
     await expect(titleField).toHaveValue("");
     await expect(titleField).toHaveAttribute(
@@ -555,13 +577,6 @@ test.describe("emulator-backed role flows", () => {
         titleField.evaluate((element) => element.matches(":placeholder-shown")),
       )
       .toBe(false);
-    if (testInfo.project.name === "mobile") {
-      await page.getByRole("button", { name: "開催情報へ" }).click();
-    }
-    await expect(page.getByLabel("開始日時")).toBeVisible();
-    await expect(page.getByLabel("アクセス方法")).toBeHidden();
-    await page.getByText("詳細設定", { exact: true }).click();
-    await expect(page.getByLabel("アクセス方法")).toBeVisible();
     await expect(page.getByLabel("初心者歓迎度")).toHaveValue("誰でも歓迎");
     await page.getByLabel("イベント写真").setInputFiles(fixtureImage);
     const cropDialog = page.getByRole("dialog", {
@@ -583,9 +598,18 @@ test.describe("emulator-backed role flows", () => {
     await cropDialog.getByLabel("画像の拡大率").fill("1.2");
     await cropDialog.getByRole("button", { name: "この範囲を使う" }).click();
     await expect(cropDialog).toBeHidden();
+    await eventFormProgress
+      .getByRole("button", { name: /開催情報/ })
+      .click();
+    await expect(page.getByLabel("開始日時")).toBeVisible();
+    await expect(page.getByLabel("アクセス方法")).toBeHidden();
     const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     nextWeek.setHours(18, 0, 0, 0);
     await page.getByLabel("開始日時").fill(nextWeek.toISOString().slice(0, 16));
+    await eventFormProgress
+      .getByRole("button", { name: /詳細・確認/ })
+      .click();
+    await expect(page.getByLabel("アクセス方法")).toBeVisible();
     await page.getByRole("button", { name: "企画を申請する" }).click();
 
     await expect(page.getByText("活動を審査へ申請しました。")).toBeVisible();
@@ -608,12 +632,20 @@ test.describe("emulator-backed role flows", () => {
       "src",
       /event-learning\.svg(?:\?no-inline)?$/,
     );
+    await page.getByRole("button", { name: /団体ホーム/ }).click();
+    await page.getByRole("button", { name: /^イベント/ }).click();
     await submittedEvent.getByRole("button", { name: "編集" }).click();
     await expect(
-      page.getByRole("heading", { name: "イベントを編集" }),
+      page.getByRole("heading", { name: "イベントを編集", level: 1 }),
     ).toBeVisible();
     const updatedTitle = `${eventTitle} 修正版`;
     await page.getByLabel("活動名").fill(updatedTitle);
+    await eventFormProgress
+      .getByRole("button", { name: /開催情報/ })
+      .click();
+    await eventFormProgress
+      .getByRole("button", { name: /詳細・確認/ })
+      .click();
     await page.getByRole("button", { name: "変更を審査へ送る" }).click();
     await expect(
       page.getByText("活動を修正して再申請しました。"),
@@ -645,13 +677,16 @@ test.describe("emulator-backed role flows", () => {
     await cropDialog.getByLabel("画像の拡大率").fill("1.3");
     await cropDialog.getByRole("button", { name: "この範囲を使う" }).click();
     await expect(cropDialog).toBeHidden();
-    await page.getByRole("button", { name: "保存する" }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "保存", exact: true })
+      .click();
     await expect(page.getByText("プロフィールを更新しました。")).toBeVisible();
     await expect(page.locator(".profile-avatar img")).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 
-  test("application creates individual and event-wide chats with history", async ({
+  test("application joins the event-wide chat with history", async ({
     page,
   }, testInfo) => {
     const variant = projectVariant(testInfo.project.name);
@@ -672,12 +707,16 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("heading", { name: "メッセージ", exact: true }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: new RegExp(`${eventTitle}.*全体`) }),
-    ).toBeVisible();
-    await page
-      .getByRole("button", { name: new RegExp(`${eventTitle}.*全体`) })
-      .click();
+    const activeConversation = page.getByRole("button", {
+      name: "チャット一覧へ戻る",
+    });
+    if (!(await activeConversation.isVisible())) {
+      const eventRoom = page.getByRole("button", {
+        name: new RegExp(`${eventTitle}.*全体`),
+      });
+      await expect(eventRoom).toBeVisible();
+      await eventRoom.click();
+    }
     await expect(
       page.locator("p", { hasText: "履歴メッセージ 120" }),
     ).toBeVisible();
@@ -690,11 +729,17 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.locator("p", { hasText: "履歴メッセージ 001" }),
     ).toBeVisible();
+    if (await activeConversation.isVisible()) {
+      await activeConversation.click();
+    }
     await expect(
       page.getByRole("button", {
         name: new RegExp(`E2E主催団体 ${eventTitle}`),
       }),
     ).toBeVisible();
+    await expect(page.getByText("個別チャット", { exact: true })).toHaveCount(
+      0,
+    );
   });
 
   test("full events use the waitlist instead of blocking applications", async ({
@@ -848,7 +893,10 @@ test.describe("emulator-backed role flows", () => {
       messageId: "delete-target",
       action: "delete",
     });
-    expect(response).toMatchObject({ok: true, body: {result: {status: "deleted"}}});
+    expect(response).toMatchObject({
+      ok: true,
+      body: { result: { status: "deleted" } },
+    });
     const message = await readFirestoreDocument(
       `chatRooms/${roomId}/messages/delete-target`,
     );
@@ -859,42 +907,48 @@ test.describe("emulator-backed role flows", () => {
     expect(message.fields?.editedAt).toBeUndefined();
   });
 
-  test("event chat provisioning preserves an existing room on trigger retry", async ({page: _page}, testInfo) => {
+  test("event chat provisioning preserves an existing room on trigger retry", async ({
+    page: _page,
+  }, testInfo) => {
     const suffix = projectSuffix(testInfo.project.name);
     const eventId = `event-trigger-idempotency-${suffix}`;
     const roomId = `event_${eventId}`;
     const eventFields = {
-      title: {stringValue: `E2E トリガー再実行 ${suffix}`},
-      organizationName: {stringValue: "E2E主催団体"},
-      createdBy: {stringValue: `org-e2e-${suffix}`},
+      title: { stringValue: `E2E トリガー再実行 ${suffix}` },
+      organizationName: { stringValue: "E2E主催団体" },
+      createdBy: { stringValue: `org-e2e-${suffix}` },
     };
     await writeFirestoreDocument(`events/${eventId}`, eventFields);
-    await expect.poll(async () => {
-      try {
-        const room = await readFirestoreDocument(`chatRooms/${roomId}`);
-        return room.fields?.status?.stringValue;
-      } catch {
-        return undefined;
-      }
-    }).toBe("active");
+    await expect
+      .poll(async () => {
+        try {
+          const room = await readFirestoreDocument(`chatRooms/${roomId}`);
+          return room.fields?.status?.stringValue;
+        } catch {
+          return undefined;
+        }
+      })
+      .toBe("active");
     await writeFirestoreDocument(
       `chatRooms/${roomId}`,
       {
-        lastMessageText: {stringValue: "既存会話を保持"},
-        memberCount: {integerValue: "7"},
+        lastMessageText: { stringValue: "既存会話を保持" },
+        memberCount: { integerValue: "7" },
       },
       ["lastMessageText", "memberCount"],
     );
 
     await deleteFirestoreDocument(`events/${eventId}`);
     await writeFirestoreDocument(`events/${eventId}`, eventFields);
-    await expect.poll(async () => {
-      const room = await readFirestoreDocument(`chatRooms/${roomId}`);
-      return {
-        lastMessageText: room.fields?.lastMessageText?.stringValue,
-        memberCount: room.fields?.memberCount?.integerValue,
-      };
-    }).toEqual({lastMessageText: "既存会話を保持", memberCount: "7"});
+    await expect
+      .poll(async () => {
+        const room = await readFirestoreDocument(`chatRooms/${roomId}`);
+        return {
+          lastMessageText: room.fields?.lastMessageText?.stringValue,
+          memberCount: room.fields?.memberCount?.integerValue,
+        };
+      })
+      .toEqual({ lastMessageText: "既存会話を保持", memberCount: "7" });
   });
 
   test("student can manage notifications, saved events, profile, calendar, and reports", async ({
@@ -911,6 +965,10 @@ test.describe("emulator-backed role flows", () => {
     });
     await expect(notificationPanel).toBeVisible();
     await notificationPanel
+      .getByRole("button", { name: "すべて既読" })
+      .click();
+    await expect(notificationPanel.getByText("すべて確認済み")).toBeVisible();
+    await notificationPanel
       .getByRole("button", { name: /E2E 通知 E2E通知本文/ })
       .click();
     await expect(page.getByRole("dialog", { name: eventTitle })).toBeVisible();
@@ -926,6 +984,10 @@ test.describe("emulator-backed role flows", () => {
     if ((await saveEventButton.getAttribute("aria-pressed")) !== "true") {
       await saveEventButton.click();
     }
+    await page
+      .locator("summary")
+      .filter({ hasText: "検索条件を保存" })
+      .click();
     await page.getByRole("button", { name: "この条件を保存" }).click();
     await expect(
       page.getByText(
@@ -955,7 +1017,10 @@ test.describe("emulator-backed role flows", () => {
     await page
       .getByLabel("今やっていること（任意）")
       .fill("E2Eプロフィール更新済み");
-    await page.getByRole("button", { name: "保存する" }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "保存", exact: true })
+      .click();
     await expect(page.getByText("プロフィールを更新しました。")).toBeVisible();
     await expect(page.getByText("E2Eプロフィール更新済み")).toBeVisible();
 
@@ -1001,6 +1066,9 @@ test.describe("emulator-backed role flows", () => {
       .getByRole("navigation", { name: "メインナビゲーション" })
       .getByRole("button", { name: /^活動/ })
       .click();
+    await page.getByRole("button", { name: "活動証明" }).click();
+    await expect(page.getByText("証明済み活動")).toBeVisible();
+    await page.getByRole("button", { name: "参加履歴", exact: true }).click();
     await page.getByRole("button", { name: "証明書を表示・共有" }).click();
     const certificate = page.getByRole("dialog", { name: "活動証明書" });
     await expect(certificate).toBeVisible();
@@ -1044,7 +1112,10 @@ test.describe("emulator-backed role flows", () => {
     const dashboardEventTitle = `E2E 地域交流会 ${variant}`;
     await login(page, organizationEmail(testInfo.project.name));
 
-    await page.getByRole("button", { name: "ホームへ戻る" }).first().click();
+    await page
+      .getByRole("button", { name: "ダッシュボードのホームへ戻る" })
+      .click();
+    await page.getByRole("button", { name: /^イベント/ }).click();
     await expect(
       page.getByRole("heading", { name: "登録したイベント" }),
     ).toBeVisible();
@@ -1062,11 +1133,10 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("heading", { name: "参加者一覧" }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", {
-        name: new RegExp(`E2E 学生 ${escapeRegExp(dashboardEventTitle)}`),
-      }),
-    ).toBeVisible();
+    const dashboardApplicant = page
+      .locator(".applicant-row")
+      .filter({ hasText: "E2E 学生" });
+    await expect(dashboardApplicant).toBeVisible();
     await expect(
       page.getByRole("button", { name: "承認", exact: true }),
     ).toBeVisible();
@@ -1076,19 +1146,23 @@ test.describe("emulator-backed role flows", () => {
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("alertdialog")).toBeHidden();
+    await page.getByRole("button", { name: /団体ホーム/ }).click();
+    await page.getByRole("button", { name: /^全体チャット/ }).click();
+    const mobileChatBack = page.getByRole("button", {
+      name: "チャット一覧へ戻る",
+    });
+    if (await mobileChatBack.isVisible()) await mobileChatBack.click();
     await page
       .getByRole("button", {
-        name: new RegExp(`E2E 学生 ${escapeRegExp(dashboardEventTitle)}`),
+        name: new RegExp(`参加者全員 ${eventChatTitle}`),
       })
       .click();
     await expect(
-      page.locator("p", { hasText: "E2E 初期メッセージ" }),
+      page.locator(".chat-panel-title").getByText(eventChatTitle),
     ).toBeVisible();
-    await page
-      .getByRole("button", {
-        name: new RegExp(`イベント全体 ${eventChatTitle}`),
-      })
-      .click();
+    await expect(
+      page.getByPlaceholder("全体チャットにメッセージを送る"),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "固定メッセージ・お知らせを編集" })
       .click();
@@ -1109,6 +1183,7 @@ test.describe("emulator-backed role flows", () => {
     const eventTitle = `E2E 参加者管理 ${variant}`;
     const studentName = `E2E 後参加 ${variant}`;
     await login(page, organizationEmail(testInfo.project.name));
+    await page.getByRole("button", { name: /^イベント/ }).click();
 
     const managedEvent = page
       .locator(".managed-event-row")
@@ -1162,14 +1237,19 @@ test.describe("emulator-backed role flows", () => {
       page.getByText("参加者レポートを出力しました。"),
     ).toBeVisible();
 
-    await applicant.getByRole("button", { name: "個別連絡" }).click();
+    await page.getByRole("button", { name: /団体ホーム/ }).click();
+    await page.getByRole("button", { name: /^全体チャット/ }).click();
     const message = `${variant}の参加者管理連絡です。`;
     const sentMessage = page.locator("p", { hasText: message });
     if ((await sentMessage.count()) === 0) {
-      await page.getByPlaceholder("参加者にメッセージを送る").fill(message);
+      await page
+        .getByPlaceholder("全体チャットにメッセージを送る")
+        .fill(message);
       await page.getByTitle("送信").click();
     }
     await expect(sentMessage.first()).toBeVisible();
+    await page.getByRole("button", { name: /団体ホーム/ }).click();
+    await page.getByRole("button", { name: /^イベント/ }).click();
 
     const cancelButton = managedEvent.getByRole("button", {
       name: "中止",
@@ -1216,9 +1296,7 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByRole("heading", { name: "イベント審査" }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "利用状況" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "利用状況" })).toBeVisible();
     await expect(page.getByText("登録ユーザー", { exact: true })).toBeVisible();
     await expect(page.getByText("申込完了率", { exact: true })).toBeVisible();
     await expect(
@@ -1226,7 +1304,9 @@ test.describe("emulator-backed role flows", () => {
     ).toBeVisible();
     const adminSearch = page.getByLabel("管理対象を検索");
     await adminSearch.fill("E2E");
-    await page.getByRole("button", { name: "ホームへ戻る" }).first().click();
+    await page
+      .getByRole("button", { name: "ダッシュボードのホームへ戻る" })
+      .click();
     await expect(adminSearch).toHaveValue("");
     const managedUserScrollRegion = page.getByRole("region", {
       name: "ユーザー管理一覧",

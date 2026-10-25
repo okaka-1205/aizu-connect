@@ -24,6 +24,7 @@ export const fetchPublishedEventPage = async (
   cursor: QueryDocumentSnapshot<DocumentData> | null,
   sort: SearchSort = "開催が近い順",
 ): Promise<EventPage> => {
+  const now = Timestamp.now();
   const constraints =
     sort === "人気順"
       ? [where("status", "==", "published"), orderBy("applicantCount", "desc")]
@@ -31,29 +32,57 @@ export const fetchPublishedEventPage = async (
         ? [where("status", "==", "published"), orderBy("createdAt", "desc")]
         : [
             where("status", "==", "published"),
-            where("startAt", ">=", Timestamp.now()),
+            where("startAt", ">=", now),
             orderBy("startAt", "asc"),
           ];
-  const eventQuery = query(
-    collection(db, "events"),
-    ...constraints,
-    ...(cursor ? [startAfter(cursor)] : []),
-    limit(EVENT_PAGE_SIZE + 1),
-  );
-  const snapshot = await getDocs(eventQuery);
-  const pageDocuments = snapshot.docs.slice(0, EVENT_PAGE_SIZE);
-  return {
-    events: pageDocuments
-      .map((eventDoc) => ({
-        id: eventDoc.id,
-        ...eventDoc.data(),
-      }) as AizuEvent)
-      .filter((event) =>
-        sort === "開催が近い順"
-          ? true
-          : !event.startAt || event.startAt.toMillis() >= Date.now(),
+
+  // Popular and newest ordering cannot use startAt as the primary Firestore
+  // order without changing the requested sort. Scan past expired events until
+  // a complete page of upcoming events is assembled, and return the last
+  // scanned document as the cursor so no valid event is skipped.
+  const events: AizuEvent[] = [];
+  let scanCursor = cursor;
+  let hasMore = true;
+  while (events.length < EVENT_PAGE_SIZE && hasMore) {
+    const snapshot = await getDocs(
+      query(
+        collection(db, "events"),
+        ...constraints,
+        ...(scanCursor ? [startAfter(scanCursor)] : []),
+        limit(EVENT_PAGE_SIZE + 1),
       ),
-    cursor: pageDocuments.at(-1) ?? null,
-    hasMore: snapshot.size > EVENT_PAGE_SIZE,
+    );
+    if (snapshot.empty) {
+      hasMore = false;
+      break;
+    }
+
+    let processedDocuments = 0;
+    for (const eventDocument of snapshot.docs) {
+      scanCursor = eventDocument;
+      processedDocuments += 1;
+      const event = {
+        id: eventDocument.id,
+        ...eventDocument.data(),
+      } as AizuEvent;
+      if (
+        sort === "開催が近い順" ||
+        !event.startAt ||
+        event.startAt.toMillis() >= now.toMillis()
+      ) {
+        events.push(event);
+      }
+      if (events.length === EVENT_PAGE_SIZE) break;
+    }
+
+    hasMore =
+      processedDocuments < snapshot.size ||
+      snapshot.size === EVENT_PAGE_SIZE + 1;
+  }
+
+  return {
+    events,
+    cursor: scanCursor,
+    hasMore,
   };
 };

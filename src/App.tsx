@@ -31,7 +31,14 @@ import {
   Plus,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   BrandMark,
   LoadingScreen,
@@ -77,12 +84,12 @@ import { subscribeChatRoomsForUser } from "./repositories/chatRepository";
 import {
   deleteChatMessage,
   editChatMessage,
-  saveUserBlock,
 } from "./repositories/engagementRepository";
 import {
   loadStudentActivities,
   loadStudentDashboardData,
   loadStudentNotifications,
+  markAllStudentNotificationsRead,
   subscribeStudentApplications,
 } from "./repositories/studentRepository";
 import {
@@ -144,6 +151,20 @@ import {
   isMultiFactorRequiredError,
 } from "./services/mfaService";
 
+const studentTabs: Tab[] = [
+  "home",
+  "search",
+  "activity",
+  "messages",
+  "profile",
+];
+
+function tabFromLocation(): Tab {
+  if (typeof window === "undefined") return "home";
+  const candidate = new URLSearchParams(window.location.search).get("tab");
+  return studentTabs.includes(candidate as Tab) ? (candidate as Tab) : "home";
+}
+
 function App() {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
@@ -178,10 +199,27 @@ function App() {
   const [applicationQueryLimit, setApplicationQueryLimit] = useState(50);
   const [hasMoreApplications, setHasMoreApplications] = useState(false);
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
+  const [chatRoomQueryLimit, setChatRoomQueryLimit] = useState(50);
+  const [hasMoreChatRooms, setHasMoreChatRooms] = useState(false);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState("");
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("home");
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("event"),
+  );
+  const [activeTab, setActiveTabState] = useState<Tab>(tabFromLocation);
+  const setActiveTab = useCallback((tab: Tab) => {
+    setActiveTabState(tab);
+    const url = new URL(window.location.href);
+    if (tab === "home") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", tab);
+    window.history.pushState(
+      { tab },
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, []);
   const [filter, setFilter] = useState<Filter>("すべて");
   const [searchText, setSearchText] = useState("");
   const [searchDateFilter, setSearchDateFilter] =
@@ -201,13 +239,14 @@ function App() {
   const [savedSearch, setSavedSearch] = useState<SavedSearch | null>(null);
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [savedEventIds, setSavedEventIds] = useState<string[]>([]);
-  const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
+  const [savedEvents, setSavedEvents] = useState<AizuEvent[]>([]);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [isAutoActivatingStudent, setIsAutoActivatingStudent] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [message, messageTone, setMessage] = useNoticeState();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadNotificationTotal, setUnreadNotificationTotal] = useState(0);
   const [notificationQueryLimit, setNotificationQueryLimit] = useState(30);
   const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -255,7 +294,9 @@ function App() {
   const verificationRefreshUidRef = useRef<string | null>(null);
   const shouldFocusSearchRef = useRef(false);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
-  const exhaustiveSearchRequestRef = useRef(0);
+  const previousSearchSortRef = useRef<SearchSort>("開催が近い順");
+  const searchSortRequestRef = useRef(0);
+  const progressiveSearchRef = useRef({ key: "", loadedPages: 0 });
 
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === selectedEventId),
@@ -266,6 +307,45 @@ function App() {
     () => events.filter((event) => isFutureEventStart(event.startAt?.toDate())),
     [events],
   );
+
+  useEffect(() => {
+    const handleHistoryNavigation = () => {
+      setActiveTabState(tabFromLocation());
+      const eventId = new URLSearchParams(window.location.search).get("event");
+      setSelectedEventId(eventId);
+    };
+    window.addEventListener("popstate", handleHistoryNavigation);
+    return () =>
+      window.removeEventListener("popstate", handleHistoryNavigation);
+  }, []);
+
+  useEffect(() => {
+    const eventId = new URLSearchParams(window.location.search).get("event");
+    if (eventId && events.some((event) => event.id === eventId)) {
+      setSelectedEventId(eventId);
+    }
+  }, [events]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const currentEventId = url.searchParams.get("event");
+    if (currentEventId === selectedEventId) return;
+    if (selectedEventId) {
+      url.searchParams.set("event", selectedEventId);
+      window.history.pushState(
+        { ...window.history.state, tab: activeTab, event: selectedEventId },
+        "",
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+    } else {
+      url.searchParams.delete("event");
+      window.history.replaceState(
+        { ...window.history.state, tab: activeTab },
+        "",
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+    }
+  }, [activeTab, selectedEventId]);
 
   useEffect(() => {
     if (!(["home", "search"] as Tab[]).includes(activeTab) && selectedEventId) {
@@ -445,11 +525,21 @@ function App() {
     searchTimeFilter !== "すべて" ||
     searchFeeFilter !== "すべて" ||
     searchFormatFilter !== "すべて" ||
-    searchSort !== "開催が近い順" ||
     onlyAvailableEvents ||
     onlyBeginnerEvents,
   );
-
+  const searchCriteriaKey = JSON.stringify([
+    searchText.trim(),
+    filter,
+    searchDateFilter,
+    searchDayFilter,
+    searchTimeFilter,
+    searchFeeFilter,
+    searchFormatFilter,
+    searchSort,
+    onlyAvailableEvents,
+    onlyBeginnerEvents,
+  ]);
   const recommendedEvent = useMemo(() => {
     const interests = appUser?.interests ?? [];
     return [...upcomingEvents].sort((left, right) => {
@@ -502,7 +592,7 @@ function App() {
     };
     window.addEventListener("keydown", openSearch);
     return () => window.removeEventListener("keydown", openSearch);
-  }, [activeTab]);
+  }, [activeTab, setActiveTab]);
 
   const activityYear = new Date().getFullYear();
   const activityByMonth = useMemo(() => {
@@ -541,10 +631,6 @@ function App() {
     (total, count) => total + count,
     0,
   );
-  const unreadNotificationTotal = notifications.filter(
-    (notification) => !notification.isRead,
-  ).length;
-
   useEffect(() => {
     let disposed = false;
     let unsubscribeProfile: (() => void) | null = null;
@@ -598,13 +684,13 @@ function App() {
             setChatRooms([]);
             setChatPreferences([]);
             setNotifications([]);
+            setUnreadNotificationTotal(0);
             setNotificationQueryLimit(30);
             setHasMoreNotifications(false);
             setActivities([]);
             setActivityQueryLimit(50);
             setHasMoreActivities(false);
             setSavedEventIds([]);
-            setBlockedUserIds([]);
             setSavedSearch(null);
             setSavedSearches([]);
           }
@@ -708,7 +794,7 @@ function App() {
       unsubscribeProfile?.();
       unsubscribeAuth();
     };
-  }, [setMessage]);
+  }, [setActiveTab, setMessage]);
 
   useEffect(() => {
     if (
@@ -804,8 +890,12 @@ function App() {
   useEffect(() => {
     if (!activeStudentUid) {
       setEvents([]);
+      setSavedEventIds([]);
+      setSavedEvents([]);
       setApplications([]);
       setChatRooms([]);
+      setChatRoomQueryLimit(50);
+      setHasMoreChatRooms(false);
       setActiveRoomId(null);
       setChatPreferences([]);
       return;
@@ -819,13 +909,15 @@ function App() {
     if (!activeStudentUid) return;
     return subscribeChatRoomsForUser(
       activeStudentUid,
-      (rooms) => {
+      (rooms, hasMore) => {
         setChatRooms(rooms);
+        setHasMoreChatRooms(hasMore);
         setActiveRoomId((current) => current ?? rooms[0]?.id ?? null);
       },
       (error) => setMessage(getFirebaseErrorMessage(error), "error"),
+      chatRoomQueryLimit,
     );
-  }, [activeStudentUid, setMessage]);
+  }, [activeStudentUid, chatRoomQueryLimit, setMessage]);
 
   useEffect(() => {
     if (!activeStudentUid) return;
@@ -838,7 +930,7 @@ function App() {
     );
   }, [activeStudentUid, applicationQueryLimit, setMessage]);
 
-  const loadMoreEvents = async () => {
+  const loadMoreEvents = useCallback(async () => {
     if (!eventPageCursor || !hasMoreEvents || isLoadingMoreEvents) return;
     setIsLoadingMoreEvents(true);
     try {
@@ -860,7 +952,13 @@ function App() {
     } finally {
       setIsLoadingMoreEvents(false);
     }
-  };
+  }, [
+    eventPageCursor,
+    hasMoreEvents,
+    isLoadingMoreEvents,
+    searchSort,
+    setMessage,
+  ]);
 
   const openPublishedEvent = async (eventId: string) => {
     try {
@@ -894,83 +992,64 @@ function App() {
   };
 
   useEffect(() => {
-    const requestId = exhaustiveSearchRequestRef.current + 1;
-    exhaustiveSearchRequestRef.current = requestId;
+    if (!activeStudentUid || previousSearchSortRef.current === searchSort) {
+      return;
+    }
+    previousSearchSortRef.current = searchSort;
+    const requestId = searchSortRequestRef.current + 1;
+    searchSortRequestRef.current = requestId;
+    setIsLoadingMoreEvents(true);
+    void fetchPublishedEventPage(null, searchSort)
+      .then((page) => {
+        if (searchSortRequestRef.current !== requestId) return;
+        setEvents(page.events);
+        setEventPageCursor(page.cursor);
+        setHasMoreEvents(page.hasMore);
+      })
+      .catch((error: unknown) => {
+        if (searchSortRequestRef.current !== requestId) return;
+        setMessage(
+          `並び順を変更できませんでした。${getFirebaseErrorMessage(error)}`,
+          "error",
+        );
+      })
+      .finally(() => {
+        if (searchSortRequestRef.current === requestId) {
+          setIsLoadingMoreEvents(false);
+        }
+      });
+  }, [activeStudentUid, searchSort, setMessage]);
 
+  useEffect(() => {
+    if (progressiveSearchRef.current.key !== searchCriteriaKey) {
+      progressiveSearchRef.current = {
+        key: searchCriteriaKey,
+        loadedPages: 0,
+      };
+    }
     if (
       activeTab !== "search" ||
       !hasActiveSearchCriteria ||
       !eventPageCursor ||
-      !hasMoreEvents
+      !hasMoreEvents ||
+      isLoadingMoreEvents ||
+      progressiveSearchRef.current.loadedPages >= 3
     ) {
-      setIsLoadingMoreEvents(false);
       return;
     }
-
-    setIsLoadingMoreEvents(true);
-    void (async () => {
-      try {
-        let cursor: QueryDocumentSnapshot<DocumentData> | null =
-          searchSort === "開催が近い順" ? eventPageCursor : null;
-        let hasNextPage: boolean =
-          searchSort === "開催が近い順" ? hasMoreEvents : true;
-        const searchEvents: AizuEvent[] = [];
-
-        if (searchSort !== "開催が近い順") {
-          const firstPage = await fetchPublishedEventPage(null, searchSort);
-          searchEvents.push(...firstPage.events);
-          cursor = firstPage.cursor;
-          hasNextPage = firstPage.hasMore;
-        }
-
-        while (
-          cursor &&
-          hasNextPage &&
-          exhaustiveSearchRequestRef.current === requestId
-        ) {
-          const page = await fetchPublishedEventPage(cursor, searchSort);
-          searchEvents.push(...page.events);
-          cursor = page.cursor;
-          hasNextPage = page.hasMore;
-        }
-
-        if (exhaustiveSearchRequestRef.current !== requestId) return;
-        setEvents((current) => {
-          if (searchSort !== "開催が近い順") return searchEvents;
-          const knownIds = new Set(current.map((event) => event.id));
-          return [
-            ...current,
-            ...searchEvents.filter((event) => !knownIds.has(event.id)),
-          ];
-        });
-        setEventPageCursor(cursor);
-        setHasMoreEvents(hasNextPage);
-      } catch (error) {
-        if (exhaustiveSearchRequestRef.current === requestId) {
-          setMessage(
-            `検索対象をすべて読み込めませんでした。${getFirebaseErrorMessage(error)}`,
-            "error",
-          );
-        }
-      } finally {
-        if (exhaustiveSearchRequestRef.current === requestId) {
-          setIsLoadingMoreEvents(false);
-        }
-      }
-    })();
-
-    return () => {
-      if (exhaustiveSearchRequestRef.current === requestId) {
-        exhaustiveSearchRequestRef.current += 1;
-      }
-    };
+    const timer = window.setTimeout(() => {
+      progressiveSearchRef.current.loadedPages += 1;
+      void loadMoreEvents();
+    }, 250);
+    return () => window.clearTimeout(timer);
   }, [
     activeTab,
     eventPageCursor,
     hasActiveSearchCriteria,
     hasMoreEvents,
-    searchSort,
-    setMessage,
+    isLoadingMoreEvents,
+    loadMoreEvents,
+    searchCriteriaKey,
   ]);
 
   const loadProductData = async (uid: string) => {
@@ -987,8 +1066,9 @@ function App() {
 
     setChatPreferences(data.chatPreferences);
     setSavedEventIds(data.savedEventIds);
-    setBlockedUserIds(data.blockedUserIds);
+    setSavedEvents(data.savedEvents);
     setNotifications(data.notifications);
+    setUnreadNotificationTotal(data.unreadNotificationCount);
     setHasMoreNotifications(data.hasMoreNotifications);
     setActivities(data.activities);
     setHasMoreActivities(data.hasMoreActivities);
@@ -1261,16 +1341,15 @@ function App() {
         eventId: eventToApply.id,
         ...details,
       });
-      const applicationId = result.data.applicationId;
       const applicationStatus = result.data.status;
-      setActiveRoomId(applicationId);
+      setActiveRoomId(`event_${eventToApply.id}`);
       setActiveTab(
         applicationStatus === "waitlisted" ? "activity" : "messages",
       );
       setMessage(
         applicationStatus === "waitlisted"
           ? "キャンセル待ちに登録しました。空きが出たら通知します。"
-          : "参加申請を送信しました。主催者からの連絡を待ちましょう。",
+          : "参加申請を送信しました。全体チャットを確認できます。",
         "success",
       );
     } catch (error) {
@@ -1355,6 +1434,9 @@ function App() {
           ? { ...notification, isRead: true }
           : notification,
       ),
+    );
+    setUnreadNotificationTotal((current) =>
+      Math.max(0, current - unread.length),
     );
     void Promise.all(
       unread.map((notification) =>
@@ -1710,8 +1792,7 @@ function App() {
     setApplicationEvent(event);
   };
   const saveCurrentSearch = async () => {
-    const nextSearch: SavedSearch = {
-      id: `${appUser.uid}_${Date.now()}`,
+    const searchCriteria = {
       userId: appUser.uid,
       name: searchText.trim() || `${filter}・${searchDateFilter}`,
       searchText,
@@ -1724,6 +1805,25 @@ function App() {
       onlyAvailable: onlyAvailableEvents,
       onlyBeginner: onlyBeginnerEvents,
     };
+    const criteriaSignature = (search: Omit<SavedSearch, "id" | "updatedAt">) =>
+      JSON.stringify([
+        search.searchText.trim(),
+        search.category,
+        search.dateFilter,
+        search.dayFilter,
+        search.timeFilter,
+        search.feeFilter,
+        search.formatFilter,
+        search.onlyAvailable,
+        search.onlyBeginner,
+      ]);
+    const existingSearch = savedSearches.find(
+      (search) => criteriaSignature(search) === criteriaSignature(searchCriteria),
+    );
+    const nextSearch: SavedSearch = {
+      ...searchCriteria,
+      id: existingSearch?.id ?? `${appUser.uid}_${Date.now()}`,
+    };
     const { id: savedSearchId, ...savedSearchData } = nextSearch;
     await setDoc(
       doc(db, "savedSearches", savedSearchId ?? `${appUser.uid}_default`),
@@ -1731,7 +1831,10 @@ function App() {
       { merge: true },
     );
     setSavedSearch(nextSearch);
-    setSavedSearches((current) => [nextSearch, ...current].slice(0, 10));
+    setSavedSearches((current) => [
+      nextSearch,
+      ...current.filter((search) => search.id !== nextSearch.id),
+    ]);
     setMessage(
       "検索条件を保存しました。条件に合う新着イベントを通知します。",
       "success",
@@ -1750,11 +1853,33 @@ function App() {
     setOnlyAvailableEvents(search.onlyAvailable);
     setOnlyBeginnerEvents(search.onlyBeginner);
   };
+  const deleteSavedSearch = async (search: SavedSearch) => {
+    if (!search.id) return;
+    await deleteDoc(doc(db, "savedSearches", search.id));
+    setSavedSearches((current) => {
+      const next = current.filter((item) => item.id !== search.id);
+      setSavedSearch((selected) =>
+        selected?.id === search.id ? (next[0] ?? null) : selected,
+      );
+      return next;
+    });
+    setMessage("保存した検索条件を削除しました。", "success");
+  };
   const toggleSaved = (eventId: string) => {
     if (!appUser) return;
     const saved = savedEventIds.includes(eventId);
+    const eventToSave =
+      events.find((event) => event.id === eventId) ??
+      savedEvents.find((event) => event.id === eventId);
     setSavedEventIds((current) =>
       saved ? current.filter((id) => id !== eventId) : [...current, eventId],
+    );
+    setSavedEvents((current) =>
+      saved
+        ? current.filter((event) => event.id !== eventId)
+        : eventToSave && !current.some((event) => event.id === eventId)
+          ? [eventToSave, ...current]
+          : current,
     );
     void (
       saved
@@ -1767,6 +1892,11 @@ function App() {
     ).catch((error: unknown) => {
       setSavedEventIds((current) =>
         saved ? [...current, eventId] : current.filter((id) => id !== eventId),
+      );
+      setSavedEvents((current) =>
+        saved && eventToSave && !current.some((event) => event.id === eventId)
+          ? [eventToSave, ...current]
+          : current.filter((event) => event.id !== eventId),
       );
       setMessage(getFirebaseErrorMessage(error), "error");
     });
@@ -1825,8 +1955,10 @@ function App() {
               onClick={() => setIsNotificationOpen((current) => !current)}
             >
               <Bell size={19} />
-              {notifications.some((notification) => !notification.isRead) && (
-                <span className="notification-dot" aria-hidden="true" />
+              {unreadNotificationTotal > 0 && (
+                <span className="notification-badge" aria-hidden="true">
+                  {unreadNotificationTotal > 9 ? "9+" : unreadNotificationTotal}
+                </span>
               )}
             </button>
             <button
@@ -1885,8 +2017,27 @@ function App() {
         {isNotificationOpen && (
           <NotificationPanel
             notifications={notifications}
+            unreadTotal={unreadNotificationTotal}
             hasMore={hasMoreNotifications}
             onLoadMore={() => void loadMoreNotifications()}
+            onReadAll={async () => {
+              if (!appUser || unreadNotificationTotal === 0) return;
+              try {
+                await markAllStudentNotificationsRead();
+                setNotifications((current) =>
+                  current.map((notification) => ({
+                    ...notification,
+                    isRead: true,
+                  })),
+                );
+                setUnreadNotificationTotal(0);
+              } catch (error) {
+                setMessage(
+                  `通知を既読にできませんでした。${getFirebaseErrorMessage(error)}`,
+                  "error",
+                );
+              }
+            }}
             onClose={() => {
               setIsNotificationOpen(false);
               window.requestAnimationFrame(() =>
@@ -1895,10 +2046,15 @@ function App() {
             }}
             onRead={async (notification) => {
               try {
-                await updateDoc(doc(db, "notifications", notification.id), {
-                  isRead: true,
-                  readAt: serverTimestamp(),
-                });
+                if (!notification.isRead) {
+                  await updateDoc(doc(db, "notifications", notification.id), {
+                    isRead: true,
+                    readAt: serverTimestamp(),
+                  });
+                  setUnreadNotificationTotal((current) =>
+                    Math.max(0, current - 1),
+                  );
+                }
                 setNotifications((current) =>
                   current.map((item) =>
                     item.id === notification.id
@@ -2026,6 +2182,13 @@ function App() {
                   setMessage(getFirebaseErrorMessage(error), "error"),
                 ),
               onApplySavedSearch: applySavedSearch,
+              onDeleteSavedSearch: async (search: SavedSearch) => {
+                try {
+                  await deleteSavedSearch(search);
+                } catch (error) {
+                  setMessage(getFirebaseErrorMessage(error), "error");
+                }
+              },
               onlyAvailableEvents,
               setOnlyAvailableEvents,
               onlyBeginnerEvents,
@@ -2065,11 +2228,10 @@ function App() {
               setSelectedEventId,
               setActiveTab,
               onOpenMessages: (eventId: string) => {
-                const room =
-                  chatRooms.find(
-                    (item) =>
-                      item.eventId === eventId && item.roomType !== "event",
-                  ) ?? chatRooms.find((item) => item.eventId === eventId);
+                const room = chatRooms.find(
+                  (item) =>
+                    item.eventId === eventId && item.roomType === "event",
+                );
                 if (room) selectChatRoom(room.id);
                 setActiveTab("messages");
               },
@@ -2087,10 +2249,9 @@ function App() {
         {activeTab === "messages" && (
           <MessagesTab
             rooms={chatRooms}
+            hasMoreRooms={hasMoreChatRooms}
             activeRoomId={activeRoomId}
-            messages={chatMessages.filter(
-              (chatMessage) => !blockedUserIds.includes(chatMessage.senderId),
-            )}
+            messages={chatMessages}
             hasOlderMessages={hasOlderChatMessages}
             onLoadOlder={loadOlderMessages}
             draft={messageDraft}
@@ -2100,6 +2261,10 @@ function App() {
               .filter((preference) => preference.muted)
               .map((preference) => preference.roomId)}
             onSelectRoom={selectChatRoom}
+            onCloseRoom={() => setActiveRoomId(null)}
+            onLoadMoreRooms={() =>
+              setChatRoomQueryLimit((current) => current + 50)
+            }
             onToggleMute={(roomId) => void toggleChatMute(roomId)}
             onDraftChange={setMessageDraft}
             onSend={() => void sendMessage()}
@@ -2130,16 +2295,6 @@ function App() {
                 chatMessage.id,
               )
             }
-            onBlockUser={async (chatMessage) => {
-              await saveUserBlock(appUser.uid, chatMessage.senderId);
-              setBlockedUserIds((current) => [
-                ...new Set([...current, chatMessage.senderId]),
-              ]);
-              setMessage(
-                `${chatMessage.senderName}さんをブロックしました。`,
-                "success",
-              );
-            }}
             currentUserId={appUser.uid}
             currentUserRole="student"
             onOpenActivity={() => setActiveTab("activity")}
@@ -2153,7 +2308,7 @@ function App() {
             activities={activities}
             activityByMonth={activityByMonth}
             savedEventIds={savedEventIds}
-            events={events}
+            events={savedEvents}
             notificationPreferences={notificationPreferences}
             accountDeletionRequest={accountDeletionRequest}
             onRequestAccountDeletion={requestAccountDeletion}

@@ -18,7 +18,7 @@
 
 - 興味や開催日からイベントを検索し、新着順・人気順で比較
 - イベントへの参加申請、申込質問への回答、キャンセル待ち
-- 主催者との個別チャット、通知、イベントのお気に入り
+- イベント参加者全員の全体チャット、通知、イベントのお気に入り
 - QRコードまたは受付コードによるチェックイン
 - キャンセル、開催後アンケート、活動履歴の確認
 - 活動実績・活動証明のPDF保存
@@ -27,7 +27,7 @@
 
 - イベントの下書き、プレビュー、複製、公開申請
 - 定員・キャンセル待ち・申込質問・キャンセル期限の設定
-- 参加者の検索、承認、連絡、出欠・QR受付管理
+- 参加者の検索、承認、全体連絡、出欠・QR受付管理
 - 開催後アンケートの確認、写真付き活動報告の公開
 - 過去イベントや参加状況を含む運営履歴の確認
 
@@ -67,14 +67,14 @@ Aizu Connectは、会津で新しい活動へ参加する際の「情報を見�
 
 ## 技術構成
 
-| 領域 | 使用技術 |
-| --- | --- |
-| フロントエンド | React 19 / TypeScript / Vite / Tailwind CSS |
-| フォーム・データ取得 | React Hook Form / TanStack Query |
-| バックエンド | Firebase Authentication / Firestore / Storage / Cloud Functions |
-| 公開・定期処理 | Firebase Hosting / Cloud Scheduler |
-| テスト | Vitest / Playwright / Firebase Emulator Suite / axe-core |
-| CI | GitHub Actions |
+| 領域                 | 使用技術                                                        |
+| -------------------- | --------------------------------------------------------------- |
+| フロントエンド       | React 19 / TypeScript / Vite / Tailwind CSS                     |
+| フォーム・データ取得 | React Hook Form / TanStack Query                                |
+| バックエンド         | Firebase Authentication / Firestore / Storage / Cloud Functions |
+| 公開・定期処理       | Firebase Hosting / Cloud Scheduler                              |
+| テスト               | Vitest / Playwright / Firebase Emulator Suite / axe-core        |
+| CI                   | GitHub Actions                                                  |
 
 ## 参加者向け画面
 
@@ -82,20 +82,20 @@ Aizu Connectは、会津で新しい活動へ参加する際の「情報を見�
 
 ### デスクトップ
 
-| ホーム | イベントを探す |
-| --- | --- |
+| ホーム                                                            | イベントを探す                                                      |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------- |
 | ![参加者ホーム](docs/screenshots/participant/01-desktop-home.png) | ![イベント検索](docs/screenshots/participant/02-desktop-search.png) |
 
-| イベント詳細 | メッセージ |
-| --- | --- |
+| イベント詳細                                                              | メッセージ                                                          |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | ![イベント詳細](docs/screenshots/participant/03-desktop-event-detail.png) | ![メッセージ](docs/screenshots/participant/05-desktop-messages.png) |
 
 [参加履歴](docs/screenshots/participant/04-desktop-activity.png) / [プロフィール](docs/screenshots/participant/06-desktop-profile.png)
 
 ### スマートフォン
 
-| ホーム | イベント詳細 | メッセージ |
-| --- | --- | --- |
+| ホーム                                                                     | イベント詳細                                                                             | メッセージ                                                                         |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | ![スマートフォンのホーム](docs/screenshots/participant/07-mobile-home.png) | ![スマートフォンのイベント詳細](docs/screenshots/participant/08-mobile-event-detail.png) | ![スマートフォンのメッセージ](docs/screenshots/participant/09-mobile-messages.png) |
 
 ## 開発環境

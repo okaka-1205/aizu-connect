@@ -19,7 +19,6 @@ import {
   shouldDecrementApplicantCount,
   shouldIncrementApplicantCount,
   shouldNotifyPublishedEventStudent,
-  shouldSetChatRoomReadOnly,
   tokyoYearMonth,
 } from "../lib/applicationLogic.js";
 
@@ -114,12 +113,6 @@ describe("application status logic", () => {
       true,
     );
     assert.equal(shouldIncrementApplicantCount("pending", "confirmed"), false);
-  });
-
-  it("locks chat rooms only for terminal unsuccessful statuses", () => {
-    assert.equal(shouldSetChatRoomReadOnly("cancelled"), true);
-    assert.equal(shouldSetChatRoomReadOnly("rejected"), true);
-    assert.equal(shouldSetChatRoomReadOnly("confirmed"), false);
   });
 });
 

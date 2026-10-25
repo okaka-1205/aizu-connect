@@ -20,18 +20,17 @@ import type { ChatMessage, ChatReadReceipt, ChatRoom } from "../types/domain";
 
 export const CHAT_ROOM_PAGE_SIZE = 50;
 
-const mergeRooms = (...roomGroups: ChatRoom[][]) =>
+const mergeRooms = (roomLimit: number, ...roomGroups: ChatRoom[][]) =>
   Array.from(
-    new Map(
-      roomGroups.flat().map((room) => [room.id, room] as const),
-    ).values(),
+    new Map(roomGroups.flat().map((room) => [room.id, room] as const)).values(),
   )
+    .filter((room) => room.roomType === "event")
     .sort(
       (left, right) =>
         (right.lastMessageAt?.toMillis?.() ?? 0) -
         (left.lastMessageAt?.toMillis?.() ?? 0),
     )
-    .slice(0, CHAT_ROOM_PAGE_SIZE);
+    .slice(0, roomLimit);
 
 const roomsFromMembershipSnapshot = async (
   memberDocuments: QueryDocumentSnapshot<DocumentData>[],
@@ -54,28 +53,32 @@ const roomsFromMembershipSnapshot = async (
     );
 };
 
-export const loadChatRoomsForUser = async (userId: string) => {
+export const loadChatRoomsForUser = async (
+  userId: string,
+  roomLimit = CHAT_ROOM_PAGE_SIZE,
+) => {
   const [memberships, legacyRooms] = await Promise.all([
     getDocs(
       query(
         collectionGroup(db, "members"),
         where("userId", "==", userId),
-        limit(CHAT_ROOM_PAGE_SIZE + 1),
+        limit(roomLimit + 1),
       ),
     ),
     getDocs(
       query(
         collection(db, "chatRooms"),
         where("participantIds", "array-contains", userId),
-        limit(CHAT_ROOM_PAGE_SIZE),
+        limit(roomLimit + 1),
       ),
     ),
   ]);
   return mergeRooms(
+    roomLimit,
     await roomsFromMembershipSnapshot(
-      memberships.docs.slice(0, CHAT_ROOM_PAGE_SIZE),
+      memberships.docs.slice(0, roomLimit),
     ),
-    legacyRooms.docs.map(
+    legacyRooms.docs.slice(0, roomLimit).map(
       (room) => ({ id: room.id, ...room.data() }) as ChatRoom,
     ),
   );
@@ -83,22 +86,30 @@ export const loadChatRoomsForUser = async (userId: string) => {
 
 export const subscribeChatRoomsForUser = (
   userId: string,
-  onValue: (rooms: ChatRoom[]) => void,
+  onValue: (rooms: ChatRoom[], hasMore: boolean) => void,
   onError: (error: Error) => void,
+  roomLimit = CHAT_ROOM_PAGE_SIZE,
 ) => {
   let membershipRooms: ChatRoom[] = [];
   let legacyRooms: ChatRoom[] = [];
+  let membershipHasMore = false;
+  let legacyHasMore = false;
   let roomUnsubscribers: Array<() => void> = [];
-  const emitRooms = () => onValue(mergeRooms(membershipRooms, legacyRooms));
+  const emitRooms = () =>
+    onValue(
+      mergeRooms(roomLimit, membershipRooms, legacyRooms),
+      membershipHasMore || legacyHasMore,
+    );
 
   const unsubscribeLegacyRooms = onSnapshot(
     query(
       collection(db, "chatRooms"),
       where("participantIds", "array-contains", userId),
-      limit(CHAT_ROOM_PAGE_SIZE),
+      limit(roomLimit + 1),
     ),
     (snapshot) => {
-      legacyRooms = snapshot.docs.map(
+      legacyHasMore = snapshot.size > roomLimit;
+      legacyRooms = snapshot.docs.slice(0, roomLimit).map(
         (room) => ({ id: room.id, ...room.data() }) as ChatRoom,
       );
       emitRooms();
@@ -110,15 +121,17 @@ export const subscribeChatRoomsForUser = (
     query(
       collectionGroup(db, "members"),
       where("userId", "==", userId),
-      limit(CHAT_ROOM_PAGE_SIZE),
+      limit(roomLimit + 1),
     ),
     (snapshot) => {
+      membershipHasMore = snapshot.size > roomLimit;
       roomUnsubscribers.forEach((unsubscribe) => unsubscribe());
       roomUnsubscribers = [];
       const roomsById = new Map<string, ChatRoom>();
       const roomRefs = Array.from(
         new Map(
           snapshot.docs
+            .slice(0, roomLimit)
             .map((member) => member.ref.parent.parent)
             .filter(
               (roomRef): roomRef is NonNullable<typeof roomRef> =>

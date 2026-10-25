@@ -1,6 +1,8 @@
 import {
   collection,
   doc,
+  documentId,
+  getCountFromServer,
   getDoc,
   getDocs,
   limit,
@@ -9,11 +11,14 @@ import {
   query,
   where,
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { db } from "../lib/firebase";
+import { functions } from "../lib/firebase";
 import { defaultNotificationPreferences } from "../lib/eventUtils";
 import { fetchPublishedEventPage } from "./eventsRepository";
 import type {
   ActivityRecord,
+  AizuEvent,
   ChatPreference,
   EventApplication,
   NotificationItem,
@@ -55,11 +60,11 @@ export const loadStudentDashboardData = async (userId: string) => {
     chatPreferenceSnapshot,
     savedSnapshot,
     savedOrganizerSnapshot,
-    blockedUserSnapshot,
     notificationSnapshot,
     activitySnapshot,
     preferenceSnapshot,
     savedSearchSnapshot,
+    unreadNotificationCountSnapshot,
   ] = await Promise.all([
     fetchPublishedEventPage(null),
     getDocs(
@@ -67,7 +72,6 @@ export const loadStudentDashboardData = async (userId: string) => {
         collection(db, "chatPreferences"),
         where("userId", "==", userId),
         orderBy("updatedAt", "desc"),
-        limit(51),
       ),
     ),
     getDocs(
@@ -75,7 +79,6 @@ export const loadStudentDashboardData = async (userId: string) => {
         collection(db, "savedEvents"),
         where("userId", "==", userId),
         orderBy("createdAt", "desc"),
-        limit(51),
       ),
     ),
     getDocs(
@@ -83,14 +86,6 @@ export const loadStudentDashboardData = async (userId: string) => {
         collection(db, "savedOrganizers"),
         where("userId", "==", userId),
         orderBy("createdAt", "desc"),
-        limit(51),
-      ),
-    ),
-    getDocs(
-      query(
-        collection(db, "userBlocks"),
-        where("blockerId", "==", userId),
-        limit(100),
       ),
     ),
     getDocs(
@@ -115,15 +110,61 @@ export const loadStudentDashboardData = async (userId: string) => {
         collection(db, "savedSearches"),
         where("userId", "==", userId),
         orderBy("updatedAt", "desc"),
-        limit(10),
+      ),
+    ),
+    getCountFromServer(
+      query(
+        collection(db, "notifications"),
+        where("recipientId", "==", userId),
+        where("isRead", "==", false),
       ),
     ),
   ]);
 
-  const notifications = notificationSnapshot.docs.slice(0, 30).map((notificationDoc) => ({
-    id: notificationDoc.id,
-    ...notificationDoc.data(),
-  })) as NotificationItem[];
+  const savedEventIds = savedSnapshot.docs.map(
+    (savedDocument) => savedDocument.data().eventId as string,
+  );
+  const savedEventIdChunks = Array.from(
+    { length: Math.ceil(savedEventIds.length / 30) },
+    (_, index) => savedEventIds.slice(index * 30, index * 30 + 30),
+  );
+  const savedEventSnapshots = await Promise.all(
+    savedEventIdChunks.map((eventIds) =>
+      getDocs(
+        query(
+          collection(db, "events"),
+          where(documentId(), "in", eventIds),
+          where("status", "==", "published"),
+        ),
+      ).catch(() => null),
+    ),
+  );
+  const savedEventsById = new Map(
+    savedEventSnapshots.flatMap((snapshot) =>
+      snapshot
+        ? snapshot.docs.map(
+            (eventDocument) =>
+              [
+                eventDocument.id,
+                {
+                  id: eventDocument.id,
+                  ...eventDocument.data(),
+                } as AizuEvent,
+              ] as const,
+          )
+        : [],
+    ),
+  );
+  const savedEvents = savedEventIds
+    .map((eventId) => savedEventsById.get(eventId))
+    .filter((event): event is AizuEvent => Boolean(event));
+
+  const notifications = notificationSnapshot.docs
+    .slice(0, 30)
+    .map((notificationDoc) => ({
+      id: notificationDoc.id,
+      ...notificationDoc.data(),
+    })) as NotificationItem[];
   notifications.sort(
     (left, right) =>
       (right.createdAt?.toMillis?.() ?? 0) -
@@ -132,17 +173,13 @@ export const loadStudentDashboardData = async (userId: string) => {
 
   return {
     eventPage,
-    chatPreferences: chatPreferenceSnapshot.docs.slice(0, 50).map(
+    chatPreferences: chatPreferenceSnapshot.docs.map(
       (preferenceDoc) => preferenceDoc.data() as ChatPreference,
     ),
-    savedEventIds: savedSnapshot.docs.slice(0, 50).map(
-      (savedDoc) => savedDoc.data().eventId as string,
-    ),
-    savedOrganizerIds: savedOrganizerSnapshot.docs.slice(0, 50).map(
+    savedEventIds,
+    savedEvents,
+    savedOrganizerIds: savedOrganizerSnapshot.docs.map(
       (savedDocument) => savedDocument.data().organizationId as string,
-    ),
-    blockedUserIds: blockedUserSnapshot.docs.map(
-      (blockDocument) => blockDocument.data().blockedId as string,
     ),
     notifications,
     activities: activitySnapshot.docs.slice(0, 50).map((activityDoc) => ({
@@ -164,11 +201,18 @@ export const loadStudentDashboardData = async (userId: string) => {
       id: searchDocument.id,
       ...searchDocument.data(),
     })) as SavedSearch[],
+    unreadNotificationCount: unreadNotificationCountSnapshot.data().count,
     hasMoreNotifications: notificationSnapshot.size > 30,
     hasMoreActivities: activitySnapshot.size > 50,
-    hasMoreSavedEvents: savedSnapshot.size > 50,
-    hasMoreChatPreferences: chatPreferenceSnapshot.size > 50,
   };
+};
+
+export const markAllStudentNotificationsRead = async () => {
+  const markAllRead = httpsCallable<void, { updatedCount: number }>(
+    functions,
+    "markAllNotificationsRead",
+  );
+  await markAllRead();
 };
 
 export const loadStudentNotifications = async (

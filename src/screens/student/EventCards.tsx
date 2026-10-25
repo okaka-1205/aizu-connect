@@ -26,19 +26,14 @@ export function EventCard({
     <article className={`event-card ${selected ? "selected" : ""}`}>
       <div className="event-card-main">
         <div className="event-image-wrap">
-          <button
-            className="event-image-button"
-            type="button"
-            aria-label={`${event.title}の詳細を見る`}
-            onClick={onOpen}
-          >
+          <div className="event-image-button">
             <img
               src={event.imageUrl}
               alt={`${event.title}の画像`}
               loading="lazy"
             />
             <span className="event-category">{event.category}</span>
-          </button>
+          </div>
           <button
             className={`save-button ${saved ? "saved" : ""}`}
             title={saved ? "保存を解除" : "保存"}
@@ -74,6 +69,17 @@ export function EventCard({
             {event.tags.slice(0, 2).map((tag) => (
               <span key={tag}>{tag}</span>
             ))}
+            {event.tags.length > 2 && (
+              <span
+                className="tag-overflow-count"
+                title={event.tags.slice(2).join("、")}
+                aria-label={`ほか${event.tags.length - 2}件のタグ: ${event.tags
+                  .slice(2)
+                  .join("、")}`}
+              >
+                ほか{event.tags.length - 2}件
+              </span>
+            )}
           </div>
           <div className="event-card-foot">
             <span className="organizer">{event.organizationName}</span>
@@ -83,7 +89,12 @@ export function EventCard({
                 : `残り ${Math.max(Number(event.capacity ?? 0) - Number(event.applicantCount ?? 0), 0)}名`}
             </span>
           </div>
-          <button className="event-detail-link" type="button" onClick={onOpen}>
+          <button
+            className="event-detail-link"
+            type="button"
+            aria-label={`${event.title}の詳細を見る`}
+            onClick={onOpen}
+          >
             詳細を見る <ChevronRight size={14} />
           </button>
         </div>

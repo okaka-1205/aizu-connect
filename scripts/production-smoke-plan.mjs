@@ -10,7 +10,7 @@ const plannedChecks = [
   "学生登録・実メール認証",
   "イベント作成・管理者承認",
   "申込・キャンセル待ち・順番どおりの繰り上げ",
-  "個別チャット・イベント全体チャット",
+  "イベント全体チャット",
   "QR受付・手動受付・出欠3時間境界",
   "開催後アンケート",
   "写真付き活動報告",
@@ -23,7 +23,9 @@ if (missing.length > 0) {
   process.exitCode = 1;
 } else {
   console.log("Aizu Connect 本番スモークテスト実行計画（読み取り専用）");
-  console.log(`対象URL: ${process.env.AIZU_CONNECT_SMOKE_URL ?? "https://aizu-connect-prod.web.app/"}`);
+  console.log(
+    `対象URL: ${process.env.AIZU_CONNECT_SMOKE_URL ?? "https://aizu-connect-prod.web.app/"}`,
+  );
   console.log(`学生: ${process.env.AIZU_CONNECT_SMOKE_STUDENT_EMAIL}`);
   console.log(`主催者: ${process.env.AIZU_CONNECT_SMOKE_ORGANIZATION_EMAIL}`);
   console.log(`管理者: ${process.env.AIZU_CONNECT_SMOKE_ADMIN_EMAIL}`);
@@ -31,5 +33,7 @@ if (missing.length > 0) {
   plannedChecks.forEach((item, index) => console.log(`${index + 1}. ${item}`));
   console.log("このコマンドは本番へ接続せず、データも変更しません。");
   console.log("実メール、App Check、QR読み取りは人が確認します。");
-  console.log("実行前に docs/production-smoke-test.md の影響範囲と後片付けを確認してください。");
+  console.log(
+    "実行前に docs/production-smoke-test.md の影響範囲と後片付けを確認してください。",
+  );
 }

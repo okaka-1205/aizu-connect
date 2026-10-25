@@ -24,18 +24,6 @@ export const saveEventSurvey = (
     { merge: true },
   );
 
-export const saveUserBlock = (
-  blockerId: string,
-  blockedId: string,
-  reason = "",
-) =>
-  setDoc(doc(db, "userBlocks", `${blockerId}_${blockedId}`), {
-    blockerId,
-    blockedId,
-    reason: reason.trim().slice(0, 300),
-    createdAt: serverTimestamp(),
-  });
-
 export const editChatMessage = async (
   roomId: string,
   messageId: string,
@@ -45,10 +33,7 @@ export const editChatMessage = async (
   await manage({ roomId, messageId, action: "edit", text: nextText });
 };
 
-export const deleteChatMessage = async (
-  roomId: string,
-  messageId: string,
-) => {
+export const deleteChatMessage = async (roomId: string, messageId: string) => {
   const manage = httpsCallable(functions, "manageChatMessage");
   await manage({ roomId, messageId, action: "delete" });
 };

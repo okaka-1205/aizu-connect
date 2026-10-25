@@ -32,7 +32,7 @@ export function RoleShell({
           className="brand-lockup"
           type="button"
           onClick={onHome}
-          aria-label="ホームへ戻る"
+          aria-label="ダッシュボードのホームへ戻る"
         >
           <BrandMark />
           <span>
@@ -49,7 +49,7 @@ export function RoleShell({
               type="button"
               onClick={onClose}
             >
-              ホームへ戻る
+              アプリへ戻る
             </button>
           )}
           <button
