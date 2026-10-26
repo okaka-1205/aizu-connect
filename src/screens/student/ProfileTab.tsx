@@ -21,7 +21,10 @@ import {
 } from "../../components/ui/AppPrimitives";
 import type { LegalDocument } from "../../content/legalDocuments";
 import { useNoticeState } from "../../hooks/useNoticeState";
-import { getFirebaseErrorMessage, validateImageFile } from "../../lib/appLogic";
+import {
+  getFirebaseErrorMessage,
+  validateImageSourceFile,
+} from "../../lib/appLogic";
 import { revokeObjectUrl } from "../../lib/eventUtils";
 import type {
   AccountDeletionRequest,
@@ -62,15 +65,18 @@ export function ProfileTab({
   hasMoreSavedEvents: boolean;
   notificationPreferences: NotificationPreferences;
   accountDeletionRequest: AccountDeletionRequest | null;
-  onSaveProfile: (updates: {
-    displayName: string;
-    department: string;
-    grade: number;
-    interests: string[];
-    currentActivities: string;
-    wantToTry: string;
-    profileImageFile: File | null;
-  }) => Promise<void>;
+  onSaveProfile: (
+    updates: {
+      displayName: string;
+      department: string;
+      grade: number;
+      interests: string[];
+      currentActivities: string;
+      wantToTry: string;
+      profileImageFile: File | null;
+    },
+    onImageUploadProgress?: (progress: number) => void,
+  ) => Promise<void>;
   onSaveNotificationPreferences: (
     updates: Partial<Omit<NotificationPreferences, "userId">>,
   ) => Promise<void>;
@@ -101,6 +107,9 @@ export function ProfileTab({
     useState(false);
   const [profileImageInputKey, setProfileImageInputKey] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(
+    null,
+  );
   const [profileMessage, profileMessageTone, setProfileMessage] =
     useNoticeState();
   const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(
@@ -166,17 +175,21 @@ export function ProfileTab({
       .filter(Boolean)
       .slice(0, 5);
     setIsSaving(true);
+    setImageUploadProgress(profileImageFile ? 0 : null);
     setProfileMessage("");
     try {
-      await onSaveProfile({
-        displayName: displayName.trim().slice(0, 60) || "名前未設定",
-        department: department.trim().slice(0, 80),
-        grade: Math.max(0, Math.min(6, grade)),
-        interests,
-        currentActivities: currentActivities.trim().slice(0, 240),
-        wantToTry: wantToTry.trim().slice(0, 240),
-        profileImageFile,
-      });
+      await onSaveProfile(
+        {
+          displayName: displayName.trim().slice(0, 60) || "名前未設定",
+          department: department.trim().slice(0, 80),
+          grade: Math.max(0, Math.min(6, grade)),
+          interests,
+          currentActivities: currentActivities.trim().slice(0, 240),
+          wantToTry: wantToTry.trim().slice(0, 240),
+          profileImageFile,
+        },
+        setImageUploadProgress,
+      );
       revokeObjectUrl(profileImagePreview);
       setProfileImageFile(null);
       setProfileImagePreview(null);
@@ -186,6 +199,7 @@ export function ProfileTab({
       setProfileMessage(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsSaving(false);
+      setImageUploadProgress(null);
     }
   };
 
@@ -294,7 +308,7 @@ export function ProfileTab({
                   const file = event.target.files?.[0];
                   if (!file) return;
                   try {
-                    validateImageFile(file, "プロフィール画像");
+                    validateImageSourceFile(file, "プロフィール画像");
                     revokeObjectUrl(profileImagePreview);
                     setProfileImageFile(file);
                     setProfileImagePreview(URL.createObjectURL(file));
@@ -306,9 +320,20 @@ export function ProfileTab({
                   }
                 }}
               />
-              <small>JPEG・PNG・WebP / 5MB未満</small>
+              <small>JPEG・PNG・WebP / 20MB未満（保存時に自動圧縮）</small>
             </div>
           </Field>
+          {isSaving && imageUploadProgress !== null && (
+            <div className="image-upload-progress" role="status">
+              <span>プロフィール画像を送信中</span>
+              <strong>{imageUploadProgress}%</strong>
+              <progress
+                max={100}
+                value={imageUploadProgress}
+                aria-label="プロフィール画像の送信進捗"
+              />
+            </div>
+          )}
           <Field label="表示名">
             <input
               value={displayName}

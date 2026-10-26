@@ -1058,6 +1058,41 @@
   font-size: 12px;
   line-height: 1.7;
 }
+.image-upload-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #cfe0f5;
+  border-radius: 12px;
+  background: #f5f9ff;
+  color: #405b78;
+  font-size: 12px;
+  font-weight: 800;
+}
+.image-upload-progress strong {
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+.image-upload-progress progress {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  accent-color: var(--brand);
+}
+.image-upload-progress progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: #dce9f8;
+}
+.image-upload-progress progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--brand);
+}
 .image-review-actions {
   display: flex;
   justify-content: end;

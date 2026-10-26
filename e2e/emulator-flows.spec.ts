@@ -578,6 +578,9 @@ test.describe("emulator-backed role flows", () => {
       )
       .toBe(false);
     await expect(page.getByLabel("初心者歓迎度")).toHaveValue("誰でも歓迎");
+    await expect(
+      page.getByText("JPEG・PNG・WebP / 20MB未満（保存時に自動圧縮）"),
+    ).toBeVisible();
     await page.getByLabel("イベント写真").setInputFiles(fixtureImage);
     const cropDialog = page.getByRole("dialog", {
       name: "イベント写真の範囲を調整",
@@ -672,6 +675,9 @@ test.describe("emulator-backed role flows", () => {
       .getByRole("button", { name: "プロフィール" })
       .click();
     await page.locator(".profile-edit-button").click();
+    await expect(
+      page.getByText("JPEG・PNG・WebP / 20MB未満（保存時に自動圧縮）"),
+    ).toBeVisible();
     await page.getByLabel("プロフィール画像").setInputFiles(fixtureImage);
 
     const cropDialog = page.getByRole("dialog", {

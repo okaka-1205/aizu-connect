@@ -34,6 +34,7 @@ export const categories: Filter[] = [
 ];
 
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+export const MAX_IMAGE_SOURCE_SIZE = 20 * 1024 * 1024;
 export const MAX_CHAT_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 export const ATTENDANCE_WINDOW_LEAD_MS = 3 * 60 * 60 * 1000;
 export const acceptedImageTypes = ["image/jpeg", "image/png", "image/webp"];
@@ -58,6 +59,17 @@ export const validateImageFile = (file: ImageLike, label: string) => {
   }
   if (file.size >= MAX_IMAGE_SIZE) {
     throw new Error(`${label}は5MB未満の画像を選択してください。`);
+  }
+};
+
+export const validateImageSourceFile = (file: ImageLike, label: string) => {
+  if (!acceptedImageTypes.includes(file.type)) {
+    throw new Error(`${label}はJPEG、PNG、WebPのいずれかを選択してください。`);
+  }
+  if (file.size >= MAX_IMAGE_SOURCE_SIZE) {
+    throw new Error(
+      `${label}は20MB未満の画像を選択してください。選択後に自動で圧縮します。`,
+    );
   }
 };
 

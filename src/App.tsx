@@ -2433,7 +2433,7 @@ function App() {
             accountDeletionRequest={accountDeletionRequest}
             onRequestAccountDeletion={requestAccountDeletion}
             onCancelAccountDeletion={cancelAccountDeletion}
-            onSaveProfile={async (updates) => {
+            onSaveProfile={async (updates, onImageUploadProgress) => {
               const { profileImageFile, ...profileUpdates } = updates;
               let profileImageUrl = appUser.profileImageUrl;
               if (profileImageFile) {
@@ -2441,6 +2441,7 @@ function App() {
                 profileImageUrl = await uploadImage(
                   profileImageFile,
                   `profile-images/${appUser.uid}/profile-${Date.now()}`,
+                  onImageUploadProgress,
                 );
               }
               const persistedUpdates = {

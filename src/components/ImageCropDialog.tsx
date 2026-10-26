@@ -20,6 +20,7 @@ type ImageCropDialogProps = {
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.1;
+const MAX_OUTPUT_BYTES = 5 * 1024 * 1024 - 1;
 
 const clampZoom = (value: number) =>
   Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(value.toFixed(2))));
@@ -33,7 +34,7 @@ const loadImage = (url: string, alt: string) =>
     image.src = url;
   });
 
-const canvasToBlob = (canvas: HTMLCanvasElement) =>
+const canvasToBlob = (canvas: HTMLCanvasElement, quality: number) =>
   new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (blob) =>
@@ -41,7 +42,7 @@ const canvasToBlob = (canvas: HTMLCanvasElement) =>
           ? resolve(blob)
           : reject(new Error("切り抜いた画像を作成できませんでした。")),
       "image/webp",
-      0.9,
+      quality,
     );
   });
 
@@ -74,7 +75,16 @@ const cropImage = async (
     canvas.width,
     canvas.height,
   );
-  const blob = await canvasToBlob(canvas);
+  let blob: Blob | null = null;
+  for (const quality of [0.9, 0.82, 0.74, 0.66, 0.58]) {
+    blob = await canvasToBlob(canvas, quality);
+    if (blob.size <= MAX_OUTPUT_BYTES) break;
+  }
+  if (!blob || blob.size > MAX_OUTPUT_BYTES) {
+    throw new Error(
+      "写真を5MB未満へ圧縮できませんでした。別の写真を選んでください。",
+    );
+  }
   const extension = blob.type === "image/webp" ? "webp" : "png";
   const baseName =
     sourceFile.name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_") ||
