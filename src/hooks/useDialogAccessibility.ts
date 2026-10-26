@@ -42,8 +42,16 @@ export function useDialogAccessibility<T extends HTMLElement>(
     });
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      const openDialogs = Array.from(
+        document.querySelectorAll<HTMLElement>('[aria-modal="true"]'),
+      );
+      const isTopmostDialog =
+        dialogRef.current && openDialogs.at(-1) === dialogRef.current;
+      if (!isTopmostDialog) return;
+
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         onCloseRef.current();
         return;
       }
@@ -74,10 +82,10 @@ export function useDialogAccessibility<T extends HTMLElement>(
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown, true);
     return () => {
       window.cancelAnimationFrame(focusDialog);
-      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown, true);
       document.body.style.overflow = previousOverflow;
       const canRestorePreviousFocus =
         previouslyFocused &&
