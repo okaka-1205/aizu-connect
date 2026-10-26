@@ -1,4 +1,4 @@
-import { Check, Loader2, X } from "lucide-react";
+import { Check, Loader2, Minus, Move, Plus, RotateCcw, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import Cropper, { type Area } from "react-easy-crop";
@@ -16,6 +16,13 @@ type ImageCropDialogProps = {
   onCancel: () => void;
   onConfirm: (file: File, previewUrl: string) => void;
 };
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 3;
+const ZOOM_STEP = 0.1;
+
+const clampZoom = (value: number) =>
+  Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(value.toFixed(2))));
 
 const loadImage = (url: string, alt: string) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
@@ -99,6 +106,12 @@ export function ImageCropDialog({
     (_area: Area, areaPixels: Area) => setCroppedArea(areaPixels),
     [],
   );
+  const changeZoom = (amount: number) =>
+    setZoom((current) => clampZoom(current + amount));
+  const resetCrop = () => {
+    setCrop({ x: 0, y: 0 });
+    setZoom(MIN_ZOOM);
+  };
 
   const confirmCrop = async () => {
     if (!croppedArea || isProcessing) return;
@@ -157,25 +170,62 @@ export function ImageCropDialog({
             aspect={aspect}
             cropShape={circular ? "round" : "rect"}
             showGrid={!circular}
+            zoomWithScroll={false}
             onCropChange={setCrop}
             onZoomChange={setZoom}
             onCropComplete={onCropComplete}
           />
+          <span className="image-crop-move-hint" aria-hidden="true">
+            <Move size={15} />
+            ドラッグで移動
+          </span>
         </div>
-        <label className="image-crop-zoom">
-          <span>拡大</span>
-          <input
-            type="range"
-            min={1}
-            max={3}
-            step={0.01}
-            value={zoom}
-            aria-label="画像の拡大率"
-            onChange={(event) => setZoom(Number(event.target.value))}
-          />
-        </label>
+        <div className="image-crop-controls">
+          <button
+            className="image-crop-step-button"
+            type="button"
+            aria-label="画像を縮小"
+            title="縮小"
+            disabled={zoom <= MIN_ZOOM}
+            onClick={() => changeZoom(-ZOOM_STEP)}
+          >
+            <Minus size={18} />
+          </button>
+          <label className="image-crop-zoom">
+            <span>
+              拡大率 <output>{Math.round(zoom * 100)}%</output>
+            </span>
+            <input
+              type="range"
+              min={MIN_ZOOM}
+              max={MAX_ZOOM}
+              step={0.01}
+              value={zoom}
+              aria-label="画像の拡大率"
+              onChange={(event) => setZoom(Number(event.target.value))}
+            />
+          </label>
+          <button
+            className="image-crop-step-button"
+            type="button"
+            aria-label="画像を拡大"
+            title="拡大"
+            disabled={zoom >= MAX_ZOOM}
+            onClick={() => changeZoom(ZOOM_STEP)}
+          >
+            <Plus size={18} />
+          </button>
+          <button
+            className="image-crop-reset-button"
+            type="button"
+            onClick={resetCrop}
+          >
+            <RotateCcw size={16} />
+            中央に戻す
+          </button>
+        </div>
         <p className="image-review-help">
-          画像を動かして、使用する範囲を枠の内側に合わせてください。
+          写真をドラッグして位置を調整してください。スマホでは2本指でも拡大・縮小できます。
         </p>
         {errorMessage && (
           <div className="form-message" role="alert">
