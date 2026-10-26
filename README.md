@@ -100,9 +100,14 @@ Aizu Connectは、会津で新しい活動へ参加する際の「情報を見�
 
 ## 開発環境
 
-Node.js 24を使用します（`.nvmrc`対応環境では`nvm use`で切り替え）。
+Node.js 24を使用します。`npm run dev`、`npm run release:check`、Firebase関連のnpmスクリプトは
+`scripts/run-with-node24.sh`が`.nvmrc`を確認し、Homebrewの`node@24`があれば自動的に切り替えます。
+端末全体の既定Node.jsは変更しません。
 
 ```bash
+# 実際に使用されるNode.jsを確認（v24.xを表示）
+npm run runtime:check
+
 npm install
 npm run dev
 ```
@@ -278,7 +283,7 @@ Functions側だけを有効化すると管理者操作が拒否されるため�
 npm run release:check
 
 # 変更した対象だけを選んで公開する例
-npx -y firebase-tools@latest deploy --project aizu-connect-prod --only hosting
+./scripts/run-with-node24.sh npx -y firebase-tools@latest deploy --project aizu-connect-prod --only hosting
 ```
 
 Functions、Firestore Rules・Indexes、Storage Rulesを変更した場合は、影響範囲のテスト後に必要な対象だけを`--only`へ追加します。変更していないサービスをまとめて再デプロイしないでください。
