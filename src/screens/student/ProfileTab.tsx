@@ -103,6 +103,11 @@ export function ProfileTab({
   const [profileImagePreview, setProfileImagePreview] = useState<string | null>(
     appUser.profileImageUrl ?? null,
   );
+  const [profileImageSourceFile, setProfileImageSourceFile] =
+    useState<File | null>(null);
+  const [profileImageSourcePreview, setProfileImageSourcePreview] = useState<
+    string | null
+  >(null);
   const [isProfileImageReviewOpen, setIsProfileImageReviewOpen] =
     useState(false);
   const [profileImageInputKey, setProfileImageInputKey] = useState(0);
@@ -137,6 +142,7 @@ export function ProfileTab({
 
   const startEditing = () => {
     revokeObjectUrl(profileImagePreview);
+    revokeObjectUrl(profileImageSourcePreview);
     setDisplayName(appUser.displayName);
     setDepartment(appUser.department);
     setGrade(appUser.grade);
@@ -145,6 +151,8 @@ export function ProfileTab({
     setWantToTry(appUser.wantToTry ?? "");
     setProfileImageFile(null);
     setProfileImagePreview(appUser.profileImageUrl ?? null);
+    setProfileImageSourceFile(null);
+    setProfileImageSourcePreview(null);
     setIsProfileImageReviewOpen(false);
     setProfileMessage("");
     setIsEditing(true);
@@ -152,8 +160,11 @@ export function ProfileTab({
 
   const cancelEditing = () => {
     revokeObjectUrl(profileImagePreview);
+    revokeObjectUrl(profileImageSourcePreview);
     setProfileImageFile(null);
     setProfileImagePreview(appUser.profileImageUrl ?? null);
+    setProfileImageSourceFile(null);
+    setProfileImageSourcePreview(null);
     setIsProfileImageReviewOpen(false);
     setIsEditing(false);
   };
@@ -191,8 +202,11 @@ export function ProfileTab({
         setImageUploadProgress,
       );
       revokeObjectUrl(profileImagePreview);
+      revokeObjectUrl(profileImageSourcePreview);
       setProfileImageFile(null);
       setProfileImagePreview(null);
+      setProfileImageSourceFile(null);
+      setProfileImageSourcePreview(null);
       setIsEditing(false);
       setProfileMessage("プロフィールを更新しました。", "success");
     } catch (error) {
@@ -288,7 +302,12 @@ export function ProfileTab({
               </button>
             </div>
           </div>
-          <Field label="プロフィール画像">
+          <div
+            className="field"
+            role="group"
+            aria-labelledby="profile-image-field-label"
+          >
+            <span id="profile-image-field-label">プロフィール画像</span>
             <div className="image-picker">
               <div className="profile-image-preview">
                 {profileImagePreview ? (
@@ -300,9 +319,19 @@ export function ProfileTab({
                   <CircleUserRound size={27} />
                 )}
               </div>
+              {profileImageFile && profileImageSourceFile && (
+                <button
+                  className="image-recrop-button"
+                  type="button"
+                  onClick={() => setIsProfileImageReviewOpen(true)}
+                >
+                  元の写真から再調整
+                </button>
+              )}
               <input
                 key={profileImageInputKey}
                 type="file"
+                aria-label="プロフィール画像"
                 accept="image/jpeg,image/png,image/webp"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
@@ -310,8 +339,12 @@ export function ProfileTab({
                   try {
                     validateImageSourceFile(file, "プロフィール画像");
                     revokeObjectUrl(profileImagePreview);
-                    setProfileImageFile(file);
-                    setProfileImagePreview(URL.createObjectURL(file));
+                    revokeObjectUrl(profileImageSourcePreview);
+                    const sourcePreview = URL.createObjectURL(file);
+                    setProfileImageSourceFile(file);
+                    setProfileImageSourcePreview(sourcePreview);
+                    setProfileImageFile(null);
+                    setProfileImagePreview(sourcePreview);
                     setProfileMessage("");
                     setIsProfileImageReviewOpen(true);
                   } catch (error) {
@@ -322,7 +355,7 @@ export function ProfileTab({
               />
               <small>JPEG・PNG・WebP / 20MB未満（保存時に自動圧縮）</small>
             </div>
-          </Field>
+          </div>
           {isSaving && imageUploadProgress !== null && (
             <div className="image-upload-progress" role="status">
               <span>プロフィール画像を送信中</span>
@@ -384,24 +417,31 @@ export function ProfileTab({
           </Field>
         </form>
       )}
-      {isProfileImageReviewOpen && profileImagePreview && profileImageFile && (
+      {isProfileImageReviewOpen &&
+        profileImageSourcePreview &&
+        profileImageSourceFile && (
         <ImageCropDialog
           title="プロフィール画像の範囲を調整"
-          imageUrl={profileImagePreview}
-          imageFile={profileImageFile}
+          imageUrl={profileImageSourcePreview}
+          imageFile={profileImageSourceFile}
           alt="プロフィール画像の確認用プレビュー"
           aspect={1}
           circular
           maxOutputWidth={1024}
           onCancel={() => {
-            revokeObjectUrl(profileImagePreview);
             setIsProfileImageReviewOpen(false);
-            setProfileImageFile(null);
-            setProfileImagePreview(appUser.profileImageUrl ?? null);
-            setProfileImageInputKey((current) => current + 1);
+            if (!profileImageFile) {
+              revokeObjectUrl(profileImageSourcePreview);
+              setProfileImageSourceFile(null);
+              setProfileImageSourcePreview(null);
+              setProfileImagePreview(appUser.profileImageUrl ?? null);
+              setProfileImageInputKey((current) => current + 1);
+            }
           }}
           onConfirm={(file, previewUrl) => {
-            revokeObjectUrl(profileImagePreview);
+            if (profileImagePreview !== profileImageSourcePreview) {
+              revokeObjectUrl(profileImagePreview);
+            }
             setProfileImageFile(file);
             setProfileImagePreview(previewUrl);
             setIsProfileImageReviewOpen(false);

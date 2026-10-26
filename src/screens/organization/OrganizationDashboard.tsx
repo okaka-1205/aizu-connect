@@ -200,6 +200,11 @@ export function OrganizationDashboard({
   const [eventImagePreview, setEventImagePreview] = useState<string | null>(
     eventTemplates[0].imageUrl,
   );
+  const [eventImageSourceFile, setEventImageSourceFile] =
+    useState<File | null>(null);
+  const [eventImageSourcePreview, setEventImageSourcePreview] = useState<
+    string | null
+  >(null);
   const [isEventImageReviewOpen, setIsEventImageReviewOpen] = useState(false);
   const [isEventPreviewOpen, setIsEventPreviewOpen] = useState(false);
   const [eventImageInputKey, setEventImageInputKey] = useState(0);
@@ -354,6 +359,7 @@ export function OrganizationDashboard({
   const beginEditEvent = (event: AizuEvent) => {
     showOrganizationView("create");
     revokeObjectUrl(eventImagePreview);
+    revokeObjectUrl(eventImageSourcePreview);
     setEventFormStep(1);
     setEditingEventId(event.id);
     setTitle(event.title);
@@ -404,6 +410,8 @@ export function OrganizationDashboard({
     setCancellationDeadlineInput(toDateTimeInput(event.cancellationDeadline));
     setEventImageFile(null);
     setEventImagePreview(event.imageUrl);
+    setEventImageSourceFile(null);
+    setEventImageSourcePreview(null);
     setIsEventImageReviewOpen(false);
     setNotice(
       event.status === "published"
@@ -415,6 +423,7 @@ export function OrganizationDashboard({
 
   const clearEventForm = () => {
     revokeObjectUrl(eventImagePreview);
+    revokeObjectUrl(eventImageSourcePreview);
     setEventFormStep(1);
     setEditingEventId(null);
     setTitle("");
@@ -454,6 +463,8 @@ export function OrganizationDashboard({
     setCancellationDeadlineInput("");
     setEventImageFile(null);
     setEventImagePreview(eventTemplates[0].imageUrl);
+    setEventImageSourceFile(null);
+    setEventImageSourcePreview(null);
     setIsEventImageReviewOpen(false);
   };
 
@@ -943,11 +954,14 @@ export function OrganizationDashboard({
 
   const applyTemplate = (template: (typeof eventTemplates)[number]) => {
     revokeObjectUrl(eventImagePreview);
+    revokeObjectUrl(eventImageSourcePreview);
     setTemplateKey(template.key);
     setCategory(template.category);
     setBeginnerLevel(template.beginnerLevel);
     setEventImageFile(null);
     setEventImagePreview(template.imageUrl);
+    setEventImageSourceFile(null);
+    setEventImageSourcePreview(null);
     setNotice(
       "テンプレートの例文を表示しました。入力した内容だけが保存されます。",
       "info",
@@ -1696,7 +1710,12 @@ export function OrganizationDashboard({
                         <option>少し経験者向け</option>
                       </select>
                     </Field>
-                    <Field label="イベント写真">
+                    <div
+                      className="field"
+                      role="group"
+                      aria-labelledby="event-image-field-label"
+                    >
+                      <span id="event-image-field-label">イベント写真</span>
                       <div className="image-picker event-image-picker">
                         <div className="event-image-preview">
                           {eventImagePreview ? (
@@ -1708,9 +1727,19 @@ export function OrganizationDashboard({
                             <span>活動の様子が伝わる写真を選択</span>
                           )}
                         </div>
+                        {eventImageFile && eventImageSourceFile && (
+                          <button
+                            className="image-recrop-button"
+                            type="button"
+                            onClick={() => setIsEventImageReviewOpen(true)}
+                          >
+                            元の写真から再調整
+                          </button>
+                        )}
                         <input
                           key={eventImageInputKey}
                           type="file"
+                          aria-label="イベント写真"
                           accept="image/jpeg,image/png,image/webp"
                           onChange={(event) => {
                             const file = event.target.files?.[0];
@@ -1718,8 +1747,12 @@ export function OrganizationDashboard({
                             try {
                               validateImageSourceFile(file, "イベント画像");
                               revokeObjectUrl(eventImagePreview);
-                              setEventImageFile(file);
-                              setEventImagePreview(URL.createObjectURL(file));
+                              revokeObjectUrl(eventImageSourcePreview);
+                              const sourcePreview = URL.createObjectURL(file);
+                              setEventImageSourceFile(file);
+                              setEventImageSourcePreview(sourcePreview);
+                              setEventImageFile(null);
+                              setEventImagePreview(sourcePreview);
                               setNotice("");
                               setIsEventImageReviewOpen(true);
                             } catch (error) {
@@ -1735,7 +1768,7 @@ export function OrganizationDashboard({
                           JPEG・PNG・WebP / 20MB未満（保存時に自動圧縮）
                         </small>
                       </div>
-                    </Field>
+                    </div>
                     <button
                       className="secondary-action event-form-next"
                       type="button"
@@ -2309,28 +2342,35 @@ export function OrganizationDashboard({
           )}
         </div>
       )}
-      {isEventImageReviewOpen && eventImagePreview && eventImageFile && (
+      {isEventImageReviewOpen &&
+        eventImageSourcePreview &&
+        eventImageSourceFile && (
         <ImageCropDialog
           title="イベント写真の範囲を調整"
-          imageUrl={eventImagePreview}
-          imageFile={eventImageFile}
+          imageUrl={eventImageSourcePreview}
+          imageFile={eventImageSourceFile}
           alt="イベント写真の確認用プレビュー"
           aspect={16 / 9}
           maxOutputWidth={1920}
           onCancel={() => {
-            revokeObjectUrl(eventImagePreview);
             setIsEventImageReviewOpen(false);
-            setEventImageFile(null);
-            setEventImagePreview(
-              editingEventId
-                ? (events.find((item) => item.id === editingEventId)
-                    ?.imageUrl ?? null)
-                : selectedTemplate.imageUrl,
-            );
-            setEventImageInputKey((current) => current + 1);
+            if (!eventImageFile) {
+              revokeObjectUrl(eventImageSourcePreview);
+              setEventImageSourceFile(null);
+              setEventImageSourcePreview(null);
+              setEventImagePreview(
+                editingEventId
+                  ? (events.find((item) => item.id === editingEventId)
+                      ?.imageUrl ?? null)
+                  : selectedTemplate.imageUrl,
+              );
+              setEventImageInputKey((current) => current + 1);
+            }
           }}
           onConfirm={(file, previewUrl) => {
-            revokeObjectUrl(eventImagePreview);
+            if (eventImagePreview !== eventImageSourcePreview) {
+              revokeObjectUrl(eventImagePreview);
+            }
             setEventImageFile(file);
             setEventImagePreview(previewUrl);
             setIsEventImageReviewOpen(false);
