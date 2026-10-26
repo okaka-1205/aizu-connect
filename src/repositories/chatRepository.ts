@@ -16,9 +16,41 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import type { ChatMessage, ChatReadReceipt, ChatRoom } from "../types/domain";
+import type {
+  ChatMessage,
+  ChatPreference,
+  ChatReadReceipt,
+  ChatRoom,
+} from "../types/domain";
 
 export const CHAT_ROOM_PAGE_SIZE = 50;
+
+export const loadChatPreferencesForRooms = async (
+  userId: string,
+  roomIds: string[],
+) => {
+  const uniqueRoomIds = Array.from(new Set(roomIds));
+  const chunks = Array.from(
+    { length: Math.ceil(uniqueRoomIds.length / 30) },
+    (_, index) => uniqueRoomIds.slice(index * 30, index * 30 + 30),
+  );
+  const snapshots = await Promise.all(
+    chunks.map((ids) =>
+      getDocs(
+        query(
+          collection(db, "chatPreferences"),
+          where("userId", "==", userId),
+          where("roomId", "in", ids),
+        ),
+      ),
+    ),
+  );
+  return snapshots.flatMap((snapshot) =>
+    snapshot.docs.map(
+      (preferenceDocument) => preferenceDocument.data() as ChatPreference,
+    ),
+  );
+};
 
 const mergeRooms = (roomLimit: number, ...roomGroups: ChatRoom[][]) =>
   Array.from(
@@ -94,7 +126,8 @@ export const subscribeChatRoomsForUser = (
   let legacyRooms: ChatRoom[] = [];
   let membershipHasMore = false;
   let legacyHasMore = false;
-  let roomUnsubscribers: Array<() => void> = [];
+  const membershipRoomsById = new Map<string, ChatRoom>();
+  const roomUnsubscribers = new Map<string, () => void>();
   const emitRooms = () =>
     onValue(
       mergeRooms(roomLimit, membershipRooms, legacyRooms),
@@ -125,41 +158,48 @@ export const subscribeChatRoomsForUser = (
     ),
     (snapshot) => {
       membershipHasMore = snapshot.size > roomLimit;
-      roomUnsubscribers.forEach((unsubscribe) => unsubscribe());
-      roomUnsubscribers = [];
-      const roomsById = new Map<string, ChatRoom>();
-      const roomRefs = Array.from(
-        new Map(
-          snapshot.docs
-            .slice(0, roomLimit)
-            .map((member) => member.ref.parent.parent)
-            .filter(
-              (roomRef): roomRef is NonNullable<typeof roomRef> =>
-                roomRef !== null,
-            )
-            .map((roomRef) => [roomRef.id, roomRef] as const),
-        ).values(),
+      const roomRefsById = new Map(
+        snapshot.docs
+          .slice(0, roomLimit)
+          .map((member) => member.ref.parent.parent)
+          .filter(
+            (roomRef): roomRef is NonNullable<typeof roomRef> =>
+              roomRef !== null,
+          )
+          .map((roomRef) => [roomRef.id, roomRef] as const),
       );
-      membershipRooms = [];
+
+      roomUnsubscribers.forEach((unsubscribe, roomId) => {
+        if (roomRefsById.has(roomId)) return;
+        unsubscribe();
+        roomUnsubscribers.delete(roomId);
+        membershipRoomsById.delete(roomId);
+      });
+      membershipRooms = Array.from(membershipRoomsById.values());
       emitRooms();
-      roomUnsubscribers = roomRefs.map((roomRef) =>
-        onSnapshot(
-          roomRef,
-          (roomSnapshot) => {
-            if (roomSnapshot.exists()) {
-              roomsById.set(roomSnapshot.id, {
-                id: roomSnapshot.id,
-                ...roomSnapshot.data(),
-              } as ChatRoom);
-            } else {
-              roomsById.delete(roomSnapshot.id);
-            }
-            membershipRooms = Array.from(roomsById.values());
-            emitRooms();
-          },
-          onError,
-        ),
-      );
+
+      roomRefsById.forEach((roomRef, roomId) => {
+        if (roomUnsubscribers.has(roomId)) return;
+        roomUnsubscribers.set(
+          roomId,
+          onSnapshot(
+            roomRef,
+            (roomSnapshot) => {
+              if (roomSnapshot.exists()) {
+                membershipRoomsById.set(roomSnapshot.id, {
+                  id: roomSnapshot.id,
+                  ...roomSnapshot.data(),
+                } as ChatRoom);
+              } else {
+                membershipRoomsById.delete(roomSnapshot.id);
+              }
+              membershipRooms = Array.from(membershipRoomsById.values());
+              emitRooms();
+            },
+            onError,
+          ),
+        );
+      });
     },
     onError,
   );
@@ -168,6 +208,7 @@ export const subscribeChatRoomsForUser = (
     unsubscribeMemberships();
     unsubscribeLegacyRooms();
     roomUnsubscribers.forEach((unsubscribe) => unsubscribe());
+    roomUnsubscribers.clear();
   };
 };
 

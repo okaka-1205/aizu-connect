@@ -19,7 +19,6 @@ import { fetchPublishedEventPage } from "./eventsRepository";
 import type {
   ActivityRecord,
   AizuEvent,
-  ChatPreference,
   EventApplication,
   NotificationItem,
   NotificationPreferences,
@@ -54,40 +53,99 @@ export const subscribeStudentApplications = (
   );
 };
 
+export const SAVED_EVENT_PAGE_SIZE = 30;
+export const SAVED_SEARCH_PAGE_SIZE = 20;
+
+const loadPublishedEventsByIds = async (eventIds: string[]) => {
+  const eventIdChunks = Array.from(
+    { length: Math.ceil(eventIds.length / 30) },
+    (_, index) => eventIds.slice(index * 30, index * 30 + 30),
+  );
+  const snapshots = await Promise.all(
+    eventIdChunks.map((ids) =>
+      getDocs(
+        query(
+          collection(db, "events"),
+          where(documentId(), "in", ids),
+          where("status", "==", "published"),
+        ),
+      ).catch(() => null),
+    ),
+  );
+  const eventsById = new Map(
+    snapshots.flatMap((snapshot) =>
+      snapshot
+        ? snapshot.docs.map(
+            (eventDocument) =>
+              [
+                eventDocument.id,
+                { id: eventDocument.id, ...eventDocument.data() } as AizuEvent,
+              ] as const,
+          )
+        : [],
+    ),
+  );
+  return eventIds
+    .map((eventId) => eventsById.get(eventId))
+    .filter((event): event is AizuEvent => Boolean(event));
+};
+
+export const loadStudentSavedEvents = async (
+  userId: string,
+  queryLimit = SAVED_EVENT_PAGE_SIZE,
+) => {
+  const snapshot = await getDocs(
+    query(
+      collection(db, "savedEvents"),
+      where("userId", "==", userId),
+      orderBy("createdAt", "desc"),
+      limit(queryLimit + 1),
+    ),
+  );
+  const documents = snapshot.docs.slice(0, queryLimit);
+  const ids = documents.map(
+    (savedDocument) => savedDocument.data().eventId as string,
+  );
+  return {
+    ids,
+    events: await loadPublishedEventsByIds(ids),
+    hasMore: snapshot.size > queryLimit,
+  };
+};
+
+export const loadStudentSavedSearches = async (
+  userId: string,
+  queryLimit = SAVED_SEARCH_PAGE_SIZE,
+) => {
+  const snapshot = await getDocs(
+    query(
+      collection(db, "savedSearches"),
+      where("userId", "==", userId),
+      orderBy("updatedAt", "desc"),
+      limit(queryLimit + 1),
+    ),
+  );
+  return {
+    items: snapshot.docs.slice(0, queryLimit).map((searchDocument) => ({
+      id: searchDocument.id,
+      ...searchDocument.data(),
+    })) as SavedSearch[],
+    hasMore: snapshot.size > queryLimit,
+  };
+};
+
 export const loadStudentDashboardData = async (userId: string) => {
   const [
     eventPage,
-    chatPreferenceSnapshot,
-    savedSnapshot,
-    savedOrganizerSnapshot,
+    savedEventPage,
     notificationSnapshot,
     activitySnapshot,
     preferenceSnapshot,
-    savedSearchSnapshot,
+    savedSearchPage,
     unreadNotificationCountSnapshot,
   ] = await Promise.all([
     fetchPublishedEventPage(null),
-    getDocs(
-      query(
-        collection(db, "chatPreferences"),
-        where("userId", "==", userId),
-        orderBy("updatedAt", "desc"),
-      ),
-    ),
-    getDocs(
-      query(
-        collection(db, "savedEvents"),
-        where("userId", "==", userId),
-        orderBy("createdAt", "desc"),
-      ),
-    ),
-    getDocs(
-      query(
-        collection(db, "savedOrganizers"),
-        where("userId", "==", userId),
-        orderBy("createdAt", "desc"),
-      ),
-    ),
+    loadStudentSavedEvents(userId),
     getDocs(
       query(
         collection(db, "notifications"),
@@ -105,13 +163,7 @@ export const loadStudentDashboardData = async (userId: string) => {
       ),
     ),
     getDoc(doc(db, "notificationPreferences", userId)),
-    getDocs(
-      query(
-        collection(db, "savedSearches"),
-        where("userId", "==", userId),
-        orderBy("updatedAt", "desc"),
-      ),
-    ),
+    loadStudentSavedSearches(userId),
     getCountFromServer(
       query(
         collection(db, "notifications"),
@@ -120,44 +172,6 @@ export const loadStudentDashboardData = async (userId: string) => {
       ),
     ),
   ]);
-
-  const savedEventIds = savedSnapshot.docs.map(
-    (savedDocument) => savedDocument.data().eventId as string,
-  );
-  const savedEventIdChunks = Array.from(
-    { length: Math.ceil(savedEventIds.length / 30) },
-    (_, index) => savedEventIds.slice(index * 30, index * 30 + 30),
-  );
-  const savedEventSnapshots = await Promise.all(
-    savedEventIdChunks.map((eventIds) =>
-      getDocs(
-        query(
-          collection(db, "events"),
-          where(documentId(), "in", eventIds),
-          where("status", "==", "published"),
-        ),
-      ).catch(() => null),
-    ),
-  );
-  const savedEventsById = new Map(
-    savedEventSnapshots.flatMap((snapshot) =>
-      snapshot
-        ? snapshot.docs.map(
-            (eventDocument) =>
-              [
-                eventDocument.id,
-                {
-                  id: eventDocument.id,
-                  ...eventDocument.data(),
-                } as AizuEvent,
-              ] as const,
-          )
-        : [],
-    ),
-  );
-  const savedEvents = savedEventIds
-    .map((eventId) => savedEventsById.get(eventId))
-    .filter((event): event is AizuEvent => Boolean(event));
 
   const notifications = notificationSnapshot.docs
     .slice(0, 30)
@@ -173,14 +187,9 @@ export const loadStudentDashboardData = async (userId: string) => {
 
   return {
     eventPage,
-    chatPreferences: chatPreferenceSnapshot.docs.map(
-      (preferenceDoc) => preferenceDoc.data() as ChatPreference,
-    ),
-    savedEventIds,
-    savedEvents,
-    savedOrganizerIds: savedOrganizerSnapshot.docs.map(
-      (savedDocument) => savedDocument.data().organizationId as string,
-    ),
+    savedEventIds: savedEventPage.ids,
+    savedEvents: savedEventPage.events,
+    hasMoreSavedEvents: savedEventPage.hasMore,
     notifications,
     activities: activitySnapshot.docs.slice(0, 50).map((activityDoc) => ({
       id: activityDoc.id,
@@ -191,16 +200,9 @@ export const loadStudentDashboardData = async (userId: string) => {
       ...(preferenceSnapshot.exists() ? preferenceSnapshot.data() : {}),
       userId,
     } as NotificationPreferences,
-    savedSearch: !savedSearchSnapshot.empty
-      ? ({
-          id: savedSearchSnapshot.docs[0].id,
-          ...savedSearchSnapshot.docs[0].data(),
-        } as SavedSearch)
-      : null,
-    savedSearches: savedSearchSnapshot.docs.map((searchDocument) => ({
-      id: searchDocument.id,
-      ...searchDocument.data(),
-    })) as SavedSearch[],
+    savedSearch: savedSearchPage.items[0] ?? null,
+    savedSearches: savedSearchPage.items,
+    hasMoreSavedSearches: savedSearchPage.hasMore,
     unreadNotificationCount: unreadNotificationCountSnapshot.data().count,
     hasMoreNotifications: notificationSnapshot.size > 30,
     hasMoreActivities: activitySnapshot.size > 50,

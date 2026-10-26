@@ -69,7 +69,10 @@ import {
 } from "../../lib/eventUtils";
 import { db, functions } from "../../lib/firebase";
 import { uploadImage } from "../../lib/storage";
-import { subscribeChatRoomsForUser } from "../../repositories/chatRepository";
+import {
+  loadChatPreferencesForRooms,
+  subscribeChatRoomsForUser,
+} from "../../repositories/chatRepository";
 import {
   deleteChatMessage,
   editChatMessage,
@@ -212,6 +215,10 @@ export function OrganizationDashboard({
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState("");
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
+  const chatRoomIdsKey = useMemo(
+    () => chatRooms.map((room) => room.id).sort().join("\n"),
+    [chatRooms],
+  );
   const {
     chatMessages,
     hasOlderChatMessages,
@@ -777,21 +784,19 @@ export function OrganizationDashboard({
   );
 
   useEffect(() => {
-    const preferencesQuery = query(
-      collection(db, "chatPreferences"),
-      where("userId", "==", appUser.uid),
-    );
-    return onSnapshot(
-      preferencesQuery,
-      (snapshot) =>
-        setChatPreferences(
-          snapshot.docs.map(
-            (preferenceDoc) => preferenceDoc.data() as ChatPreference,
-          ),
-        ),
-      () => setNotice("チャット通知設定を取得できませんでした。", "error"),
-    );
-  }, [appUser.uid, setNotice]);
+    if (!chatRoomIdsKey) {
+      setChatPreferences([]);
+      return;
+    }
+    void loadChatPreferencesForRooms(
+      appUser.uid,
+      chatRoomIdsKey.split("\n"),
+    )
+      .then(setChatPreferences)
+      .catch(() =>
+        setNotice("チャット通知設定を取得できませんでした。", "error"),
+      );
+  }, [appUser.uid, chatRoomIdsKey, setNotice]);
 
   useEffect(() => {
     setSelectedApplicantIds([]);
