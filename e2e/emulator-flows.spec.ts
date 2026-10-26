@@ -595,6 +595,10 @@ test.describe("emulator-backed role flows", () => {
 
     await page.getByLabel("イベント写真").setInputFiles(fixtureImage);
     await expect(cropDialog).toBeVisible();
+    await cropDialog.getByRole("button", { name: "画像を拡大" }).click();
+    await expect(cropDialog.getByLabel("画像の拡大率")).toHaveValue("1.1");
+    await cropDialog.getByRole("button", { name: "中央に戻す" }).click();
+    await expect(cropDialog.getByLabel("画像の拡大率")).toHaveValue("1");
     await cropDialog.getByLabel("画像の拡大率").fill("1.2");
     await cropDialog.getByRole("button", { name: "この範囲を使う" }).click();
     await expect(cropDialog).toBeHidden();
@@ -674,6 +678,11 @@ test.describe("emulator-backed role flows", () => {
       name: "プロフィール画像の範囲を調整",
     });
     await expect(cropDialog).toBeVisible();
+    await expect(
+      cropDialog.getByText("ドラッグで移動", { exact: true }),
+    ).toBeVisible();
+    await cropDialog.getByRole("button", { name: "画像を拡大" }).click();
+    await cropDialog.getByRole("button", { name: "画像を縮小" }).click();
     await cropDialog.getByLabel("画像の拡大率").fill("1.3");
     await cropDialog.getByRole("button", { name: "この範囲を使う" }).click();
     await expect(cropDialog).toBeHidden();

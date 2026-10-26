@@ -1102,6 +1102,12 @@
     min-height: 220px;
     margin-top: 14px;
   }
+  .image-crop-controls {
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+  }
+  .image-crop-reset-button {
+    grid-column: 1 / -1;
+  }
   .image-review-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
