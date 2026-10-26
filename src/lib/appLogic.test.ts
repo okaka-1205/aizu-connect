@@ -20,6 +20,7 @@ import {
   toDateTimeLocalValue,
   validateChatAttachment,
   validateImageFile,
+  validateImageSourceFile,
 } from "./appLogic";
 
 describe("auth helpers", () => {
@@ -260,6 +261,21 @@ describe("image validation", () => {
     expect(() =>
       validateImageFile({ type: "image/png", size: MAX_IMAGE_SIZE }, "画像"),
     ).toThrow("画像は5MB未満の画像を選択してください。");
+  });
+
+  it("accepts larger source photos for automatic compression", () => {
+    expect(() =>
+      validateImageSourceFile(
+        { type: "image/jpeg", size: MAX_IMAGE_SIZE * 3 },
+        "画像",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateImageSourceFile(
+        { type: "image/jpeg", size: 20 * 1024 * 1024 },
+        "画像",
+      ),
+    ).toThrow("20MB未満");
   });
 });
 

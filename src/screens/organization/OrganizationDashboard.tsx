@@ -60,7 +60,7 @@ import {
   toDateTimeInput,
   toDateTimeLocalValue,
   validateChatAttachment,
-  validateImageFile,
+  validateImageSourceFile,
 } from "../../lib/appLogic";
 import {
   preferredScrollBehavior,
@@ -208,6 +208,9 @@ export function OrganizationDashboard({
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [isDraftSaving, setIsDraftSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [eventImageUploadProgress, setEventImageUploadProgress] = useState<
+    number | null
+  >(null);
   const [notice, noticeTone, setNotice] = useNoticeState();
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [chatRoomQueryLimit, setChatRoomQueryLimit] = useState(50);
@@ -1003,6 +1006,7 @@ export function OrganizationDashboard({
       return;
     }
     setIsLoading(true);
+    setEventImageUploadProgress(eventImageFile ? 0 : null);
     setNotice("");
     try {
       const eventId = editingEventId ?? doc(collection(db, "events")).id;
@@ -1019,6 +1023,7 @@ export function OrganizationDashboard({
         ? await uploadImage(
             eventImageFile,
             `event-images/${appUser.uid}/${eventId}/cover-${Date.now()}`,
+          setEventImageUploadProgress,
           )
         : new URL(
             currentEvent?.imageUrl ?? templateImage,
@@ -1108,6 +1113,7 @@ export function OrganizationDashboard({
       setNotice(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsLoading(false);
+      setEventImageUploadProgress(null);
     }
   };
 
@@ -1710,7 +1716,7 @@ export function OrganizationDashboard({
                             const file = event.target.files?.[0];
                             if (!file) return;
                             try {
-                              validateImageFile(file, "イベント画像");
+                              validateImageSourceFile(file, "イベント画像");
                               revokeObjectUrl(eventImagePreview);
                               setEventImageFile(file);
                               setEventImagePreview(URL.createObjectURL(file));
@@ -1725,7 +1731,9 @@ export function OrganizationDashboard({
                             }
                           }}
                         />
-                        <small>JPEG・PNG・WebP / 5MB未満</small>
+                        <small>
+                          JPEG・PNG・WebP / 20MB未満（保存時に自動圧縮）
+                        </small>
                       </div>
                     </Field>
                     <button
@@ -2153,6 +2161,17 @@ export function OrganizationDashboard({
                       {editingEventId ? "変更を審査へ送る" : "企画を申請する"}
                     </button>
                   </div>
+                  {isLoading && eventImageUploadProgress !== null && (
+                    <div className="image-upload-progress" role="status">
+                      <span>イベント画像を送信中</span>
+                      <strong>{eventImageUploadProgress}%</strong>
+                      <progress
+                        max={100}
+                        value={eventImageUploadProgress}
+                        aria-label="イベント画像の送信進捗"
+                      />
+                    </div>
+                  )}
                 </div>
               </form>
             </section>
