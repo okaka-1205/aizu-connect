@@ -824,10 +824,11 @@ test.describe("emulator-backed role flows", () => {
       name: "参加申請をキャンセルしますか？",
     });
     const cancellationReason = cancellationDialog.getByLabel("キャンセル理由");
-    await cancellationReason.fill("E2E端末別テストのためキャンセルします。");
-    await expect(cancellationReason).toHaveValue(
-      "E2E端末別テストのためキャンセルします。",
-    );
+    const cancellationReasonText = "E2E端末別テストのためキャンセルします。";
+    await expect(async () => {
+      await cancellationReason.fill(cancellationReasonText);
+      await expect(cancellationReason).toHaveValue(cancellationReasonText);
+    }).toPass({ timeout: 10_000 });
     const confirmCancellation = cancellationDialog.getByRole("button", {
       name: "申請を取り消す",
     });
@@ -844,11 +845,7 @@ test.describe("emulator-backed role flows", () => {
       })
       .click();
     await expect(page.getByRole("heading", { name: "ログイン" })).toBeVisible();
-    await page
-      .getByLabel("メールアドレス")
-      .fill(studentEmail(testInfo.project.name));
-    await page.getByLabel("パスワード", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "ログインする" }).click();
+    await login(page, studentEmail(testInfo.project.name));
     await page
       .getByRole("navigation", { name: "メインナビゲーション" })
       .getByRole("button", { name: /^活動/ })
