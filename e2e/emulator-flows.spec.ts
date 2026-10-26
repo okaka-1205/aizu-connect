@@ -581,7 +581,11 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByText("JPEG・PNG・WebP / 20MB未満（保存時に自動圧縮）"),
     ).toBeVisible();
-    await page.getByLabel("イベント写真").setInputFiles(fixtureImage);
+    const eventImageInput = page.getByRole("button", {
+      name: "イベント写真",
+      exact: true,
+    });
+    await eventImageInput.setInputFiles(fixtureImage);
     const cropDialog = page.getByRole("dialog", {
       name: "イベント写真の範囲を調整",
     });
@@ -596,13 +600,18 @@ test.describe("emulator-backed role flows", () => {
       /event-learning\.svg(?:\?no-inline)?$/,
     );
 
-    await page.getByLabel("イベント写真").setInputFiles(fixtureImage);
+    await eventImageInput.setInputFiles(fixtureImage);
     await expect(cropDialog).toBeVisible();
     await cropDialog.getByRole("button", { name: "画像を拡大" }).click();
     await expect(cropDialog.getByLabel("画像の拡大率")).toHaveValue("1.1");
     await cropDialog.getByRole("button", { name: "中央に戻す" }).click();
     await expect(cropDialog.getByLabel("画像の拡大率")).toHaveValue("1");
     await cropDialog.getByLabel("画像の拡大率").fill("1.2");
+    await cropDialog.getByRole("button", { name: "この範囲を使う" }).click();
+    await expect(cropDialog).toBeHidden();
+    await page.getByRole("button", { name: "元の写真から再調整" }).click();
+    await expect(cropDialog).toBeVisible();
+    await cropDialog.getByLabel("画像の拡大率").fill("1.1");
     await cropDialog.getByRole("button", { name: "この範囲を使う" }).click();
     await expect(cropDialog).toBeHidden();
     await eventFormProgress
@@ -678,7 +687,9 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByText("JPEG・PNG・WebP / 20MB未満（保存時に自動圧縮）"),
     ).toBeVisible();
-    await page.getByLabel("プロフィール画像").setInputFiles(fixtureImage);
+    await page
+      .getByRole("button", { name: "プロフィール画像", exact: true })
+      .setInputFiles(fixtureImage);
 
     const cropDialog = page.getByRole("dialog", {
       name: "プロフィール画像の範囲を調整",
@@ -690,6 +701,10 @@ test.describe("emulator-backed role flows", () => {
     await cropDialog.getByRole("button", { name: "画像を拡大" }).click();
     await cropDialog.getByRole("button", { name: "画像を縮小" }).click();
     await cropDialog.getByLabel("画像の拡大率").fill("1.3");
+    await cropDialog.getByRole("button", { name: "この範囲を使う" }).click();
+    await expect(cropDialog).toBeHidden();
+    await page.getByRole("button", { name: "元の写真から再調整" }).click();
+    await expect(cropDialog).toBeVisible();
     await cropDialog.getByRole("button", { name: "この範囲を使う" }).click();
     await expect(cropDialog).toBeHidden();
     await page
