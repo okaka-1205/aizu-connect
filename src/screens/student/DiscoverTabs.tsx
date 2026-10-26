@@ -212,6 +212,8 @@ export function SearchTab(props: {
   setSearchView: (value: SearchView) => void;
   savedSearch: SavedSearch | null;
   savedSearches?: SavedSearch[];
+  hasMoreSavedSearches?: boolean;
+  onLoadMoreSavedSearches?: () => void;
   onSaveSearch: () => void;
   onApplySavedSearch: (search?: SavedSearch) => void;
   onDeleteSavedSearch: (search: SavedSearch) => Promise<void>;
@@ -543,6 +545,15 @@ export function SearchTab(props: {
                   <p className="saved-search-empty">一致する保存条件はありません。</p>
                 )}
               </div>
+              {props.hasMoreSavedSearches && props.onLoadMoreSavedSearches && (
+                <button
+                  className="secondary-action"
+                  type="button"
+                  onClick={props.onLoadMoreSavedSearches}
+                >
+                  保存条件をさらに読み込む
+                </button>
+              )}
             </div>
           ) : props.savedSearch ? (
             <button

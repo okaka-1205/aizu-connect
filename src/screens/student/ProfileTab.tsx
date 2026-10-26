@@ -40,6 +40,7 @@ export function ProfileTab({
   activityByMonth,
   savedEventIds,
   events,
+  hasMoreSavedEvents,
   notificationPreferences,
   accountDeletionRequest,
   onSaveProfile,
@@ -49,6 +50,7 @@ export function ProfileTab({
   onOpenActivity,
   onOpenCreatorDashboard,
   onOpenSavedEvent,
+  onLoadMoreSavedEvents,
   onLogout,
 }: {
   appUser: AppUser;
@@ -57,6 +59,7 @@ export function ProfileTab({
   activityByMonth: { month: number; count: number }[];
   savedEventIds: string[];
   events: AizuEvent[];
+  hasMoreSavedEvents: boolean;
   notificationPreferences: NotificationPreferences;
   accountDeletionRequest: AccountDeletionRequest | null;
   onSaveProfile: (updates: {
@@ -76,6 +79,7 @@ export function ProfileTab({
   onOpenActivity: () => void;
   onOpenCreatorDashboard: () => void;
   onOpenSavedEvent: (eventId: string) => void;
+  onLoadMoreSavedEvents: () => void;
   onLogout: () => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -446,6 +450,15 @@ export function ProfileTab({
                 <ChevronRight size={17} />
               </button>
             ))}
+            {hasMoreSavedEvents && (
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={onLoadMoreSavedEvents}
+              >
+                保存したイベントをさらに読み込む
+              </button>
+            )}
           </div>
         )}
       </div>

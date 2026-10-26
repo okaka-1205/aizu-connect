@@ -83,15 +83,22 @@ import {
 } from "./lib/eventUtils";
 import { uploadImage } from "./lib/storage";
 import { fetchPublishedEventPage } from "./repositories/eventsRepository";
-import { subscribeChatRoomsForUser } from "./repositories/chatRepository";
+import {
+  loadChatPreferencesForRooms,
+  subscribeChatRoomsForUser,
+} from "./repositories/chatRepository";
 import {
   deleteChatMessage,
   editChatMessage,
 } from "./repositories/engagementRepository";
 import {
+  SAVED_EVENT_PAGE_SIZE,
+  SAVED_SEARCH_PAGE_SIZE,
   loadStudentActivities,
   loadStudentDashboardData,
   loadStudentNotifications,
+  loadStudentSavedEvents,
+  loadStudentSavedSearches,
   markAllStudentNotificationsRead,
   subscribeStudentApplications,
 } from "./repositories/studentRepository";
@@ -272,8 +279,16 @@ function App() {
   const [onlyBeginnerEvents, setOnlyBeginnerEvents] = useState(false);
   const [savedSearch, setSavedSearch] = useState<SavedSearch | null>(null);
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+  const [savedSearchQueryLimit, setSavedSearchQueryLimit] = useState(
+    SAVED_SEARCH_PAGE_SIZE,
+  );
+  const [hasMoreSavedSearches, setHasMoreSavedSearches] = useState(false);
   const [savedEventIds, setSavedEventIds] = useState<string[]>([]);
   const [savedEvents, setSavedEvents] = useState<AizuEvent[]>([]);
+  const [savedEventQueryLimit, setSavedEventQueryLimit] = useState(
+    SAVED_EVENT_PAGE_SIZE,
+  );
+  const [hasMoreSavedEvents, setHasMoreSavedEvents] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [isAutoActivatingStudent, setIsAutoActivatingStudent] = useState(false);
@@ -294,6 +309,10 @@ function App() {
     null,
   );
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
+  const chatRoomIdsKey = useMemo(
+    () => chatRooms.map((room) => room.id).sort().join("\n"),
+    [chatRooms],
+  );
   const [notificationPreferences, setNotificationPreferences] =
     useState<NotificationPreferences>(() => defaultNotificationPreferences(""));
   const [isCreatorDashboardOpen, setIsCreatorDashboardOpen] = useState(false);
@@ -926,6 +945,11 @@ function App() {
       setEvents([]);
       setSavedEventIds([]);
       setSavedEvents([]);
+      setSavedEventQueryLimit(SAVED_EVENT_PAGE_SIZE);
+      setHasMoreSavedEvents(false);
+      setSavedSearches([]);
+      setSavedSearchQueryLimit(SAVED_SEARCH_PAGE_SIZE);
+      setHasMoreSavedSearches(false);
       setApplications([]);
       setChatRooms([]);
       setChatRoomQueryLimit(50);
@@ -952,6 +976,21 @@ function App() {
       chatRoomQueryLimit,
     );
   }, [activeStudentUid, chatRoomQueryLimit, setMessage]);
+
+  useEffect(() => {
+    if (!activeStudentUid || !chatRoomIdsKey) {
+      setChatPreferences([]);
+      return;
+    }
+    void loadChatPreferencesForRooms(
+      activeStudentUid,
+      chatRoomIdsKey.split("\n"),
+    )
+      .then(setChatPreferences)
+      .catch((error: unknown) =>
+        setMessage(getFirebaseErrorMessage(error), "error"),
+      );
+  }, [activeStudentUid, chatRoomIdsKey, setMessage]);
 
   useEffect(() => {
     if (!activeStudentUid) return;
@@ -1098,9 +1137,9 @@ function App() {
         : null,
     );
 
-    setChatPreferences(data.chatPreferences);
     setSavedEventIds(data.savedEventIds);
     setSavedEvents(data.savedEvents);
+    setHasMoreSavedEvents(data.hasMoreSavedEvents);
     setNotifications(data.notifications);
     setUnreadNotificationTotal(data.unreadNotificationCount);
     setHasMoreNotifications(data.hasMoreNotifications);
@@ -1109,6 +1148,7 @@ function App() {
     setNotificationPreferences(data.notificationPreferences);
     setSavedSearch(data.savedSearch);
     setSavedSearches(data.savedSearches);
+    setHasMoreSavedSearches(data.hasMoreSavedSearches);
   };
 
   const loadMoreNotifications = async () => {
@@ -1127,6 +1167,26 @@ function App() {
     setActivityQueryLimit(nextLimit);
     setActivities(page.items);
     setHasMoreActivities(page.hasMore);
+  };
+
+  const loadMoreSavedEvents = async () => {
+    if (!appUser || !hasMoreSavedEvents) return;
+    const nextLimit = savedEventQueryLimit + SAVED_EVENT_PAGE_SIZE;
+    const page = await loadStudentSavedEvents(appUser.uid, nextLimit);
+    setSavedEventQueryLimit(nextLimit);
+    setSavedEventIds(page.ids);
+    setSavedEvents(page.events);
+    setHasMoreSavedEvents(page.hasMore);
+  };
+
+  const loadMoreSavedSearches = async () => {
+    if (!appUser || !hasMoreSavedSearches) return;
+    const nextLimit = savedSearchQueryLimit + SAVED_SEARCH_PAGE_SIZE;
+    const page = await loadStudentSavedSearches(appUser.uid, nextLimit);
+    setSavedSearchQueryLimit(nextLimit);
+    setSavedSearches(page.items);
+    setSavedSearch((current) => current ?? page.items[0] ?? null);
+    setHasMoreSavedSearches(page.hasMore);
   };
 
   const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -2134,10 +2194,18 @@ function App() {
             </div>
             <div className="welcome-stats">
               <span>
-                <strong>{applications.length}</strong>申請
+                <strong>
+                  {applications.length}
+                  {hasMoreApplications ? "+" : ""}
+                </strong>
+                申請
               </span>
               <span>
-                <strong>{savedEventIds.length}</strong>保存
+                <strong>
+                  {savedEventIds.length}
+                  {hasMoreSavedEvents ? "+" : ""}
+                </strong>
+                保存
               </span>
             </div>
           </div>
@@ -2213,6 +2281,11 @@ function App() {
               setSearchView,
               savedSearch,
               savedSearches,
+              hasMoreSavedSearches,
+              onLoadMoreSavedSearches: () =>
+                void loadMoreSavedSearches().catch((error) =>
+                  setMessage(getFirebaseErrorMessage(error), "error"),
+                ),
               onSaveSearch: () =>
                 void saveCurrentSearch().catch((error) =>
                   setMessage(getFirebaseErrorMessage(error), "error"),
@@ -2350,6 +2423,12 @@ function App() {
             activityByMonth={activityByMonth}
             savedEventIds={savedEventIds}
             events={savedEvents}
+            hasMoreSavedEvents={hasMoreSavedEvents}
+            onLoadMoreSavedEvents={() =>
+              void loadMoreSavedEvents().catch((error) =>
+                setMessage(getFirebaseErrorMessage(error), "error"),
+              )
+            }
             notificationPreferences={notificationPreferences}
             accountDeletionRequest={accountDeletionRequest}
             onRequestAccountDeletion={requestAccountDeletion}
