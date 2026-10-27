@@ -511,6 +511,27 @@ test.describe("emulator-backed role flows", () => {
     await page.getByRole("textbox", { name: "イベントを検索" }).fill(title);
     await page.getByRole("button", { name: `${title}の詳細を見る` }).click();
     await page.getByRole("button", { name: "このイベントに参加する" }).click();
+    // Drop the request before it reaches the server, then retry from the UI.
+    await page.route("**/submitApplication", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.abort("failed");
+    });
+    await confirmApplication(page);
+    await expect(page.getByText(/通信エラーのため、申込が完了したか確認できません/)).toBeVisible();
+    const projectId = process.env.VITE_FIREBASE_PROJECT_ID ?? "demo-aizu-connect-e2e";
+    const port = process.env.VITE_FIREBASE_FIRESTORE_EMULATOR_PORT ?? "8080";
+    const missingApplication = await fetch(
+      `http://127.0.0.1:${port}/v1/projects/${projectId}/databases/(default)/documents/eventApplications/${applicationId}`,
+      { headers: { Authorization: "Bearer owner" } },
+    );
+    expect(missingApplication.status).toBe(404);
+    expect((await readFirestoreDocument(`events/${eventId}`)).fields?.applicantCount?.integerValue).toBe("0");
+    await page.unroute("**/submitApplication");
+    await openSearch(page);
+    await page.getByRole("textbox", { name: "イベントを検索" }).fill(title);
+    await page.getByRole("button", { name: `${title}の詳細を見る` }).click();
+    await page.getByRole("button", { name: "このイベントに参加する" }).click();
+    // Forward the retry, then lose its response after the server has committed.
     await page.route("**/submitApplication", async (route) => {
       if (route.request().method() !== "POST") return route.continue();
       const response = await route.fetch();
@@ -522,6 +543,8 @@ test.describe("emulator-backed role flows", () => {
     await expect(page.getByRole("heading", { name: "参加履歴" })).toBeVisible();
     const application = page.locator(".application-item").filter({ hasText: title });
     await expect(application.getByText("主催者確認中", { exact: true })).toBeVisible();
+    expect((await readFirestoreDocument(`eventApplications/${applicationId}`)).fields?.status?.stringValue).toBe("pending");
+    expect((await readFirestoreDocument(`events/${eventId}`)).fields?.applicantCount?.integerValue).toBe("1");
     await page.unroute("**/submitApplication");
   });
 
