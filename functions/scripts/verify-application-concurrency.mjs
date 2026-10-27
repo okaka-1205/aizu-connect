@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
@@ -75,6 +77,45 @@ assert.equal(duplicates.filter((result) => result.status === 200).length, 1);
 assert.equal(duplicates.filter((result) => result.body.error?.status === "ALREADY_EXISTS").length, 1);
 assert.equal((await db.doc(`events/${duplicateEventId}`).get()).data().applicantCount, 1);
 assert.equal((await db.collection("eventApplications").where("eventId", "==", duplicateEventId).get()).size, 1);
+
+// Forward the request but drop the response after the server has completed it.
+const lostResponseEventId = "lost-response-event";
+await db.doc(`events/${lostResponseEventId}`).set({
+  title: "Lost response test", status: "published", capacity: 1, applicantCount: 0,
+  createdBy: "concurrent-organizer", organizationName: "Test organizer",
+  startAt: Timestamp.fromMillis(Date.now() + 86400000),
+});
+let forwardedStatus;
+const proxy = createServer(async (request, response) => {
+  try {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const upstream = await fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: request.headers.authorization },
+      body: Buffer.concat(chunks),
+    });
+    await upstream.arrayBuffer();
+    forwardedStatus = upstream.status;
+    response.destroy();
+  } catch (error) {
+    response.destroy(error);
+  }
+});
+proxy.listen(0, "127.0.0.1");
+await once(proxy, "listening");
+try {
+  await assert.rejects(fetch(`http://127.0.0.1:${proxy.address().port}/`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokens[1]}` },
+    body: JSON.stringify({ data: { eventId: lostResponseEventId, consentAccepted: true } }),
+  }));
+  assert.equal(forwardedStatus, 200, "The server must commit before the response is lost");
+} finally {
+  await new Promise((resolve, reject) => proxy.close((error) => error ? reject(error) : resolve()));
+}
+const lostResponseRetry = await submit(tokens[1], { eventId: lostResponseEventId, consentAccepted: true });
+assert.equal(lostResponseRetry.body.error?.status, "ALREADY_EXISTS");
+assert.equal((await db.doc(`events/${lostResponseEventId}`).get()).data().applicantCount, 1);
+assert.equal((await db.collection("eventApplications").where("eventId", "==", lostResponseEventId).get()).size, 1);
 
 const beforeCancellation = await db.collection("eventApplications").where("eventId", "==", eventId).get();
 const occupant = beforeCancellation.docs.find((item) => item.data().status === "pending");
