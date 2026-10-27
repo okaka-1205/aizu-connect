@@ -63,6 +63,19 @@ if (functionsEnv.ENFORCE_ADMIN_APP_CHECK !== "true") {
   );
 }
 
+// Functions prefer the callable-wide switch over the legacy admin switch.
+// An explicit "false" would otherwise silently disable enforcement despite
+// ENFORCE_ADMIN_APP_CHECK=true passing the release guard above.
+if (
+  (functionsEnv.ENFORCE_CALLABLE_APP_CHECK ??
+    functionsEnv.ENFORCE_ADMIN_APP_CHECK) !== "true"
+) {
+  throw new Error(
+    "Production callable functions must enforce App Check. " +
+      "Remove ENFORCE_CALLABLE_APP_CHECK=false or set it to true.",
+  );
+}
+
 console.log(
   `Production Firebase configuration and App Check verified: ${env.VITE_FIREBASE_PROJECT_ID}`,
 );
