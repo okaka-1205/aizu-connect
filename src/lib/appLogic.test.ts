@@ -5,6 +5,7 @@ import {
   MAX_IMAGE_SIZE,
   didCompleteManualApproval,
   formatEventStart,
+  getApplicationSubmissionError,
   getAuthFlowErrorMessage,
   getFirebaseErrorMessage,
   isAttendanceWindowOpen,
@@ -337,6 +338,18 @@ describe("firebase error messages", () => {
         }),
       ),
     ).toBe("このイベントにはすでに参加申請済みです。");
+  });
+
+  it("guides students to verify uncertain or already submitted applications", () => {
+    for (const code of ["functions/unavailable", "functions/deadline-exceeded", "functions/internal"]) {
+      const recovery = getApplicationSubmissionError({ code });
+      expect(recovery.showActivity).toBe(true);
+      expect(recovery.message).toContain("申込が完了したか確認できません");
+    }
+    const duplicate = getApplicationSubmissionError({ code: "functions/already-exists" });
+    expect(duplicate.showActivity).toBe(true);
+    expect(duplicate.message).toContain("すでに参加申請済み");
+    expect(getApplicationSubmissionError({ code: "functions/permission-denied" }).showActivity).toBe(false);
   });
 
   it("explains when only administrator approval remains", () => {

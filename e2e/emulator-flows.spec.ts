@@ -498,6 +498,33 @@ test.describe("emulator-backed role flows", () => {
     ).toBeVisible();
   });
 
+  test("student can check application status after a lost response", async ({ page }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    const eventId = `event-e2e-recovery-${suffix}`;
+    const applicationId = `${eventId}_student-e2e-${suffix}`;
+    const title = `E2E 通信確認イベント ${projectVariant(testInfo.project.name)}`;
+    await deleteFirestoreDocument(`eventApplications/${applicationId}`);
+    await deleteFirestoreDocument(`thirdPartyProvisionLogs/${applicationId}`);
+    await writeFirestoreDocument(`events/${eventId}`, { applicantCount: { integerValue: "0" } }, ["applicantCount"]);
+    await login(page, studentEmail(testInfo.project.name));
+    await openSearch(page);
+    await page.getByRole("textbox", { name: "イベントを検索" }).fill(title);
+    await page.getByRole("button", { name: `${title}の詳細を見る` }).click();
+    await page.getByRole("button", { name: "このイベントに参加する" }).click();
+    await page.route("**/submitApplication", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      const response = await route.fetch();
+      expect(response.ok()).toBeTruthy();
+      await route.abort("failed");
+    });
+    await confirmApplication(page);
+    await expect(page.getByText(/通信エラーのため、申込が完了したか確認できません/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "参加履歴" })).toBeVisible();
+    const application = page.locator(".application-item").filter({ hasText: title });
+    await expect(application.getByText("主催者確認中", { exact: true })).toBeVisible();
+    await page.unroute("**/submitApplication");
+  });
+
   test("student can open the planning dashboard and submit an event plan", async ({
     page,
   }, testInfo) => {
