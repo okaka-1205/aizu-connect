@@ -110,6 +110,8 @@ assert.equal((await rollbackRoomRef.get()).data().memberCount, 1);
 assert.equal((await rollbackRoomRef.collection("members").doc(rollbackStudent).get()).exists, false);
 assert.equal((await rollbackRoomRef.collection("members").get()).size, 1);
 assert.deepEqual((await rollbackLogRef.get()).data(), { marker: "preexisting conflict" });
+const submittedNotificationRef = db.doc(`notifications/application_submitted_${rollbackApplicationId}`);
+assert.equal((await submittedNotificationRef.get()).exists, false);
 
 await rollbackLogRef.delete();
 const retryAfterRollback = await submit(rollbackToken, { eventId: rollbackEventId, consentAccepted: true });
@@ -121,6 +123,15 @@ assert.equal((await db.doc(`events/${rollbackEventId}`).get()).data().popularity
 assert.equal((await rollbackRoomRef.get()).data().memberCount, 2);
 assert.equal((await rollbackRoomRef.collection("members").get()).size, 2);
 assert.equal((await rollbackLogRef.get()).data().applicationId, rollbackApplicationId);
+const { notifyApplicationCreated } = await import("../lib/triggers/notifications.js");
+const submittedApplication = (await db.doc(`eventApplications/${rollbackApplicationId}`).get()).data();
+const submittedEvent = {
+  params: { applicationId: rollbackApplicationId },
+  data: { data: () => submittedApplication },
+};
+await Promise.all(Array.from({ length: 3 }, () => notifyApplicationCreated.run(submittedEvent)));
+assert.equal((await submittedNotificationRef.get()).data().recipientId, "concurrent-organizer");
+assert.equal((await db.collection("notifications").where("targetId", "==", rollbackApplicationId).get()).size, 1);
 
 // Forward the request but drop the response after the server has completed it.
 const lostResponseEventId = "lost-response-event";
