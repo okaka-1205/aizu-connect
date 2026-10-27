@@ -58,6 +58,7 @@ import {
 } from "./lib/firebase";
 import {
   didCompleteManualApproval,
+  getApplicationSubmissionError,
   getAuthFlowErrorMessage,
   getFirebaseErrorMessage,
   isAizuUniversityEmail,
@@ -1447,7 +1448,9 @@ function App() {
         "success",
       );
     } catch (error) {
-      setMessage(getFirebaseErrorMessage(error), "error");
+      const recovery = getApplicationSubmissionError(error);
+      if (recovery.showActivity) setActiveTab("activity");
+      setMessage(recovery.message, recovery.tone);
     } finally {
       setIsActionLoading(false);
     }

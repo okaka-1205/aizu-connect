@@ -289,6 +289,34 @@ export const isFutureEventStart = (date?: Date, now = new Date()) =>
     date && Number.isFinite(date.getTime()) && date.getTime() > now.getTime(),
   );
 
+export const getApplicationSubmissionError = (error: unknown) => {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String(error.code)
+      : "";
+  if (code === "functions/already-exists") {
+    return {
+      message: "このイベントにはすでに参加申請済みです。活動ページで申込状況を確認してください。",
+      tone: "info" as const,
+      showActivity: true,
+    };
+  }
+  if (
+    ["functions/unavailable", "functions/deadline-exceeded", "functions/internal"].includes(code)
+  ) {
+    return {
+      message: "通信エラーのため、申込が完了したか確認できません。活動ページで申込状況を確認してから、必要に応じてもう一度お試しください。",
+      tone: "error" as const,
+      showActivity: true,
+    };
+  }
+  return {
+    message: getFirebaseErrorMessage(error),
+    tone: "error" as const,
+    showActivity: false,
+  };
+};
+
 export const getFirebaseErrorMessage = (error: unknown) => {
   const code =
     typeof error === "object" && error !== null && "code" in error

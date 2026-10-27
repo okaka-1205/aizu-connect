@@ -407,6 +407,14 @@ for (const [variant, displayVariant] of testVariants) {
       ...organizationFields(variant),
     }),
   );
+  batch.set(
+    db.doc(`events/event-e2e-recovery-${variant}`),
+    eventDoc({
+      title: `E2E 通信確認イベント ${displayVariant}`,
+      applicantCount: 0,
+      ...organizationFields(variant),
+    }),
+  );
 }
 batch.set(
   db.doc("events/event-e2e-pending"),
