@@ -78,6 +78,50 @@ assert.equal(duplicates.filter((result) => result.body.error?.status === "ALREAD
 assert.equal((await db.doc(`events/${duplicateEventId}`).get()).data().applicantCount, 1);
 assert.equal((await db.collection("eventApplications").where("eventId", "==", duplicateEventId).get()).size, 1);
 
+// Make the final create in the transaction fail at commit time. Every earlier
+// application, event and chat write must then be rolled back atomically.
+const rollbackEventId = "commit-precondition-event";
+const rollbackStudent = "commit-precondition-student";
+const rollbackApplicationId = `${rollbackEventId}_${rollbackStudent}`;
+const rollbackRoomRef = db.doc(`chatRooms/event_${rollbackEventId}`);
+const rollbackLogRef = db.doc(`thirdPartyProvisionLogs/${rollbackApplicationId}`);
+await db.doc(`events/${rollbackEventId}`).set({
+  title: "Commit precondition test", status: "published", capacity: 1,
+  applicantCount: 0, popularityScore: 0,
+  createdBy: "concurrent-organizer", organizationName: "Test organizer",
+  startAt: Timestamp.fromMillis(Date.now() + 86400000),
+});
+await db.doc(`users/${rollbackStudent}`).set({
+  uid: rollbackStudent, role: "student", status: "active", displayName: "Test student",
+});
+const rollbackToken = await token(rollbackStudent);
+const roomDeadline = Date.now() + 15000;
+while (!(await rollbackRoomRef.get()).exists && Date.now() < roomDeadline) {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+assert.equal((await rollbackRoomRef.get()).data()?.memberCount, 1, "Event room trigger must finish before the rollback check");
+await rollbackLogRef.create({ marker: "preexisting conflict" });
+const rejectedCommit = await submit(rollbackToken, { eventId: rollbackEventId, consentAccepted: true });
+assert.notEqual(rejectedCommit.status, 200, "A preexisting provision log must reject the commit");
+assert.equal((await db.doc(`eventApplications/${rollbackApplicationId}`).get()).exists, false);
+assert.equal((await db.doc(`events/${rollbackEventId}`).get()).data().applicantCount, 0);
+assert.equal((await db.doc(`events/${rollbackEventId}`).get()).data().popularityScore, 0);
+assert.equal((await rollbackRoomRef.get()).data().memberCount, 1);
+assert.equal((await rollbackRoomRef.collection("members").doc(rollbackStudent).get()).exists, false);
+assert.equal((await rollbackRoomRef.collection("members").get()).size, 1);
+assert.deepEqual((await rollbackLogRef.get()).data(), { marker: "preexisting conflict" });
+
+await rollbackLogRef.delete();
+const retryAfterRollback = await submit(rollbackToken, { eventId: rollbackEventId, consentAccepted: true });
+assert.equal(retryAfterRollback.status, 200, JSON.stringify(retryAfterRollback));
+assert.equal(retryAfterRollback.body.result.status, "pending");
+assert.equal((await db.doc(`eventApplications/${rollbackApplicationId}`).get()).data().status, "pending");
+assert.equal((await db.doc(`events/${rollbackEventId}`).get()).data().applicantCount, 1);
+assert.equal((await db.doc(`events/${rollbackEventId}`).get()).data().popularityScore, 1);
+assert.equal((await rollbackRoomRef.get()).data().memberCount, 2);
+assert.equal((await rollbackRoomRef.collection("members").get()).size, 2);
+assert.equal((await rollbackLogRef.get()).data().applicationId, rollbackApplicationId);
+
 // Forward the request but drop the response after the server has completed it.
 const lostResponseEventId = "lost-response-event";
 await db.doc(`events/${lostResponseEventId}`).set({
@@ -166,6 +210,6 @@ assert.equal((await db.doc(`events/${eventId}`).get()).data().applicantCount, 1)
 const retriedLate = await submit(lateToken);
 assert.equal(retriedLate.body.error?.status, "ALREADY_EXISTS");
 assert.equal((await db.collection("eventApplications").where("eventId", "==", eventId).get()).size, 5);
-console.log("Concurrent applications, cancellation, repeated trigger delivery and request retry preserved capacity and queue state.");
+console.log("Concurrent applications, commit rollback and retry, cancellation, repeated trigger delivery and request retry preserved capacity and queue state.");
 await terminate(clientDb);
 await deleteClientApp(client);
