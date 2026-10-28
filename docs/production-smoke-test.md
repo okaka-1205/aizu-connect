@@ -8,7 +8,9 @@
 2. イベント名、チャット、申込理由には`[SMOKE YYYY-MM-DD]`を付ける。
 3. 実行前に、対象メールアドレス、作成予定データ、削除予定データを作業報告へ記載する。
 4. App CheckとAuthenticationの本番設定をFirebase Consoleで確認する。
-5. 次の読み取り専用コマンドで対象を表示し、通常利用者のアドレスが含まれていないことを確認する。
+5. 管理者専用アカウントで認証アプリによるMFA登録と再ログインを確認する。学生・主催者にはMFAを要求しない。
+6. Storage RulesがFirestoreのユーザー情報を参照するため、Firebase Storageサービスエージェントに「Firebase Rules Firestore Service Agent」ロールが付いていることをIAMで確認する。表示時は「Google提供のロール付与を含む」を選ぶ。ロールがない場合は画像テストを失敗扱いとし、権限変更前に対象と影響を確認する。参考: https://firebase.google.com/docs/rules/manage-deploy#manage_permissions_for_cross-service_cloud_storage_security_rules
+7. 次の読み取り専用コマンドで対象を表示し、通常利用者のアドレスが含まれていないことを確認する。
 
 ```bash
 AIZU_CONNECT_SMOKE_STUDENT_EMAIL=... \
@@ -30,6 +32,7 @@ npm run smoke:production:plan
 - イベント全体チャットを1件送受信し、個別チャットの導線が表示されないことを確認する。
 - 開催終了後、参加済み学生がアンケートを送信でき、未参加者は送信できないことを確認する。
 - 主催者が写真付き活動報告を公開し、学生側から内容と画像を閲覧できることを確認する。
+- 専用学生のプロフィール画像を1件アップロードし、画面とStorageの保存先を確認する。テスト後は画像を削除し、残存オブジェクトがないことを確認する。`storage/unauthorized`が出た場合は、Rulesを緩めずにApp Check、保存先、ファイル形式・容量、ユーザー状態、上記のサービスエージェント権限を照合する。
 - App Checkが有効な通常画面ではFunctionsが成功し、不正なクライアントからの呼び出しが拒否されることを確認する。
 
 メール認証リンクの取得、App Checkの実機トークン、QRコードの読み取り、迷惑メール判定は自動化せず、人が結果を記録します。自動化で本番メール送信や通常利用者データの変更を行わないでください。
