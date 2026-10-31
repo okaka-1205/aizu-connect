@@ -1,0 +1,1131 @@
+{
+  "project": "aizu-connect-prod",
+  "sourceCommit": "f7e905b5e2152c1061322d398e0ae2218ed4a0f1",
+  "verifiedAt": "2026-10-31T14:39:38.520Z",
+  "hostingBefore": {
+    "name": "sites/aizu-connect-prod/releases/1793434043615000",
+    "type": "DEPLOY",
+    "time": "2026-10-31T08:07:23.615Z",
+    "version": "sites/aizu-connect-prod/versions/0d5c5acbac827421",
+    "status": "FINALIZED"
+  },
+  "hostingAfter": {
+    "name": "sites/aizu-connect-prod/releases/1793457320119000",
+    "type": "DEPLOY",
+    "time": "2026-10-31T14:35:20.119Z",
+    "version": "sites/aizu-connect-prod/versions/911c3a3276a1a6b7",
+    "status": "FINALIZED"
+  },
+  "rulesBefore": {
+    "rulesetName": "projects/aizu-connect-prod/rulesets/d15fb32c-d4aa-434d-90dd-9e9f0889b430",
+    "updateTime": "2026-10-30T12:45:03.085165Z",
+    "sourceHash": "fcf806e6f1d7dd46441705f58237194e021c7a2cf07b5f93f3b27b4b6a0dec78",
+    "matchesLocal": false
+  },
+  "temporaryRules": {
+    "rulesetName": "projects/aizu-connect-prod/rulesets/edb11b7e-7a1f-4a62-be19-a08f05f1ebbd",
+    "updateTime": "2026-10-31T14:33:38.152945Z",
+    "sourceHash": "58dcab147ece70376078984a9eb8e2f3b02952d278c599f5a654734e6778ac3e",
+    "matchesLocal": false
+  },
+  "rulesAfter": {
+    "rulesetName": "projects/aizu-connect-prod/rulesets/ecf27402-91fa-43e4-896e-b2de387cb89a",
+    "updateTime": "2026-10-31T14:38:21.685488Z",
+    "sourceHash": "6854bf3691cd0b6d12a9d343ef44bcd8b3a3244dc4f1ade4ec938118d9512539",
+    "matchesLocal": true
+  },
+  "indexes": [
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/savedOrganizers/indexes/CICAgPjChIAK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgNiav4AK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "createdBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/reports/indexes/CICAgJim14AK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgLjy8IAK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "eventId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "waitlistSequence",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgOjXh4EK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgNiroIEK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "studentId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgJj7z4EK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "eventId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/activities/indexes/CICAgLiT6IEK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgNjpgYIK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "createdBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgPj-pYIK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/notifications/indexes/CICAgLjRyYIK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "recipientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/accountDeletionRequests/indexes/CICAgJjF9oIK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "requestedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgLiIkYMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "organizationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "eventId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgJiUpoMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/savedEvents/indexes/CICAgPig2YMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgNi47oMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "applicantCount",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/users/indexes/CICAgOi3kJAK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgNirtJAK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "eventId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgJjmiJEK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "organizationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "eventId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "studentNameLower",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/chatPreferences/indexes/CICAgLiIjZIK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "roomId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/savedSearches/indexes/CICAgPigw5IK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgLjRnZMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "applicantCount",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/chatPreferences/indexes/CICAgJjFqZMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "functionsBefore": [
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyChatMessageCreated",
+      "state": "ACTIVE",
+      "revision": "notifychatmessagecreated-00013-tic",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyChatMessageCreated/function-source.zip",
+          "generation": "1792936295425403"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:43.930206216Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/adminManageResource",
+      "state": "ACTIVE",
+      "revision": "adminmanageresource-00014-vab",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "adminManageResource/function-source.zip",
+          "generation": "1792936234899553"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:29.187877081Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/checkInToEvent",
+      "state": "ACTIVE",
+      "revision": "checkintoevent-00014-piw",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "checkInToEvent/function-source.zip",
+          "generation": "1792936294949783"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:42.234697834Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyEventPublished",
+      "state": "ACTIVE",
+      "revision": "notifyeventpublished-00013-zan",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyEventPublished/function-source.zip",
+          "generation": "1792936284278988"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:31.733409822Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/sendEventReminders",
+      "state": "ACTIVE",
+      "revision": "sendeventreminders-00013-poj",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "sendEventReminders/function-source.zip",
+          "generation": "1792936283838245"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:32.114762145Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/purgeExpiredLegalRecords",
+      "state": "ACTIVE",
+      "revision": "purgeexpiredlegalrecords-00013-wos",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "purgeExpiredLegalRecords/function-source.zip",
+          "generation": "1792936274393095"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:22.348769849Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyEventUnavailable",
+      "state": "ACTIVE",
+      "revision": "notifyeventunavailable-00013-daj",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyEventUnavailable/function-source.zip",
+          "generation": "1792936284368588"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:32.961423781Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyApplicationCreated",
+      "state": "ACTIVE",
+      "revision": "notifyapplicationcreated-00013-lof",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyApplicationCreated/function-source.zip",
+          "generation": "1792936295065445"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:42.602952634Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyApplicationUpdated",
+      "state": "ACTIVE",
+      "revision": "notifyapplicationupdated-00013-qif",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyApplicationUpdated/function-source.zip",
+          "generation": "1792936295077448"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:42.867252090Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/submitApplication",
+      "state": "ACTIVE",
+      "revision": "submitapplication-00013-quj",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "submitApplication/function-source.zip",
+          "generation": "1792936294811714"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:42.275949950Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/saveEventPlan",
+      "state": "ACTIVE",
+      "revision": "saveeventplan-00014-jis",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "saveEventPlan/function-source.zip",
+          "generation": "1792936294834464"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:41.944388173Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/healthCheck",
+      "state": "ACTIVE",
+      "revision": "healthcheck-00006-buq",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "healthCheck/function-source.zip",
+          "generation": "1792936235268355"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:22.540717409Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/markAllNotificationsRead",
+      "state": "ACTIVE",
+      "revision": "markallnotificationsread-00001-vur",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "markAllNotificationsRead/function-source.zip",
+          "generation": "1792936233991654"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:31.601510602Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/manageChatMessage",
+      "state": "ACTIVE",
+      "revision": "managechatmessage-00010-waw",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "manageChatMessage/function-source.zip",
+          "generation": "1792936294829394"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:42.399419487Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/reportClientError",
+      "state": "ACTIVE",
+      "revision": "reportclienterror-00006-wik",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "reportClientError/function-source.zip",
+          "generation": "1792936274201471"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:22.233789897Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/getAdminDashboardMetrics",
+      "state": "ACTIVE",
+      "revision": "getadmindashboardmetrics-00006-bav",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "getAdminDashboardMetrics/function-source.zip",
+          "generation": "1792936274163691"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:21.402707440Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/createEventChatRoom",
+      "state": "ACTIVE",
+      "revision": "createeventchatroom-00013-jos",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "createEventChatRoom/function-source.zip",
+          "generation": "1792936294935900"
+        }
+      },
+      "updateTime": "2026-10-25T13:51:42.600920055Z",
+      "callableAppCheck": true
+    }
+  ],
+  "functionsAfter": [
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyChatMessageCreated",
+      "state": "ACTIVE",
+      "revision": "notifychatmessagecreated-00014-cix",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyChatMessageCreated/function-source.zip",
+          "generation": "1793457402033764"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:49.491740803Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/adminManageResource",
+      "state": "ACTIVE",
+      "revision": "adminmanageresource-00015-boy",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "adminManageResource/function-source.zip",
+          "generation": "1793457351501928"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:41.410848530Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/checkInToEvent",
+      "state": "ACTIVE",
+      "revision": "checkintoevent-00015-ruh",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "checkInToEvent/function-source.zip",
+          "generation": "1793457401794918"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:49.066219028Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyEventPublished",
+      "state": "ACTIVE",
+      "revision": "notifyeventpublished-00014-sah",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyEventPublished/function-source.zip",
+          "generation": "1793457401196067"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:48.422816466Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/sendEventReminders",
+      "state": "ACTIVE",
+      "revision": "sendeventreminders-00014-ves",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "sendEventReminders/function-source.zip",
+          "generation": "1793457400863397"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:48.317838011Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/purgeExpiredLegalRecords",
+      "state": "ACTIVE",
+      "revision": "purgeexpiredlegalrecords-00014-cis",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "purgeExpiredLegalRecords/function-source.zip",
+          "generation": "1793457390828952"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:38.368566970Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyEventUnavailable",
+      "state": "ACTIVE",
+      "revision": "notifyeventunavailable-00014-yen",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyEventUnavailable/function-source.zip",
+          "generation": "1793457401088219"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:48.838755463Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyApplicationCreated",
+      "state": "ACTIVE",
+      "revision": "notifyapplicationcreated-00014-log",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyApplicationCreated/function-source.zip",
+          "generation": "1793457402065922"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:50.691095742Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyApplicationUpdated",
+      "state": "ACTIVE",
+      "revision": "notifyapplicationupdated-00014-hed",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyApplicationUpdated/function-source.zip",
+          "generation": "1793457402054713"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:49.248059211Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/submitApplication",
+      "state": "ACTIVE",
+      "revision": "submitapplication-00014-jal",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "submitApplication/function-source.zip",
+          "generation": "1793457401769646"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:49.154887836Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/saveEventPlan",
+      "state": "ACTIVE",
+      "revision": "saveeventplan-00015-moz",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "saveEventPlan/function-source.zip",
+          "generation": "1793457401861608"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:49.146122759Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/healthCheck",
+      "state": "ACTIVE",
+      "revision": "healthcheck-00007-qoh",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "healthCheck/function-source.zip",
+          "generation": "1793457351469428"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:35.302213843Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/markAllNotificationsRead",
+      "state": "ACTIVE",
+      "revision": "markallnotificationsread-00002-fuh",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "markAllNotificationsRead/function-source.zip",
+          "generation": "1793457351570388"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:44.628112390Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/manageChatMessage",
+      "state": "ACTIVE",
+      "revision": "managechatmessage-00011-mug",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "manageChatMessage/function-source.zip",
+          "generation": "1793457401792113"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:48.500325173Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/reportClientError",
+      "state": "ACTIVE",
+      "revision": "reportclienterror-00007-log",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "reportClientError/function-source.zip",
+          "generation": "1793457390623848"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:39.328517571Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/getAdminDashboardMetrics",
+      "state": "ACTIVE",
+      "revision": "getadmindashboardmetrics-00007-bov",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "getAdminDashboardMetrics/function-source.zip",
+          "generation": "1793457390858353"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:38.199778682Z",
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/createEventChatRoom",
+      "state": "ACTIVE",
+      "revision": "createeventchatroom-00014-mey",
+      "runtime": "nodejs24",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "createEventChatRoom/function-source.zip",
+          "generation": "1793457402003899"
+        }
+      },
+      "updateTime": "2026-10-31T14:36:49.113473966Z",
+      "callableAppCheck": true
+    }
+  ],
+  "productionVerification": {
+    "verifiedAt": "2026-10-31T14:39:38.520Z",
+    "url": "https://aizu-connect-prod.web.app/",
+    "filesVerified": 45,
+    "cacheControl": "no-cache,no-store,must-revalidate",
+    "functionsHealth": "ok",
+    "authGuards": [
+      {
+        "name": "saveEventPlan",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "submitApplication",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "checkInToEvent",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "manageChatMessage",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "adminManageResource",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "getAdminDashboardMetrics",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "markAllNotificationsRead",
+        "status": 401,
+        "rejected": true
+      }
+    ],
+    "browserChecks": [
+      {
+        "browser": "chromium",
+        "viewport": "desktop",
+        "loginScreen": true,
+        "lazyLegalDocument": true,
+        "escapeClose": true,
+        "uncaughtErrors": 0,
+        "failedAssets": 0
+      },
+      {
+        "browser": "chromium",
+        "viewport": "mobile",
+        "loginScreen": true,
+        "lazyLegalDocument": true,
+        "escapeClose": true,
+        "uncaughtErrors": 0,
+        "failedAssets": 0
+      },
+      {
+        "browser": "chromium",
+        "viewport": "tablet",
+        "loginScreen": true,
+        "lazyLegalDocument": true,
+        "escapeClose": true,
+        "uncaughtErrors": 0,
+        "failedAssets": 0
+      },
+      {
+        "browser": "firefox",
+        "viewport": "desktop",
+        "loginScreen": true,
+        "lazyLegalDocument": true,
+        "escapeClose": true,
+        "uncaughtErrors": 0,
+        "failedAssets": 0
+      },
+      {
+        "browser": "webkit",
+        "viewport": "mobile",
+        "loginScreen": true,
+        "lazyLegalDocument": true,
+        "escapeClose": true,
+        "uncaughtErrors": 0,
+        "failedAssets": 0
+      }
+    ]
+  },
+  "indexQueryVerification": {
+    "verifiedAt": "2026-10-31T14:37:54.065Z",
+    "results": [
+      {
+        "sortField": "applicantCount",
+        "status": 200,
+        "accepted": true,
+        "resultCount": 0
+      },
+      {
+        "sortField": "createdAt",
+        "status": 200,
+        "accepted": true,
+        "resultCount": 0
+      }
+    ]
+  },
+  "fingerprints": {
+    "source": "c079c58430abf7d249cbf60a37e26e729b9f4b0528c6a71c57627d0f578f62fd",
+    "build": "1a974d8f4eb4d90314ce628bc4cc9e9a2341bc168ce5a5f6598fdbc781c99716",
+    "functions": "dfabe4eb8bca923391bf2186b35859d928ac7887718bc43cc3b87fcadf6a829d"
+  }
+}
