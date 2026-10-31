@@ -1,0 +1,19 @@
+{
+  "score": 5,
+  "summary": "今回の差分に限定した評価。学生主催者による自分のイベントのアンケート結果閲覧を許可する1行の変更について、新たな権限逸脱は確認されなかった。アプリ全体の安全性を保証する評価ではない。",
+  "findings": [],
+  "scope": "eventSurveys/{eventId}/responses/{userId} の read 条件（isActiveOrganization から isActiveCreator への変更）",
+  "checks": {
+    "updateBypass": "create/update/delete 条件は本番との差分なし。所有者・出席済み申請・回答型・長さ・評価範囲の検証が継続される。改ざん拒否の回帰テストあり。",
+    "authoritySource": "権限は保存済み users の role/status と認証済みメール、保存済み events.createdBy を参照。リクエスト本文に依存しない。",
+    "businessLogic": "団体・学生主催者は自分のイベントの回答一覧のみ閲覧できる。回答学生による自分の回答閲覧とTOTP管理者の閲覧は維持。",
+    "storageAbuse": "書き込み条件の変更なし。comment は1000文字、rating は1から5の整数。追加フィールドは許可しない。",
+    "typeSafety": "書き込み条件の変更なし。eventId/userId とパスの一致、rating/comment/wouldRecommend/日時の検証を継続。",
+    "identityLevelSecurity": "isActiveCreator と親イベントの createdBy の一致が両方必要。他イベント主催者、無関係学生、未承認、未認証、MFAなし管理者の一覧取得を拒否するテストあり。コレクショングループ横断取得も拒否。"
+  },
+  "evidence": [
+    "../firestore.rules",
+    "../test/security-rules.test.mjs: limits survey result queries to admins and the event owner, including student organizers",
+    "../test/security-rules.test.mjs: prevents survey updates from changing ownership or bypassing validation"
+  ]
+}

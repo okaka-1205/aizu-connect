@@ -2,7 +2,6 @@ import {
   collection,
   collectionGroup,
   doc,
-  getDoc,
   getDocs,
   limit,
   limitToLast,
@@ -12,10 +11,11 @@ import {
   serverTimestamp,
   setDoc,
   where,
-  type DocumentData,
-  type QueryDocumentSnapshot,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
+import { validateChatAttachment } from "../lib/appLogic";
+import { uploadImage } from "../lib/storage";
 import type {
   ChatMessage,
   ChatPreference,
@@ -24,6 +24,70 @@ import type {
 } from "../types/domain";
 
 export const CHAT_ROOM_PAGE_SIZE = 50;
+
+type ChatSender = Pick<ChatMessage, "senderId" | "senderName">;
+
+const commitChatMessage = (
+  roomId: string,
+  sender: ChatSender,
+  message: Pick<
+    ChatMessage,
+    | "type"
+    | "text"
+    | "attachmentUrl"
+    | "attachmentName"
+    | "attachmentType"
+    | "attachmentSize"
+  >,
+  lastMessageText: string,
+) => {
+  const roomRef = doc(db, "chatRooms", roomId);
+  const messageRef = doc(collection(roomRef, "messages"));
+  const batch = writeBatch(db);
+  batch.set(messageRef, {
+    roomId,
+    ...sender,
+    ...message,
+    createdAt: serverTimestamp(),
+  });
+  batch.update(roomRef, {
+    lastMessageText,
+    lastMessageAt: serverTimestamp(),
+  });
+  return batch.commit();
+};
+
+export const sendChatTextMessage = (
+  roomId: string,
+  sender: ChatSender,
+  text: string,
+) => commitChatMessage(roomId, sender, { type: "text", text }, text);
+
+export const sendChatAttachment = async (
+  roomId: string,
+  sender: ChatSender,
+  file: File,
+) => {
+  validateChatAttachment(file);
+  const attachmentUrl = await uploadImage(
+    file,
+    `chat-attachments/${roomId}/${sender.senderId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+  );
+  const type = file.type.startsWith("image/") ? "image" : "file";
+  await commitChatMessage(
+    roomId,
+    sender,
+    {
+      type,
+      text: file.name.slice(0, 200),
+      attachmentUrl,
+      attachmentName: file.name.slice(0, 200),
+      attachmentType: file.type,
+      attachmentSize: file.size,
+    },
+    `${type === "image" ? "画像" : "ファイル"}を送信しました`,
+  );
+};
 
 export const loadChatPreferencesForRooms = async (
   userId: string,
@@ -64,58 +128,6 @@ const mergeRooms = (roomLimit: number, ...roomGroups: ChatRoom[][]) =>
     )
     .slice(0, roomLimit);
 
-const roomsFromMembershipSnapshot = async (
-  memberDocuments: QueryDocumentSnapshot<DocumentData>[],
-) => {
-  const roomRefs = memberDocuments
-    .map((member) => member.ref.parent.parent)
-    .filter(
-      (roomRef): roomRef is NonNullable<typeof roomRef> => roomRef !== null,
-    );
-  const roomSnapshots = await Promise.all(
-    roomRefs.map((roomRef) => getDoc(roomRef)),
-  );
-  return roomSnapshots
-    .filter((room) => room.exists())
-    .map((room) => ({ id: room.id, ...room.data() }) as ChatRoom)
-    .sort(
-      (left, right) =>
-        (right.lastMessageAt?.toMillis?.() ?? 0) -
-        (left.lastMessageAt?.toMillis?.() ?? 0),
-    );
-};
-
-export const loadChatRoomsForUser = async (
-  userId: string,
-  roomLimit = CHAT_ROOM_PAGE_SIZE,
-) => {
-  const [memberships, legacyRooms] = await Promise.all([
-    getDocs(
-      query(
-        collectionGroup(db, "members"),
-        where("userId", "==", userId),
-        limit(roomLimit + 1),
-      ),
-    ),
-    getDocs(
-      query(
-        collection(db, "chatRooms"),
-        where("participantIds", "array-contains", userId),
-        limit(roomLimit + 1),
-      ),
-    ),
-  ]);
-  return mergeRooms(
-    roomLimit,
-    await roomsFromMembershipSnapshot(
-      memberships.docs.slice(0, roomLimit),
-    ),
-    legacyRooms.docs.slice(0, roomLimit).map(
-      (room) => ({ id: room.id, ...room.data() }) as ChatRoom,
-    ),
-  );
-};
-
 export const subscribeChatRoomsForUser = (
   userId: string,
   onValue: (rooms: ChatRoom[], hasMore: boolean) => void,
@@ -142,9 +154,9 @@ export const subscribeChatRoomsForUser = (
     ),
     (snapshot) => {
       legacyHasMore = snapshot.size > roomLimit;
-      legacyRooms = snapshot.docs.slice(0, roomLimit).map(
-        (room) => ({ id: room.id, ...room.data() }) as ChatRoom,
-      );
+      legacyRooms = snapshot.docs
+        .slice(0, roomLimit)
+        .map((room) => ({ id: room.id, ...room.data() }) as ChatRoom);
       emitRooms();
     },
     onError,

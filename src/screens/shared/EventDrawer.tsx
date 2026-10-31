@@ -377,7 +377,7 @@ export function EventDrawer({
             <div className="organizer-icon">
               <UsersRound size={17} />
             </div>
-            <div>
+            <div className="organizer-copy">
               <small>主催</small>
               <strong>{event.organizationName}</strong>
               {organizerVerified && (

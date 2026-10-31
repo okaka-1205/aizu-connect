@@ -42,7 +42,7 @@ export function RoleShell({
         </button>
         <div className={`role-header-user${onClose ? " has-home-action" : ""}`}>
           {icon}
-          <strong>{title}</strong>
+          <strong title={title}>{title}</strong>
           {onClose && (
             <button
               className="secondary-action compact-action"

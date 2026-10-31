@@ -9,7 +9,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import {
   EmptyEvents,
@@ -18,6 +18,7 @@ import {
 } from "../../components/ui/AppPrimitives";
 import { EVENT_PAGE_SIZE } from "../../config/events";
 import { categories, type Filter } from "../../lib/appLogic";
+import { formatChatDay as formatEventDay } from "../../lib/eventUtils";
 import type {
   AizuEvent,
   EventApplication,
@@ -246,21 +247,16 @@ export function SearchTab(props: {
     props.searchFormatFilter !== "すべて",
     props.searchSort !== "開催が近い順",
   ].filter(Boolean).length;
-  const calendarGroups = props.filteredEvents.reduce<
-    Record<string, AizuEvent[]>
-  >((groups, event) => {
-    const date = event.startAt?.toDate();
-    const key = date
-      ? new Intl.DateTimeFormat("ja-JP", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-          weekday: "short",
-        }).format(date)
-      : "日時未定";
-    groups[key] = [...(groups[key] ?? []), event];
+  const calendarGroups = useMemo(() => {
+    const groups: Record<string, AizuEvent[]> = {};
+    if (props.searchView === "calendar") {
+      for (const event of props.filteredEvents) {
+        const key = event.startAt ? formatEventDay(event.startAt) : "日時未定";
+        (groups[key] ??= []).push(event);
+      }
+    }
     return groups;
-  }, {});
+  }, [props.filteredEvents, props.searchView]);
   return (
     <section className="tab-page search-page">
       <div className="page-title">

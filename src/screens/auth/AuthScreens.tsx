@@ -15,7 +15,7 @@ import {
   PRIVACY_VERSION,
   TERMS_VERSION,
   type LegalDocument,
-} from "../../content/legalDocuments";
+} from "../../content/legalMetadata";
 import { useNoticeState } from "../../hooks/useNoticeState";
 import { ensureAppCheck } from "../../lib/firebase";
 import { getFirebaseErrorMessage } from "../../lib/appLogic";

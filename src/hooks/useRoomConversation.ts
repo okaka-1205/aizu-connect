@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getFirebaseErrorMessage } from "../lib/appLogic";
 import {
   markRoomRead,
@@ -20,6 +20,11 @@ export function useRoomConversation({
   const [messageLimit, setMessageLimit] = useState(100);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [readReceipts, setReadReceipts] = useState<ChatReadReceipt[]>([]);
+  const loadOlderMessages = useCallback(
+    () => setMessageLimit((current) => current + 100),
+    [],
+  );
+  const resetMessageWindow = useCallback(() => setMessageLimit(100), []);
 
   useEffect(() => {
     if (!roomId) {
@@ -55,7 +60,7 @@ export function useRoomConversation({
     chatMessages: messages,
     hasOlderChatMessages: hasOlderMessages,
     chatReadReceipts: readReceipts,
-    loadOlderMessages: () => setMessageLimit((current) => current + 100),
-    resetMessageWindow: () => setMessageLimit(100),
+    loadOlderMessages,
+    resetMessageWindow,
   };
 }

@@ -895,7 +895,7 @@ service cloud.firestore {
     match /eventSurveys/{eventId}/responses/{userId} {
       allow read: if isAdmin()
         || (isActiveStudent() && request.auth.uid == userId)
-        || (isActiveOrganization()
+        || (isActiveCreator()
           && get(/databases/$(database)/documents/events/$(eventId)).data.createdBy
             == request.auth.uid);
       allow create, update: if isActiveStudent()

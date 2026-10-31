@@ -380,6 +380,10 @@ test.describe("accessibility", () => {
     ).toBeVisible();
     await expect(page.getByText("QR受付・6桁受付コード")).toBeVisible();
     await expect(page.getByLabel("活動報告本文")).toBeVisible();
+    const surveyToggle = page.locator(".event-survey-results > summary");
+    await surveyToggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("region", { name: "開催後アンケートの回答" }).getByText("まだ回答はありません。")).toBeVisible();
     const reportRights = page.getByRole("checkbox", {
       name: /本文・写真の権利を確認し/,
     });

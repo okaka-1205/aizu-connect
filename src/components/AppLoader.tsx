@@ -1,7 +1,9 @@
 import { lazy, Suspense } from "react";
-import { MobileMock } from "./MobileMock";
 
 const App = lazy(() => import("../App.tsx"));
+const MobileMock = lazy(() =>
+  import("./MobileMock").then((module) => ({ default: module.MobileMock })),
+);
 
 function LoadingBrand() {
   return (
@@ -63,13 +65,9 @@ function InitialAppShell() {
 }
 
 export function AppLoader() {
-  if (window.location.pathname === "/mobile-mock") {
-    return <MobileMock />;
-  }
-
   return (
     <Suspense fallback={<InitialAppShell />}>
-      <App />
+      {window.location.pathname === "/mobile-mock" ? <MobileMock /> : <App />}
     </Suspense>
   );
 }

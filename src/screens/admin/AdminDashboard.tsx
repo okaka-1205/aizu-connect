@@ -1,16 +1,4 @@
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-} from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
-import {
   CalendarDays,
   Eye,
   Flag,
@@ -20,71 +8,32 @@ import {
   Trash2,
   UsersRound,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { NoticeBanner } from "../../components/ui/AppPrimitives";
 import { useNoticeState } from "../../hooks/useNoticeState";
-import { db, functions } from "../../lib/firebase";
 import {
   getFirebaseErrorMessage,
   isAizuUniversityEmail,
 } from "../../lib/appLogic";
 import { formatChatTime, preferredScrollBehavior } from "../../lib/eventUtils";
-import type {
-  AccountDeletionRequest,
-  AdminUsageMetrics,
-  AizuEvent,
-  AppUser,
-  AuditLog,
-  ReportRecord,
-} from "../../types/domain";
+import type { AizuEvent, AppUser } from "../../types/domain";
 import {
   ActionReasonDialog,
   EmptyRoleState,
   QueuePagination,
   RoleShell,
 } from "../shared/RoleScreenPrimitives";
-import { AdminOverview } from "./components/AdminOverview";
-import { AssignmentControls } from "./components/AssignmentControls";
 import { deriveAdminDashboardView } from "./adminDashboardLogic";
+import { AdminOverview } from "./components/AdminOverview";
 import { AdminUsageOverview } from "./components/AdminUsageOverview";
+import { AssignmentControls } from "./components/AssignmentControls";
+import { useAdminActions } from "./hooks/useAdminActions";
+import { useAdminDashboardData } from "./hooks/useAdminDashboardData";
 
 export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
-  const pendingOperationIds = useRef(new Map<string, string>());
-  const [pendingEvents, setPendingEvents] = useState<AizuEvent[]>([]);
-  const [pendingUsers, setPendingUsers] = useState<AppUser[]>([]);
-  const [pendingReports, setPendingReports] = useState<ReportRecord[]>([]);
-  const [deletionRequests, setDeletionRequests] = useState<
-    AccountDeletionRequest[]
-  >([]);
-  const [deletionRequestUsers, setDeletionRequestUsers] = useState<
-    Record<string, AppUser>
-  >({});
-  const [managedUsers, setManagedUsers] = useState<AppUser[]>([]);
-  const [managedEvents, setManagedEvents] = useState<AizuEvent[]>([]);
-  const [pendingEventQueryLimit, setPendingEventQueryLimit] = useState(50);
-  const [pendingUserQueryLimit, setPendingUserQueryLimit] = useState(50);
-  const [pendingReportQueryLimit, setPendingReportQueryLimit] = useState(50);
-  const [deletionRequestQueryLimit, setDeletionRequestQueryLimit] =
-    useState(50);
-  const [hasMorePendingEvents, setHasMorePendingEvents] = useState(false);
-  const [hasMorePendingUsers, setHasMorePendingUsers] = useState(false);
-  const [hasMorePendingReports, setHasMorePendingReports] = useState(false);
-  const [hasMoreDeletionRequests, setHasMoreDeletionRequests] = useState(false);
-  const [managedUserQueryLimit, setManagedUserQueryLimit] = useState(50);
-  const [managedEventQueryLimit, setManagedEventQueryLimit] = useState(50);
-  const [hasMoreManagedUsers, setHasMoreManagedUsers] = useState(false);
-  const [hasMoreManagedEvents, setHasMoreManagedEvents] = useState(false);
-  const [auditLogQueryLimit, setAuditLogQueryLimit] = useState(50);
-  const [hasMoreAuditLogs, setHasMoreAuditLogs] = useState(false);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [notice, noticeTone, setNotice] = useNoticeState();
   const [isLoading, setIsLoading] = useState(false);
-  const [usageMetrics, setUsageMetrics] = useState<AdminUsageMetrics | null>(
-    null,
-  );
-  const [isUsageMetricsLoading, setIsUsageMetricsLoading] = useState(true);
-  const [usageMetricsError, setUsageMetricsError] = useState("");
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [adminSearch, setAdminSearch] = useState("");
   const [managedUserStatus, setManagedUserStatus] = useState<
@@ -106,6 +55,35 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     danger?: boolean;
     action: () => Promise<void>;
   } | null>(null);
+  const {
+    pendingEvents,
+    pendingUsers,
+    pendingReports,
+    deletionRequests,
+    deletionRequestUsers,
+    managedUsers,
+    managedEvents,
+    setPendingEventQueryLimit,
+    setPendingUserQueryLimit,
+    setPendingReportQueryLimit,
+    setDeletionRequestQueryLimit,
+    hasMorePendingEvents,
+    hasMorePendingUsers,
+    hasMorePendingReports,
+    hasMoreDeletionRequests,
+    setManagedUserQueryLimit,
+    setManagedEventQueryLimit,
+    hasMoreManagedUsers,
+    hasMoreManagedEvents,
+    setAuditLogQueryLimit,
+    hasMoreAuditLogs,
+    auditLogs,
+    usageMetrics,
+    isUsageMetricsLoading,
+    usageMetricsError,
+    loadUsageMetrics,
+    loadReviewQueue,
+  } = useAdminDashboardData({ setNotice, setIsLoading });
 
   const {
     visiblePendingEvents,
@@ -128,427 +106,23 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     managedUserStatus,
     auditLogs,
   });
+  const {
+    approveEvent,
+    requestEventRevision,
+    approveUser,
+    rejectUser,
+    resolveReport,
+    updateManagedUserStatus,
+    updateManagedEventStatus,
+    deleteManagedEvent,
+    deleteManagedUser,
+  } = useAdminActions({ setNotice, setIsLoading, setReasonAction });
+
   const reviewQueueHasMore =
     hasMorePendingEvents ||
     hasMorePendingUsers ||
     hasMorePendingReports ||
     hasMoreDeletionRequests;
-
-  const loadUsageMetrics = useCallback(async () => {
-    setIsUsageMetricsLoading(true);
-    setUsageMetricsError("");
-    try {
-      const callable = httpsCallable<void, AdminUsageMetrics>(
-        functions,
-        "getAdminDashboardMetrics",
-      );
-      const result = await callable();
-      setUsageMetrics(result.data);
-    } catch (error) {
-      setUsageMetricsError(getFirebaseErrorMessage(error));
-    } finally {
-      setIsUsageMetricsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadUsageMetrics();
-  }, [loadUsageMetrics]);
-
-  const loadReviewQueue = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [eventSnapshot, reportSnapshot, userSnapshot] = await Promise.all([
-        getDocs(
-          query(
-            collection(db, "events"),
-            where("status", "==", "pending_review"),
-            orderBy("createdAt", "desc"),
-            limit(pendingEventQueryLimit),
-          ),
-        ),
-        getDocs(
-          query(
-            collection(db, "reports"),
-            where("status", "==", "submitted"),
-            orderBy("createdAt", "desc"),
-            limit(pendingReportQueryLimit),
-          ),
-        ),
-        getDocs(
-          query(
-            collection(db, "users"),
-            where("status", "in", ["pending_approval", "pending"]),
-            orderBy("createdAt", "desc"),
-            limit(pendingUserQueryLimit),
-          ),
-        ),
-      ]);
-      setPendingEvents(
-        eventSnapshot.docs.map((eventDoc) => ({
-          id: eventDoc.id,
-          ...eventDoc.data(),
-        })) as AizuEvent[],
-      );
-      setHasMorePendingEvents(eventSnapshot.size === pendingEventQueryLimit);
-      setPendingUsers(
-        userSnapshot.docs
-          .map((userDoc) => ({
-            uid: userDoc.id,
-            ...(userDoc.data() as Omit<AppUser, "uid">),
-          }))
-          .filter((user) => user.role !== "admin") as AppUser[],
-      );
-      setHasMorePendingUsers(userSnapshot.size === pendingUserQueryLimit);
-      setPendingReports(
-        reportSnapshot.docs.map((reportDoc) => ({
-          id: reportDoc.id,
-          ...reportDoc.data(),
-        })) as ReportRecord[],
-      );
-      setHasMorePendingReports(reportSnapshot.size === pendingReportQueryLimit);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [pendingEventQueryLimit, pendingReportQueryLimit, pendingUserQueryLimit]);
-
-  useEffect(() => {
-    const eventUnsubscribe = onSnapshot(
-      query(
-        collection(db, "events"),
-        where("status", "==", "pending_review"),
-        orderBy("createdAt", "desc"),
-        limit(pendingEventQueryLimit),
-      ),
-      (snapshot) => {
-        setHasMorePendingEvents(snapshot.size === pendingEventQueryLimit);
-        setPendingEvents(
-          snapshot.docs.map((eventDoc) => ({
-            id: eventDoc.id,
-            ...eventDoc.data(),
-          })) as AizuEvent[],
-        );
-      },
-      () => setNotice("イベント審査キューを取得できませんでした。", "error"),
-    );
-    const userUnsubscribe = onSnapshot(
-      query(
-        collection(db, "users"),
-        where("status", "in", ["pending_approval", "pending"]),
-        orderBy("createdAt", "desc"),
-        limit(pendingUserQueryLimit),
-      ),
-      (snapshot) => {
-        setHasMorePendingUsers(snapshot.size === pendingUserQueryLimit);
-        setPendingUsers(
-          snapshot.docs
-            .map((userDoc) => ({
-              uid: userDoc.id,
-              ...(userDoc.data() as Omit<AppUser, "uid">),
-            }))
-            .filter((user) => user.role !== "admin") as AppUser[],
-        );
-      },
-      () => setNotice("アカウント審査キューを取得できませんでした。", "error"),
-    );
-    const reportUnsubscribe = onSnapshot(
-      query(
-        collection(db, "reports"),
-        where("status", "==", "submitted"),
-        orderBy("createdAt", "desc"),
-        limit(pendingReportQueryLimit),
-      ),
-      (snapshot) => {
-        setHasMorePendingReports(snapshot.size === pendingReportQueryLimit);
-        setPendingReports(
-          snapshot.docs.map((reportDoc) => ({
-            id: reportDoc.id,
-            ...reportDoc.data(),
-          })) as ReportRecord[],
-        );
-      },
-      () => setNotice("通報キューを取得できませんでした。", "error"),
-    );
-    const deletionRequestUnsubscribe = onSnapshot(
-      query(
-        collection(db, "accountDeletionRequests"),
-        where("status", "==", "submitted"),
-        orderBy("requestedAt", "desc"),
-        limit(deletionRequestQueryLimit),
-      ),
-      (snapshot) => {
-        setHasMoreDeletionRequests(snapshot.size === deletionRequestQueryLimit);
-        const requests = snapshot.docs.map(
-          (requestDoc) => requestDoc.data() as AccountDeletionRequest,
-        );
-        setDeletionRequests(requests);
-        void Promise.all(
-          requests.map(async (request) => {
-            const userSnapshot = await getDoc(doc(db, "users", request.userId));
-            if (!userSnapshot.exists()) return null;
-            return {
-              uid: userSnapshot.id,
-              ...(userSnapshot.data() as Omit<AppUser, "uid">),
-            } as AppUser;
-          }),
-        )
-          .then((users) =>
-            setDeletionRequestUsers(
-              Object.fromEntries(
-                users
-                  .filter((user): user is AppUser => Boolean(user))
-                  .map((user) => [user.uid, user]),
-              ),
-            ),
-          )
-          .catch(() =>
-            setNotice(
-              "退会申請者のアカウント情報を取得できませんでした。",
-              "error",
-            ),
-          );
-      },
-      () => setNotice("退会申請を取得できませんでした。", "error"),
-    );
-    return () => {
-      eventUnsubscribe();
-      userUnsubscribe();
-      reportUnsubscribe();
-      deletionRequestUnsubscribe();
-    };
-  }, [
-    deletionRequestQueryLimit,
-    pendingEventQueryLimit,
-    pendingReportQueryLimit,
-    pendingUserQueryLimit,
-    setNotice,
-  ]);
-
-  useEffect(() => {
-    const usersUnsubscribe = onSnapshot(
-      query(
-        collection(db, "users"),
-        orderBy("createdAt", "desc"),
-        limit(managedUserQueryLimit),
-      ),
-      (snapshot) => {
-        setHasMoreManagedUsers(snapshot.size === managedUserQueryLimit);
-        setManagedUsers(
-          snapshot.docs
-            .map((userDoc) => ({
-              uid: userDoc.id,
-              ...(userDoc.data() as Omit<AppUser, "uid">),
-            }))
-            .filter((user) => user.role !== "admin") as AppUser[],
-        );
-      },
-      () => setNotice("ユーザー管理データを取得できませんでした。", "error"),
-    );
-    const eventsUnsubscribe = onSnapshot(
-      query(
-        collection(db, "events"),
-        where("status", "in", ["published", "unpublished"]),
-        orderBy("createdAt", "desc"),
-        limit(managedEventQueryLimit),
-      ),
-      (snapshot) => {
-        setHasMoreManagedEvents(snapshot.size === managedEventQueryLimit);
-        setManagedEvents(
-          snapshot.docs
-            .map(
-              (eventDoc) =>
-                ({
-                  id: eventDoc.id,
-                  ...eventDoc.data(),
-                }) as AizuEvent,
-            )
-            .filter((event) =>
-              ["published", "unpublished"].includes(event.status),
-            ) as AizuEvent[],
-        );
-      },
-      () =>
-        setNotice("公開イベント管理データを取得できませんでした。", "error"),
-    );
-    const auditUnsubscribe = onSnapshot(
-      query(
-        collection(db, "auditLogs"),
-        orderBy("createdAt", "desc"),
-        limit(auditLogQueryLimit + 1),
-      ),
-      (snapshot) => {
-        setHasMoreAuditLogs(snapshot.size > auditLogQueryLimit);
-        setAuditLogs(
-          snapshot.docs.slice(0, auditLogQueryLimit).map((auditDoc) => ({
-            id: auditDoc.id,
-            ...auditDoc.data(),
-          })) as AuditLog[],
-        );
-      },
-      () => setNotice("監査履歴を取得できませんでした。", "error"),
-    );
-    return () => {
-      usersUnsubscribe();
-      eventsUnsubscribe();
-      auditUnsubscribe();
-    };
-  }, [
-    auditLogQueryLimit,
-    managedEventQueryLimit,
-    managedUserQueryLimit,
-    setNotice,
-  ]);
-
-  const approveEvent = async (event: AizuEvent) => {
-    await runAdminAction(
-      "approve_event",
-      event.id,
-      "公開基準を満たしていることを確認",
-      "イベントを公開しました。",
-    );
-  };
-
-  const requestEventRevision = async (event: AizuEvent, reason: string) => {
-    await runAdminAction(
-      "request_event_revision",
-      event.id,
-      reason,
-      "理由を添えてイベントを差し戻しました。",
-    );
-  };
-
-  const approveUser = async (user: AppUser) => {
-    await runAdminAction(
-      "approve_user",
-      user.uid,
-      "登録情報を確認",
-      "アカウントを承認しました。",
-    );
-  };
-
-  const rejectUser = async (user: AppUser, reason: string) => {
-    await runAdminAction(
-      "reject_user",
-      user.uid,
-      reason,
-      "アカウントを見送りました。",
-    );
-  };
-
-  const resolveReport = async (
-    report: ReportRecord,
-    status: "resolved" | "dismissed",
-    reason: string,
-  ) => {
-    await runAdminAction(
-      status === "resolved" ? "resolve_report" : "dismiss_report",
-      report.id,
-      reason,
-      status === "resolved"
-        ? "通報を対応済みにしました。"
-        : "通報を棄却しました。",
-    );
-  };
-
-  type AdminAction =
-    | "approve_event"
-    | "request_event_revision"
-    | "approve_user"
-    | "reject_user"
-    | "resolve_report"
-    | "dismiss_report"
-    | "suspend_user"
-    | "restore_user"
-    | "delete_user"
-    | "unpublish_event"
-    | "restore_event"
-    | "delete_event";
-
-  const runAdminAction = async (
-    action: AdminAction,
-    targetId: string,
-    reason: string,
-    successMessage: string,
-  ) => {
-    setIsLoading(true);
-    try {
-      const manageResource = httpsCallable<
-        {
-          action: AdminAction;
-          targetId: string;
-          reason: string;
-          requestId: string;
-        },
-        { status: string }
-      >(functions, "adminManageResource");
-      const operationKey = `${action}:${targetId}`;
-      const requestId =
-        pendingOperationIds.current.get(operationKey) ??
-        globalThis.crypto.randomUUID().replaceAll("-", "");
-      pendingOperationIds.current.set(operationKey, requestId);
-      await manageResource({
-        action,
-        targetId,
-        reason: reason.trim().slice(0, 1000),
-        requestId,
-      });
-      pendingOperationIds.current.delete(operationKey);
-      setReasonAction(null);
-      setNotice(successMessage, "success");
-    } catch (error) {
-      setNotice(getFirebaseErrorMessage(error), "error");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const updateManagedUserStatus = async (
-    user: AppUser,
-    status: "active" | "suspended",
-    reason: string,
-  ) => {
-    await runAdminAction(
-      status === "suspended" ? "suspend_user" : "restore_user",
-      user.uid,
-      reason,
-      status === "suspended"
-        ? "アカウントを停止しました。"
-        : "アカウントを復旧しました。",
-    );
-  };
-
-  const updateManagedEventStatus = async (
-    event: AizuEvent,
-    status: "published" | "unpublished",
-    reason: string,
-  ) => {
-    await runAdminAction(
-      status === "unpublished" ? "unpublish_event" : "restore_event",
-      event.id,
-      reason,
-      status === "unpublished"
-        ? "イベントを非公開にしました。"
-        : "イベントを再公開しました。",
-    );
-  };
-
-  const deleteManagedEvent = async (event: AizuEvent, reason: string) => {
-    await runAdminAction(
-      "delete_event",
-      event.id,
-      reason,
-      "イベントと関連する申請・チャットを削除しました。",
-    );
-  };
-
-  const deleteManagedUser = async (user: AppUser, reason: string) => {
-    await runAdminAction(
-      "delete_user",
-      user.uid,
-      reason,
-      "ユーザーの認証アカウントと関連データを削除しました。",
-    );
-  };
 
   const eventRiskFlags = (event: AizuEvent) =>
     [

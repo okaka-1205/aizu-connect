@@ -12,12 +12,15 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BrandMark, SectionHeading } from "../../components/ui/AppPrimitives";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
 import { getFirebaseErrorMessage } from "../../lib/appLogic";
-import { downloadActivityPortfolioPdf } from "../../lib/eventUtils";
+import {
+  downloadActivityPortfolioPdf,
+  indexEventsById,
+} from "../../lib/eventUtils";
 import { saveEventSurvey } from "../../repositories/engagementRepository";
 import type {
   ActivityRecord,
@@ -92,9 +95,16 @@ export function ActivityTab(props: {
     Record<string, { rating: number; comment: string; recommend: boolean }>
   >({});
   const [savedSurveyIds, setSavedSurveyIds] = useState<string[]>([]);
+  const pendingSurveyIds = useRef(new Set<string>());
+  const [savingSurveyIds, setSavingSurveyIds] = useState<string[]>([]);
+  const [surveyErrors, setSurveyErrors] = useState<Record<string, string>>({});
   const [activityView, setActivityView] = useState<
     "upcoming" | "history" | "records"
   >("upcoming");
+  const eventsById = useMemo(
+    () => indexEventsById(props.events),
+    [props.events],
+  );
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const eventId = params.get("checkInEvent");
@@ -123,6 +133,41 @@ export function ActivityTab(props: {
   const portfolioTakeaways = Array.from(
     new Set(verifiedActivities.flatMap((activity) => activity.takeaways ?? [])),
   ).slice(0, 5);
+  const submitSurvey = async (application: EventApplication) => {
+    if (
+      pendingSurveyIds.current.has(application.id) ||
+      savedSurveyIds.includes(application.id)
+    )
+      return;
+    pendingSurveyIds.current.add(application.id);
+    setSavingSurveyIds((current) => [...current, application.id]);
+    setSurveyErrors((current) => ({ ...current, [application.id]: "" }));
+    const survey = surveyDrafts[application.id] ?? {
+      rating: 5,
+      comment: "",
+      recommend: true,
+    };
+    try {
+      await saveEventSurvey(
+        application.studentId,
+        application.eventId,
+        survey.rating,
+        survey.comment,
+        survey.recommend,
+      );
+      setSavedSurveyIds((current) => [...current, application.id]);
+    } catch (error) {
+      setSurveyErrors((current) => ({
+        ...current,
+        [application.id]: getFirebaseErrorMessage(error),
+      }));
+    } finally {
+      pendingSurveyIds.current.delete(application.id);
+      setSavingSurveyIds((current) =>
+        current.filter((id) => id !== application.id),
+      );
+    }
+  };
   return (
     <section className="tab-page activity-page">
       <div className="page-title">
@@ -179,9 +224,7 @@ export function ActivityTab(props: {
           </div>
         ) : (
           props.applications.map((application) => {
-            const relatedEvent = props.events.find(
-              (item) => item.id === application.eventId,
-            );
+            const relatedEvent = eventsById.get(application.eventId);
             const eventDate =
               relatedEvent?.startAt?.toDate() ??
               application.eventStartAt?.toDate();
@@ -299,6 +342,7 @@ export function ActivityTab(props: {
                       <strong>開催後アンケート</strong>
                       <select
                         aria-label={`${application.eventTitle}の満足度`}
+                        disabled={savingSurveyIds.includes(application.id)}
                         value={surveyDrafts[application.id]?.rating ?? 5}
                         onChange={(event) =>
                           setSurveyDrafts((current) => ({
@@ -306,8 +350,7 @@ export function ActivityTab(props: {
                             [application.id]: {
                               rating: Number(event.target.value),
                               comment: current[application.id]?.comment ?? "",
-                              recommend:
-                                current[application.id]?.recommend ?? true,
+                              recommend: current[application.id]?.recommend ?? true,
                             },
                           }))
                         }
@@ -320,6 +363,7 @@ export function ActivityTab(props: {
                       </select>
                       <textarea
                         aria-label={`${application.eventTitle}の感想`}
+                        disabled={savingSurveyIds.includes(application.id)}
                         maxLength={1000}
                         placeholder="感想や改善してほしい点"
                         value={surveyDrafts[application.id]?.comment ?? ""}
@@ -329,8 +373,7 @@ export function ActivityTab(props: {
                             [application.id]: {
                               rating: current[application.id]?.rating ?? 5,
                               comment: event.target.value,
-                              recommend:
-                                current[application.id]?.recommend ?? true,
+                              recommend: current[application.id]?.recommend ?? true,
                             },
                           }))
                         }
@@ -338,16 +381,14 @@ export function ActivityTab(props: {
                       <label>
                         <input
                           type="checkbox"
-                          checked={
-                            surveyDrafts[application.id]?.recommend ?? true
-                          }
+                          disabled={savingSurveyIds.includes(application.id)}
+                          checked={surveyDrafts[application.id]?.recommend ?? true}
                           onChange={(event) =>
                             setSurveyDrafts((current) => ({
                               ...current,
                               [application.id]: {
                                 rating: current[application.id]?.rating ?? 5,
-                                comment:
-                                  current[application.id]?.comment ?? "",
+                                comment: current[application.id]?.comment ?? "",
                                 recommend: event.target.checked,
                               },
                             }))
@@ -357,31 +398,26 @@ export function ActivityTab(props: {
                       </label>
                       <button
                         type="button"
-                        disabled={savedSurveyIds.includes(application.id)}
-                        onClick={() => {
-                          const survey = surveyDrafts[application.id] ?? {
-                            rating: 5,
-                            comment: "",
-                            recommend: true,
-                          };
-                          void saveEventSurvey(
-                            application.studentId,
-                            application.eventId,
-                            survey.rating,
-                            survey.comment,
-                            survey.recommend,
-                          ).then(() =>
-                            setSavedSurveyIds((current) => [
-                              ...current,
-                              application.id,
-                            ]),
-                          );
-                        }}
+                        disabled={
+                          savedSurveyIds.includes(application.id) ||
+                          savingSurveyIds.includes(application.id)
+                        }
+                        onClick={() => void submitSurvey(application)}
                       >
-                        {savedSurveyIds.includes(application.id)
-                          ? "回答済み"
-                          : "アンケートを送信"}
+                        {savingSurveyIds.includes(application.id)
+                          ? "送信中…"
+                          : savedSurveyIds.includes(application.id)
+                            ? "回答済み"
+                            : "アンケートを送信"}
                       </button>
+                      {surveyErrors[application.id] && (
+                        <small className="inline-error" role="alert">
+                          {surveyErrors[application.id]}
+                        </small>
+                      )}
+                      {savedSurveyIds.includes(application.id) && (
+                        <small role="status">アンケートを送信しました。</small>
+                      )}
                     </div>
                   )}
                 </div>

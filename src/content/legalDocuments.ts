@@ -1,7 +1,4 @@
-export type LegalDocument = "terms" | "privacy";
-
-export const TERMS_VERSION = "2026-10-23";
-export const PRIVACY_VERSION = "2026-10-23";
+import { legalDocumentMetadata, type LegalDocument } from "./legalMetadata";
 
 type LegalMeta = {
   label: string;
@@ -43,9 +40,7 @@ const operatorMeta: LegalMeta[] = [
 
 export const legalDocuments: Record<LegalDocument, LegalDocumentContent> = {
   terms: {
-    eyebrow: "TERMS OF USE",
-    title: "利用規約",
-    version: TERMS_VERSION,
+    ...legalDocumentMetadata.terms,
     effectiveDate: "2026年10月19日",
     introduction:
       "本規約は、Aizu Connect運営者（以下「運営者」）が提供するAizu Connect（以下「本サービス」）の利用条件を定めるものです。利用者は、内容を確認し同意したうえで本サービスを利用します。",
@@ -181,9 +176,7 @@ export const legalDocuments: Record<LegalDocument, LegalDocumentContent> = {
     ],
   },
   privacy: {
-    eyebrow: "PRIVACY POLICY",
-    title: "プライバシーポリシー",
-    version: PRIVACY_VERSION,
+    ...legalDocumentMetadata.privacy,
     effectiveDate: "2026年10月19日",
     introduction:
       "Aizu Connect運営者（以下「運営者」）は、本サービスにおける利用者の個人情報その他の利用者情報を、個人情報の保護に関する法律その他の関係法令に従い、次のとおり取り扱います。",

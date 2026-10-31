@@ -357,7 +357,7 @@ export type AdminAssignment = {
   targetId: string;
   assigneeId: string;
   assigneeName: string;
-  status: "open" | "in_progress" | "done";
+  status: "open" | "in_progress" | "completed";
   dueAt?: Timestamp;
   updatedAt?: Timestamp;
 };

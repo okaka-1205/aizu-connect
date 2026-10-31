@@ -11,19 +11,15 @@ import {
   serverTimestamp,
   setDoc,
   startAt,
-  Timestamp,
   updateDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
 import {
   Check,
   ChevronLeft,
   ChevronRight,
   Download,
-  Eye,
-  FileText,
   Flag,
   Link as LinkIcon,
   Loader2,
@@ -35,42 +31,28 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckInQrCode } from "../../components/CheckInQrCode";
-import { Field } from "../../components/Field";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { ImageCropDialog } from "../../components/ImageCropDialog";
 import { NoticeBanner } from "../../components/ui/AppPrimitives";
-import { defaultTakeaways, eventTemplates } from "../../config/events";
 import { useNoticeState } from "../../hooks/useNoticeState";
 import { useRoomConversation } from "../../hooks/useRoomConversation";
 import {
-  categories,
-  formatEventStart,
   getFirebaseErrorMessage,
   isAttendanceWindowOpen,
-  isFutureEventStart,
-  toDateTimeInput,
-  toDateTimeLocalValue,
-  validateChatAttachment,
-  validateImageSourceFile,
 } from "../../lib/appLogic";
 import {
   preferredScrollBehavior,
   revokeObjectUrl,
   timestampMillis,
 } from "../../lib/eventUtils";
-import { db, functions } from "../../lib/firebase";
+import { db } from "../../lib/firebase";
 import { uploadImage } from "../../lib/storage";
 import {
   loadChatPreferencesForRooms,
+  sendChatAttachment,
+  sendChatTextMessage,
   subscribeChatRoomsForUser,
 } from "../../repositories/chatRepository";
 import {
@@ -81,23 +63,26 @@ import {
 import type {
   AccountDeletionRequest,
   AizuEvent,
-  ApplicationQuestion,
   AppUser,
+  ChatMessage,
   ChatPreference,
   ChatRoom,
   EventApplication,
   NotificationItem,
 } from "../../types/domain";
+import { AccountDeletionPanel } from "../shared/AccountDeletionPanel";
 import { EventDrawer } from "../shared/EventDrawer";
 import { MessagesTab } from "../shared/MessagesTab";
-import { AccountDeletionPanel } from "../shared/AccountDeletionPanel";
 import {
   ActionReasonDialog,
   EmptyRoleState,
   RoleShell,
 } from "../shared/RoleScreenPrimitives";
 import { applicationStatusLabel } from "../shared/applicationStatus";
+import { EventSurveyResults } from "./components/EventSurveyResults";
+import { OrganizationEventForm } from "./components/OrganizationEventForm";
 import { OrganizationNavigation } from "./components/OrganizationNavigation";
+import { useOrganizationEventEditor } from "./hooks/useOrganizationEventEditor";
 import {
   countUnreadChats,
   downloadParticipantReport,
@@ -145,77 +130,7 @@ export function OrganizationDashboard({
   const [eventQueryLimit, setEventQueryLimit] = useState(50);
   const [hasMoreManagedEvents, setHasMoreManagedEvents] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [applications, setApplications] = useState<EventApplication[]>([]);
-  const [title, setTitle] = useState("");
-  const [summary, setSummary] = useState("");
-  const [location, setLocation] = useState("会津若松市");
-  const [startAtInput, setStartAtInput] = useState("");
-  const [endAtInput, setEndAtInput] = useState("");
-  const [capacity, setCapacity] = useState(20);
-  const [category, setCategory] = useState("交流・コミュニティ");
-  const [feeType, setFeeType] = useState<AizuEvent["feeType"]>("無料");
-  const [feeAmount, setFeeAmount] = useState(0);
-  const [commercialSellerName, setCommercialSellerName] = useState("");
-  const [commercialSellerAddress, setCommercialSellerAddress] = useState("");
-  const [commercialSellerPhone, setCommercialSellerPhone] = useState("");
-  const [commercialResponsiblePerson, setCommercialResponsiblePerson] =
-    useState("");
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [paymentTiming, setPaymentTiming] = useState("");
-  const [additionalFees, setAdditionalFees] = useState("なし");
-  const [eventFormat, setEventFormat] =
-    useState<AizuEvent["eventFormat"]>("現地");
-  const [meetingPoint, setMeetingPoint] = useState("会津若松市");
-  const [accessInfo, setAccessInfo] = useState("");
-  const [bringItems, setBringItems] = useState("特になし");
-  const [cancellationPolicy, setCancellationPolicy] = useState(
-    "参加できなくなった場合は、開催前日までに活動ページからキャンセルしてください。",
-  );
-  const [weatherPolicy, setWeatherPolicy] = useState(
-    "変更・中止の場合は通知と全体チャットで案内します。",
-  );
-  const [accessibility, setAccessibility] = useState(
-    "必要な配慮は参加申請時にお知らせください。",
-  );
-  const [contactMethod, setContactMethod] = useState(
-    "申請後の全体チャットでお問い合わせください。",
-  );
-  const [organizerDescription, setOrganizerDescription] = useState(
-    "参加者が安心して参加できるよう、事前連絡と当日の案内を行います。",
-  );
-  const [organizerExperience, setOrganizerExperience] = useState(
-    "Aizu Connectでイベントを企画",
-  );
-  const [templateKey, setTemplateKey] = useState<string>(eventTemplates[0].key);
-  const [beginnerLevel, setBeginnerLevel] =
-    useState<AizuEvent["beginnerLevel"]>("初参加歓迎");
-  const [takeawayText, setTakeawayText] = useState("");
-  const [applicationQuestions, setApplicationQuestions] = useState<
-    ApplicationQuestion[]
-  >([]);
-  const [cancellationDeadlineInput, setCancellationDeadlineInput] =
-    useState("");
-  const [eventImageFile, setEventImageFile] = useState<File | null>(null);
-  const [eventImagePreview, setEventImagePreview] = useState<string | null>(
-    eventTemplates[0].imageUrl,
-  );
-  const [eventImageSourceFile, setEventImageSourceFile] =
-    useState<File | null>(null);
-  const [eventImageSourcePreview, setEventImageSourcePreview] = useState<
-    string | null
-  >(null);
-  const [isEventImageReviewOpen, setIsEventImageReviewOpen] = useState(false);
-  const [isEventPreviewOpen, setIsEventPreviewOpen] = useState(false);
-  const [eventImageInputKey, setEventImageInputKey] = useState(0);
-  const [eventFormStep, setEventFormStep] = useState<1 | 2 | 3>(1);
-  const eventFormRef = useRef<HTMLFormElement>(null);
-  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
-  const [isDraftSaving, setIsDraftSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [eventImageUploadProgress, setEventImageUploadProgress] = useState<
-    number | null
-  >(null);
   const [notice, noticeTone, setNotice] = useNoticeState();
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [chatRoomQueryLimit, setChatRoomQueryLimit] = useState(50);
@@ -223,8 +138,19 @@ export function OrganizationDashboard({
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState("");
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
+  const mutedChatRoomIds = useMemo(
+    () =>
+      chatPreferences
+        .filter((preference) => preference.muted)
+        .map((preference) => preference.roomId),
+    [chatPreferences],
+  );
   const chatRoomIdsKey = useMemo(
-    () => chatRooms.map((room) => room.id).sort().join("\n"),
+    () =>
+      chatRooms
+        .map((room) => room.id)
+        .sort()
+        .join("\n"),
     [chatRooms],
   );
   const {
@@ -257,7 +183,6 @@ export function OrganizationDashboard({
   );
   const [eventCancellationTarget, setEventCancellationTarget] =
     useState<AizuEvent | null>(null);
-  const [isDraftReady, setIsDraftReady] = useState(false);
   const [checkInCode, setCheckInCode] = useState("");
   const [eventReportSummary, setEventReportSummary] = useState("");
   const [eventReportFiles, setEventReportFiles] = useState<File[]>([]);
@@ -275,9 +200,6 @@ export function OrganizationDashboard({
     selectedEvent &&
     isAttendanceWindowOpen(timestampMillis(selectedEvent.startAt), Date.now()),
   );
-  const selectedTemplate =
-    eventTemplates.find((template) => template.key === templateKey) ??
-    eventTemplates[0];
   const visibleEvents = useMemo(
     () =>
       filterOrganizationEvents(
@@ -338,335 +260,6 @@ export function OrganizationDashboard({
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const moveToEventFormStep = (step: 1 | 2 | 3) => {
-    if (step > eventFormStep) {
-      const currentSection = eventFormRef.current?.querySelector<HTMLElement>(
-        `[data-event-form-step="${eventFormStep}"]`,
-      );
-      const invalidField = currentSection?.querySelector<
-        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-      >("input:invalid, textarea:invalid, select:invalid");
-      if (invalidField) {
-        invalidField.reportValidity();
-        invalidField.focus();
-        return;
-      }
-    }
-    setEventFormStep(step);
-    window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
-  };
-
-  const beginEditEvent = (event: AizuEvent) => {
-    showOrganizationView("create");
-    revokeObjectUrl(eventImagePreview);
-    revokeObjectUrl(eventImageSourcePreview);
-    setEventFormStep(1);
-    setEditingEventId(event.id);
-    setTitle(event.title);
-    setSummary(event.summary);
-    setLocation(event.location);
-    setStartAtInput(toDateTimeInput(event.startAt));
-    setEndAtInput(toDateTimeInput(event.endAt));
-    setCapacity(event.capacity);
-    setCategory(event.category);
-    setFeeType(event.feeType ?? "無料");
-    setFeeAmount(event.feeAmount ?? 0);
-    setCommercialSellerName(event.commercialSellerName ?? "");
-    setCommercialSellerAddress(event.commercialSellerAddress ?? "");
-    setCommercialSellerPhone(event.commercialSellerPhone ?? "");
-    setCommercialResponsiblePerson(event.commercialResponsiblePerson ?? "");
-    setPaymentMethod(event.paymentMethod ?? "");
-    setPaymentTiming(event.paymentTiming ?? "");
-    setAdditionalFees(event.additionalFees ?? "なし");
-    setEventFormat(event.eventFormat ?? "現地");
-    setMeetingPoint(event.meetingPoint ?? event.location);
-    setAccessInfo(event.accessInfo ?? "");
-    setBringItems(event.bringItems ?? "特になし");
-    setCancellationPolicy(
-      event.cancellationPolicy ??
-        "参加できなくなった場合は、開催前日までに活動ページからキャンセルしてください。",
-    );
-    setWeatherPolicy(
-      event.weatherPolicy ??
-        "変更・中止の場合は通知と全体チャットで案内します。",
-    );
-    setAccessibility(
-      event.accessibility ?? "必要な配慮は参加申請時にお知らせください。",
-    );
-    setContactMethod(
-      event.contactMethod ?? "申請後の全体チャットでお問い合わせください。",
-    );
-    setOrganizerDescription(
-      event.organizerDescription ??
-        "参加者が安心して参加できるよう、事前連絡と当日の案内を行います。",
-    );
-    setOrganizerExperience(
-      event.organizerExperience ?? "Aizu Connectでイベントを企画",
-    );
-    setTemplateKey(event.templateKey ?? eventTemplates[0].key);
-    setBeginnerLevel(event.beginnerLevel ?? "誰でも歓迎");
-    setTakeawayText((event.takeaways ?? defaultTakeaways).join("\n"));
-    setApplicationQuestions(event.applicationQuestions ?? []);
-    setCancellationDeadlineInput(toDateTimeInput(event.cancellationDeadline));
-    setEventImageFile(null);
-    setEventImagePreview(event.imageUrl);
-    setEventImageSourceFile(null);
-    setEventImageSourcePreview(null);
-    setIsEventImageReviewOpen(false);
-    setNotice(
-      event.status === "published"
-        ? "公開中イベントの変更は、再審査後に反映されます。"
-        : "イベントを修正して再申請できます。",
-      "info",
-    );
-  };
-
-  const clearEventForm = () => {
-    revokeObjectUrl(eventImagePreview);
-    revokeObjectUrl(eventImageSourcePreview);
-    setEventFormStep(1);
-    setEditingEventId(null);
-    setTitle("");
-    setSummary("");
-    setLocation("会津若松市");
-    setStartAtInput("");
-    setEndAtInput("");
-    setCapacity(20);
-    setCategory("交流・コミュニティ");
-    setFeeType("無料");
-    setFeeAmount(0);
-    setCommercialSellerName("");
-    setCommercialSellerAddress("");
-    setCommercialSellerPhone("");
-    setCommercialResponsiblePerson("");
-    setPaymentMethod("");
-    setPaymentTiming("");
-    setAdditionalFees("なし");
-    setEventFormat("現地");
-    setMeetingPoint("会津若松市");
-    setAccessInfo("");
-    setBringItems("特になし");
-    setCancellationPolicy(
-      "参加できなくなった場合は、開催前日までに活動ページからキャンセルしてください。",
-    );
-    setWeatherPolicy("変更・中止の場合は通知と全体チャットで案内します。");
-    setAccessibility("必要な配慮は参加申請時にお知らせください。");
-    setContactMethod("申請後の全体チャットでお問い合わせください。");
-    setOrganizerDescription(
-      "参加者が安心して参加できるよう、事前連絡と当日の案内を行います。",
-    );
-    setOrganizerExperience("Aizu Connectでイベントを企画");
-    setTemplateKey(eventTemplates[0].key);
-    setBeginnerLevel("初参加歓迎");
-    setTakeawayText("");
-    setApplicationQuestions([]);
-    setCancellationDeadlineInput("");
-    setEventImageFile(null);
-    setEventImagePreview(eventTemplates[0].imageUrl);
-    setEventImageSourceFile(null);
-    setEventImageSourcePreview(null);
-    setIsEventImageReviewOpen(false);
-  };
-
-  const duplicateEvent = (event: AizuEvent) => {
-    beginEditEvent(event);
-    const duplicateTemplate =
-      eventTemplates.find((template) => template.key === event.templateKey) ??
-      eventTemplates[0];
-    setEditingEventId(null);
-    setSelectedEventId(null);
-    setTitle(`${event.title}（複製）`.slice(0, 80));
-    setStartAtInput("");
-    setEndAtInput("");
-    setEventImageFile(null);
-    setEventImagePreview(duplicateTemplate.imageUrl);
-    setNotice(
-      "イベントを複製しました。写真と開催日時を確認して申請してください。",
-      "info",
-    );
-  };
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(
-      `aizu-connect:event-draft:${appUser.uid}`,
-    );
-    if (stored) {
-      try {
-        const draft = JSON.parse(stored) as Record<string, unknown>;
-        const draftTemplate =
-          eventTemplates.find(
-            (template) => template.key === String(draft.templateKey ?? ""),
-          ) ?? eventTemplates[0];
-        const restoredTitle =
-          String(draft.title ?? "") === draftTemplate.title
-            ? ""
-            : String(draft.title ?? "");
-        const restoredSummary =
-          String(draft.summary ?? "") === draftTemplate.summary
-            ? ""
-            : String(draft.summary ?? "");
-        const restoredTakeaways =
-          String(draft.takeawayText ?? "") ===
-          draftTemplate.takeaways.join("\n")
-            ? ""
-            : String(draft.takeawayText ?? "");
-        const hasMeaningfulDraft = [
-          restoredTitle,
-          restoredSummary,
-          draft.startAtInput,
-        ].some((value) => typeof value === "string" && value.trim().length > 0);
-        if (!hasMeaningfulDraft) {
-          window.localStorage.removeItem(
-            `aizu-connect:event-draft:${appUser.uid}`,
-          );
-          setIsDraftReady(true);
-          return;
-        }
-        setTitle(restoredTitle);
-        setSummary(restoredSummary);
-        setLocation(String(draft.location ?? "会津若松市"));
-        setMeetingPoint(String(draft.meetingPoint ?? "会津若松市"));
-        setStartAtInput(String(draft.startAtInput ?? ""));
-        setEndAtInput(String(draft.endAtInput ?? ""));
-        setCapacity(Number(draft.capacity ?? 20));
-        setCategory(String(draft.category ?? "交流・コミュニティ"));
-        setTemplateKey(String(draft.templateKey ?? eventTemplates[0].key));
-        setBeginnerLevel(
-          (draft.beginnerLevel as AizuEvent["beginnerLevel"]) ?? "初参加歓迎",
-        );
-        setTakeawayText(restoredTakeaways);
-        setApplicationQuestions(
-          Array.isArray(draft.applicationQuestions)
-            ? (draft.applicationQuestions as ApplicationQuestion[])
-            : [],
-        );
-        setCancellationDeadlineInput(
-          String(draft.cancellationDeadlineInput ?? ""),
-        );
-        setFeeType((draft.feeType as AizuEvent["feeType"]) ?? "無料");
-        setFeeAmount(Number(draft.feeAmount ?? 0));
-        setCommercialSellerName(String(draft.commercialSellerName ?? ""));
-        setCommercialSellerAddress(String(draft.commercialSellerAddress ?? ""));
-        setCommercialSellerPhone(String(draft.commercialSellerPhone ?? ""));
-        setCommercialResponsiblePerson(
-          String(draft.commercialResponsiblePerson ?? ""),
-        );
-        setPaymentMethod(String(draft.paymentMethod ?? ""));
-        setPaymentTiming(String(draft.paymentTiming ?? ""));
-        setAdditionalFees(String(draft.additionalFees ?? "なし"));
-        setEventFormat(
-          (draft.eventFormat as AizuEvent["eventFormat"]) ?? "現地",
-        );
-        setAccessInfo(String(draft.accessInfo ?? ""));
-        setBringItems(String(draft.bringItems ?? "特になし"));
-        setCancellationPolicy(String(draft.cancellationPolicy ?? ""));
-        setWeatherPolicy(String(draft.weatherPolicy ?? ""));
-        setAccessibility(String(draft.accessibility ?? ""));
-        setContactMethod(String(draft.contactMethod ?? ""));
-        setOrganizerDescription(String(draft.organizerDescription ?? ""));
-        setOrganizerExperience(String(draft.organizerExperience ?? ""));
-        setNotice("保存されていた下書きを復元しました。", "info");
-      } catch {
-        window.localStorage.removeItem(
-          `aizu-connect:event-draft:${appUser.uid}`,
-        );
-      }
-    }
-    setIsDraftReady(true);
-  }, [appUser.uid, setNotice]);
-
-  useEffect(() => {
-    if (!isDraftReady || editingEventId) return;
-    const draft = {
-      title,
-      summary,
-      location,
-      meetingPoint,
-      startAtInput,
-      endAtInput,
-      capacity,
-      category,
-      templateKey,
-      beginnerLevel,
-      takeawayText,
-      applicationQuestions,
-      cancellationDeadlineInput,
-      feeType,
-      feeAmount,
-      commercialSellerName,
-      commercialSellerAddress,
-      commercialSellerPhone,
-      commercialResponsiblePerson,
-      paymentMethod,
-      paymentTiming,
-      additionalFees,
-      eventFormat,
-      accessInfo,
-      bringItems,
-      cancellationPolicy,
-      weatherPolicy,
-      accessibility,
-      contactMethod,
-      organizerDescription,
-      organizerExperience,
-    };
-    const timer = window.setTimeout(() => {
-      const hasMeaningfulDraft = Boolean(
-        title.trim() || summary.trim() || startAtInput.trim(),
-      );
-      if (hasMeaningfulDraft) {
-        window.localStorage.setItem(
-          `aizu-connect:event-draft:${appUser.uid}`,
-          JSON.stringify(draft),
-        );
-        setDraftSavedAt(new Date());
-      } else {
-        window.localStorage.removeItem(
-          `aizu-connect:event-draft:${appUser.uid}`,
-        );
-        setDraftSavedAt(null);
-      }
-      setIsDraftSaving(false);
-    }, 400);
-    setIsDraftSaving(true);
-    return () => window.clearTimeout(timer);
-  }, [
-    accessInfo,
-    accessibility,
-    appUser.uid,
-    beginnerLevel,
-    bringItems,
-    cancellationPolicy,
-    capacity,
-    category,
-    contactMethod,
-    editingEventId,
-    endAtInput,
-    eventFormat,
-    feeAmount,
-    feeType,
-    commercialSellerName,
-    commercialSellerAddress,
-    commercialSellerPhone,
-    commercialResponsiblePerson,
-    paymentMethod,
-    paymentTiming,
-    additionalFees,
-    isDraftReady,
-    location,
-    meetingPoint,
-    organizerDescription,
-    organizerExperience,
-    startAtInput,
-    summary,
-    takeawayText,
-    applicationQuestions,
-    cancellationDeadlineInput,
-    templateKey,
-    title,
-    weatherPolicy,
-  ]);
-
   const loadEvents = useCallback(async () => {
     const snapshot = await getDocs(
       query(
@@ -683,6 +276,36 @@ export function OrganizationDashboard({
       })) as AizuEvent[],
     );
   }, [appUser.uid, eventQueryLimit]);
+  const editor = useOrganizationEventEditor({
+    appUser,
+    events,
+    organizationName,
+    loadEvents,
+    showOrganizationView,
+    setSelectedEventId,
+    setNotice,
+  });
+  const {
+    editingEventId,
+    setEditingEventId,
+    eventImageFile,
+    setEventImageFile,
+    eventImagePreview,
+    setEventImagePreview,
+    eventImageSourceFile,
+    setEventImageSourceFile,
+    eventImageSourcePreview,
+    setEventImageSourcePreview,
+    isEventImageReviewOpen,
+    setIsEventImageReviewOpen,
+    isEventPreviewOpen,
+    setIsEventPreviewOpen,
+    setEventImageInputKey,
+    selectedTemplate,
+    beginEditEvent,
+    duplicateEvent,
+    buildPreviewEvent,
+  } = editor;
 
   useEffect(() => {
     const eventsQuery = query(
@@ -802,10 +425,7 @@ export function OrganizationDashboard({
       setChatPreferences([]);
       return;
     }
-    void loadChatPreferencesForRooms(
-      appUser.uid,
-      chatRoomIdsKey.split("\n"),
-    )
+    void loadChatPreferencesForRooms(appUser.uid, chatRoomIdsKey.split("\n"))
       .then(setChatPreferences)
       .catch(() =>
         setNotice("チャット通知設定を取得できませんでした。", "error"),
@@ -832,22 +452,11 @@ export function OrganizationDashboard({
     const text = messageDraft.trim().slice(0, 2000);
     setMessageDraft("");
     try {
-      const roomRef = doc(db, "chatRooms", activeRoomId);
-      const messageRef = doc(collection(roomRef, "messages"));
-      const batch = writeBatch(db);
-      batch.set(messageRef, {
-        roomId: activeRoomId,
-        senderId: appUser.uid,
-        senderName: organizationName,
-        type: "text",
+      await sendChatTextMessage(
+        activeRoomId,
+        { senderId: appUser.uid, senderName: organizationName },
         text,
-        createdAt: serverTimestamp(),
-      });
-      batch.update(roomRef, {
-        lastMessageText: text,
-        lastMessageAt: serverTimestamp(),
-      });
-      await batch.commit();
+      );
     } catch (error) {
       setMessageDraft((current) => current || text);
       setNotice(getFirebaseErrorMessage(error), "error");
@@ -856,64 +465,56 @@ export function OrganizationDashboard({
 
   const uploadOrganizationAttachment = async (file: File) => {
     if (!activeRoomId) return;
-    validateChatAttachment(file);
-    const attachmentUrl = await uploadImage(
+    await sendChatAttachment(
+      activeRoomId,
+      { senderId: appUser.uid, senderName: organizationName },
       file,
-      `chat-attachments/${activeRoomId}/${appUser.uid}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
     );
-    const messageType = file.type.startsWith("image/") ? "image" : "file";
-    const roomRef = doc(db, "chatRooms", activeRoomId);
-    const messageRef = doc(collection(roomRef, "messages"));
-    const batch = writeBatch(db);
-    batch.set(messageRef, {
-      roomId: activeRoomId,
-      senderId: appUser.uid,
-      senderName: organizationName,
-      type: messageType,
-      text: file.name.slice(0, 200),
-      attachmentUrl,
-      attachmentName: file.name.slice(0, 200),
-      attachmentType: file.type,
-      attachmentSize: file.size,
-      createdAt: serverTimestamp(),
-    });
-    batch.update(roomRef, {
-      lastMessageText: `${messageType === "image" ? "画像" : "ファイル"}を送信しました`,
-      lastMessageAt: serverTimestamp(),
-    });
-    await batch.commit();
   };
 
-  const selectOrganizationChatRoom = (roomId: string) => {
-    if (roomId !== activeRoomId) {
-      resetMessageWindow();
-    }
-    setActiveRoomId(roomId);
-    const unread = notifications.filter(
-      (notification) =>
-        !notification.isRead &&
-        notification.targetType === "chat" &&
-        notification.targetId === roomId,
-    );
-    if (unread.length === 0) return;
-    setNotifications((current) =>
-      current.map((notification) =>
-        unread.some((item) => item.id === notification.id)
-          ? { ...notification, isRead: true }
-          : notification,
-      ),
-    );
-    void Promise.all(
-      unread.map((notification) =>
-        updateDoc(doc(db, "notifications", notification.id), {
-          isRead: true,
-          readAt: serverTimestamp(),
-        }),
-      ),
-    ).catch((error: unknown) =>
-      setNotice(getFirebaseErrorMessage(error), "error"),
-    );
-  };
+  const editMessage = useCallback(
+    (chatMessage: ChatMessage, text: string) =>
+      editChatMessage(activeRoomId ?? chatMessage.roomId, chatMessage.id, text),
+    [activeRoomId],
+  );
+  const loadMoreChatRooms = useCallback(
+    () => setChatRoomQueryLimit((current) => current + 50),
+    [],
+  );
+
+  const selectOrganizationChatRoom = useCallback(
+    (roomId: string) => {
+      if (roomId !== activeRoomId) {
+        resetMessageWindow();
+      }
+      setActiveRoomId(roomId);
+      const unread = notifications.filter(
+        (notification) =>
+          !notification.isRead &&
+          notification.targetType === "chat" &&
+          notification.targetId === roomId,
+      );
+      if (unread.length === 0) return;
+      setNotifications((current) =>
+        current.map((notification) =>
+          unread.some((item) => item.id === notification.id)
+            ? { ...notification, isRead: true }
+            : notification,
+        ),
+      );
+      void Promise.all(
+        unread.map((notification) =>
+          updateDoc(doc(db, "notifications", notification.id), {
+            isRead: true,
+            readAt: serverTimestamp(),
+          }),
+        ),
+      ).catch((error: unknown) =>
+        setNotice(getFirebaseErrorMessage(error), "error"),
+      );
+    },
+    [activeRoomId, notifications, resetMessageWindow, setNotice],
+  );
 
   const toggleOrganizationChatMute = async (roomId: string) => {
     const current = chatPreferences.find(
@@ -950,185 +551,6 @@ export function OrganizationDashboard({
     }
     downloadParticipantReport(selectedEvent, applications);
     setNotice("参加者レポートを出力しました。", "success");
-  };
-
-  const applyTemplate = (template: (typeof eventTemplates)[number]) => {
-    revokeObjectUrl(eventImagePreview);
-    revokeObjectUrl(eventImageSourcePreview);
-    setTemplateKey(template.key);
-    setCategory(template.category);
-    setBeginnerLevel(template.beginnerLevel);
-    setEventImageFile(null);
-    setEventImagePreview(template.imageUrl);
-    setEventImageSourceFile(null);
-    setEventImageSourcePreview(null);
-    setNotice(
-      "テンプレートの例文を表示しました。入力した内容だけが保存されます。",
-      "info",
-    );
-  };
-
-  const createEvent = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (
-      !title.trim() ||
-      !summary.trim() ||
-      !takeawayText.trim() ||
-      !startAtInput.trim()
-    ) {
-      setNotice(
-        "タイトル、概要、体験できること、開催日時を入力してください。",
-        "error",
-      );
-      return;
-    }
-    const startAtDate = new Date(startAtInput);
-    if (Number.isNaN(startAtDate.getTime())) {
-      setNotice("開催日時の形式を確認してください。", "error");
-      return;
-    }
-    if (!isFutureEventStart(startAtDate)) {
-      setNotice("開催日時は現在より後の日時を指定してください。", "error");
-      return;
-    }
-    const endAtDate = endAtInput
-      ? new Date(endAtInput)
-      : new Date(startAtDate.getTime() + 2 * 60 * 60 * 1000);
-    if (
-      Number.isNaN(endAtDate.getTime()) ||
-      endAtDate.getTime() <= startAtDate.getTime()
-    ) {
-      setNotice("終了日時は開催日時より後にしてください。", "error");
-      return;
-    }
-    if (
-      feeType === "有料" &&
-      ![
-        commercialSellerAddress,
-        commercialSellerPhone,
-        commercialResponsiblePerson,
-        paymentMethod,
-        paymentTiming,
-        additionalFees,
-        cancellationPolicy,
-      ].every((value) => value.trim().length > 0)
-    ) {
-      setNotice(
-        "有料イベントは、特定商取引法に基づく表示をすべて入力してください。",
-        "error",
-      );
-      return;
-    }
-    setIsLoading(true);
-    setEventImageUploadProgress(eventImageFile ? 0 : null);
-    setNotice("");
-    try {
-      const eventId = editingEventId ?? doc(collection(db, "events")).id;
-      const takeaways = takeawayText
-        .split(/\n|,/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .slice(0, 3);
-      const currentEvent = events.find((item) => item.id === eventId);
-      const templateImage =
-        eventTemplates.find((template) => template.key === templateKey)
-          ?.imageUrl ?? eventTemplates[0].imageUrl;
-      const imageUrl = eventImageFile
-        ? await uploadImage(
-            eventImageFile,
-            `event-images/${appUser.uid}/${eventId}/cover-${Date.now()}`,
-          setEventImageUploadProgress,
-          )
-        : new URL(
-            currentEvent?.imageUrl ?? templateImage,
-            window.location.origin,
-          ).toString();
-      if (!imageUrl) {
-        throw new Error(
-          "イベント画像を設定できませんでした。もう一度お試しください。",
-        );
-      }
-      const eventData = {
-        title: title.trim().slice(0, 80),
-        summary: summary.trim().slice(0, 220),
-        category,
-        location: location.trim().slice(0, 80),
-        startAtMillis: startAtDate.getTime(),
-        endAtMillis: endAtDate.getTime(),
-        feeType: feeType ?? "無料",
-        feeAmount:
-          feeType === "有料"
-            ? Math.max(0, Math.min(Number(feeAmount) || 0, 1_000_000))
-            : 0,
-        commercialSellerName:
-          feeType === "有料"
-            ? (commercialSellerName.trim() || organizationName).slice(0, 120)
-            : "",
-        commercialSellerAddress:
-          feeType === "有料"
-            ? commercialSellerAddress.trim().slice(0, 240)
-            : "",
-        commercialSellerPhone:
-          feeType === "有料" ? commercialSellerPhone.trim().slice(0, 40) : "",
-        commercialResponsiblePerson:
-          feeType === "有料"
-            ? commercialResponsiblePerson.trim().slice(0, 80)
-            : "",
-        paymentMethod:
-          feeType === "有料" ? paymentMethod.trim().slice(0, 200) : "",
-        paymentTiming:
-          feeType === "有料" ? paymentTiming.trim().slice(0, 200) : "",
-        additionalFees:
-          feeType === "有料" ? additionalFees.trim().slice(0, 200) : "なし",
-        eventFormat: eventFormat ?? "現地",
-        meetingPoint: meetingPoint.trim().slice(0, 160),
-        accessInfo: accessInfo.trim().slice(0, 300),
-        bringItems: bringItems.trim().slice(0, 300),
-        cancellationPolicy: cancellationPolicy.trim().slice(0, 500),
-        cancellationDeadlineMillis: cancellationDeadlineInput
-          ? new Date(cancellationDeadlineInput).getTime()
-          : undefined,
-        weatherPolicy: weatherPolicy.trim().slice(0, 500),
-        accessibility: accessibility.trim().slice(0, 500),
-        contactMethod: contactMethod.trim().slice(0, 300),
-        capacity: Math.round(Math.max(1, Math.min(capacity, 1000))),
-        imageUrl,
-        templateKey,
-        beginnerLevel,
-        takeaways,
-        organizerDescription: organizerDescription.trim().slice(0, 500),
-        organizerExperience: organizerExperience.trim().slice(0, 300),
-        applicationQuestions,
-      };
-      const savePlan = httpsCallable<
-        {
-          eventId: string;
-          mode: "create" | "update";
-          event: Record<string, unknown>;
-        },
-        { eventId: string; status: "pending_review" }
-      >(functions, "saveEventPlan");
-      await savePlan({
-        eventId,
-        mode: editingEventId ? "update" : "create",
-        event: eventData,
-      });
-      window.localStorage.removeItem(`aizu-connect:event-draft:${appUser.uid}`);
-      clearEventForm();
-      await loadEvents();
-      setNotice(
-        editingEventId
-          ? "活動を修正して再申請しました。"
-          : "活動を審査へ申請しました。管理者の確認をお待ちください。",
-        "success",
-      );
-      showOrganizationView("events");
-    } catch (error) {
-      setNotice(getFirebaseErrorMessage(error), "error");
-    } finally {
-      setIsLoading(false);
-      setEventImageUploadProgress(null);
-    }
   };
 
   const updateApplicationStatus = async (
@@ -1273,65 +695,6 @@ export function OrganizationDashboard({
     showOrganizationView("messages");
   };
 
-  const previewStartAt = startAtInput ? new Date(startAtInput) : undefined;
-  const previewEndAt = endAtInput ? new Date(endAtInput) : undefined;
-  const previewEvent: AizuEvent = {
-    id: editingEventId ?? "preview",
-    title: title.trim() || "イベント名",
-    summary: summary.trim() || "イベントの概要がここに表示されます。",
-    category,
-    location: location.trim() || "会津若松市",
-    startAtLabel: startAtInput ? formatEventStart(startAtInput) : "日時未設定",
-    startAt:
-      previewStartAt && Number.isFinite(previewStartAt.getTime())
-        ? Timestamp.fromDate(previewStartAt)
-        : undefined,
-    endAtLabel:
-      previewEndAt && Number.isFinite(previewEndAt.getTime())
-        ? new Intl.DateTimeFormat("ja-JP", {
-            hour: "numeric",
-            minute: "2-digit",
-          }).format(previewEndAt)
-        : undefined,
-    endAt:
-      previewEndAt && Number.isFinite(previewEndAt.getTime())
-        ? Timestamp.fromDate(previewEndAt)
-        : undefined,
-    feeType,
-    feeAmount,
-    eventFormat,
-    meetingPoint,
-    accessInfo,
-    bringItems,
-    cancellationPolicy,
-    cancellationDeadline:
-      cancellationDeadlineInput &&
-      Number.isFinite(new Date(cancellationDeadlineInput).getTime())
-        ? Timestamp.fromDate(new Date(cancellationDeadlineInput))
-        : undefined,
-    weatherPolicy,
-    accessibility,
-    contactMethod,
-    applicationQuestions,
-    organizationName,
-    status: "pending_review",
-    capacity,
-    applicantCount: 0,
-    imageUrl: eventImagePreview ?? eventTemplates[0].imageUrl,
-    tags: [category, "学生歓迎"],
-    templateKey,
-    beginnerLevel,
-    takeaways: takeawayText
-      .split(/\n|,/)
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .slice(0, 3),
-    organizerDescription,
-    organizerExperience,
-    organizationVerified: appUser.role === "organization",
-    createdBy: appUser.uid,
-  };
-
   const goToOrganizationHome = () => {
     showOrganizationView("home");
     setSelectedEventId(null);
@@ -1420,794 +783,7 @@ export function OrganizationDashboard({
       {(activeView === "create" || activeView === "events") && (
         <div className="role-grid organization-workspace-grid">
           {activeView === "create" && (
-            <section className="role-card event-form-card">
-              <div className="role-card-head">
-                <div>
-                  <p className="eyebrow">イベント登録</p>
-                  <h2>
-                    {editingEventId ? "イベントを編集" : "新しいイベント"}
-                  </h2>
-                </div>
-                {editingEventId ? (
-                  <button
-                    className="icon-button"
-                    type="button"
-                    title="編集をやめる"
-                    onClick={clearEventForm}
-                  >
-                    <X size={18} />
-                  </button>
-                ) : (
-                  <Plus size={20} />
-                )}
-              </div>
-              <form
-                ref={eventFormRef}
-                className="role-form event-plan-form"
-                onSubmit={(event) => void createEvent(event)}
-                onInvalid={(event) => {
-                  const section = (
-                    event.target as HTMLElement
-                  ).closest<HTMLElement>("[data-event-form-step]");
-                  const step = Number(section?.dataset.eventFormStep);
-                  if (step === 1 || step === 2 || step === 3)
-                    setEventFormStep(step);
-                }}
-              >
-                <nav
-                  className="event-form-progress"
-                  aria-label="企画作成の手順"
-                >
-                  {["基本情報", "開催情報", "詳細・確認"].map(
-                    (label, index) => {
-                      const step = (index + 1) as 1 | 2 | 3;
-                      return (
-                        <button
-                          className={
-                            eventFormStep === step
-                              ? "active"
-                              : eventFormStep > step
-                                ? "complete"
-                                : ""
-                          }
-                          key={label}
-                          type="button"
-                          aria-current={
-                            eventFormStep === step ? "step" : undefined
-                          }
-                          onClick={() => moveToEventFormStep(step)}
-                        >
-                          <span>{step}</span>
-                          {label}
-                        </button>
-                      );
-                    },
-                  )}
-                </nav>
-                <details
-                  className="event-form-section event-form-collapsible"
-                  data-event-form-step="1"
-                  open
-                  hidden={eventFormStep !== 1}
-                >
-                  <summary>
-                    <span className="event-form-step">1</span>
-                    <span className="event-form-section-title">
-                      <strong>基本情報</strong>
-                      <small>活動の内容と魅力を入力</small>
-                    </span>
-                    <ChevronRight
-                      className="event-form-section-chevron"
-                      size={18}
-                    />
-                  </summary>
-                  <div className="event-form-section-body">
-                    <div
-                      className="template-picker"
-                      aria-label="企画テンプレート"
-                    >
-                      {eventTemplates.map((template) => (
-                        <button
-                          className={
-                            templateKey === template.key ? "active" : ""
-                          }
-                          key={template.key}
-                          type="button"
-                          onClick={() => applyTemplate(template)}
-                        >
-                          <FileText size={15} />
-                          {template.label}
-                        </button>
-                      ))}
-                    </div>
-                    <Field label="活動名">
-                      <input
-                        required
-                        maxLength={80}
-                        placeholder={selectedTemplate.title}
-                        value={title}
-                        onChange={(event) => setTitle(event.target.value)}
-                      />
-                    </Field>
-                    <Field label="活動の概要">
-                      <textarea
-                        required
-                        maxLength={220}
-                        placeholder={selectedTemplate.summary}
-                        value={summary}
-                        onChange={(event) => setSummary(event.target.value)}
-                      />
-                    </Field>
-                    <Field label="イベントで体験できること（1行ずつ）">
-                      <textarea
-                        required
-                        maxLength={180}
-                        placeholder={selectedTemplate.takeaways.join("\n")}
-                        value={takeawayText}
-                        onChange={(event) =>
-                          setTakeawayText(event.target.value)
-                        }
-                      />
-                    </Field>
-                    <div className="application-question-editor">
-                      <div className="role-card-head">
-                        <div>
-                          <strong>申込時の質問</strong>
-                          <small>
-                            最大8問。回答は参加者一覧で確認できます。
-                          </small>
-                        </div>
-                        <button
-                          type="button"
-                          disabled={applicationQuestions.length >= 8}
-                          onClick={() =>
-                            setApplicationQuestions((current) => [
-                              ...current,
-                              {
-                                id: `question_${Date.now()}`,
-                                label: "",
-                                type: "text",
-                                required: false,
-                                containsSensitiveInfo: false,
-                                options: [],
-                              },
-                            ])
-                          }
-                        >
-                          <Plus size={14} />
-                          質問を追加
-                        </button>
-                      </div>
-                      {applicationQuestions.map((question, index) => (
-                        <div className="form-grid" key={question.id}>
-                          <input
-                            aria-label={`申込質問${index + 1}`}
-                            maxLength={120}
-                            required
-                            placeholder="例：参加目的を教えてください"
-                            value={question.label}
-                            onChange={(event) =>
-                              setApplicationQuestions((current) =>
-                                current.map((item) =>
-                                  item.id === question.id
-                                    ? { ...item, label: event.target.value }
-                                    : item,
-                                ),
-                              )
-                            }
-                          />
-                          <select
-                            aria-label={`申込質問${index + 1}の形式`}
-                            value={question.type}
-                            onChange={(event) =>
-                              setApplicationQuestions((current) =>
-                                current.map((item) =>
-                                  item.id === question.id
-                                    ? {
-                                        ...item,
-                                        type: event.target
-                                          .value as ApplicationQuestion["type"],
-                                      }
-                                    : item,
-                                ),
-                              )
-                            }
-                          >
-                            <option value="text">1行入力</option>
-                            <option value="textarea">複数行</option>
-                            <option value="select">選択式</option>
-                            <option value="checkbox">確認チェック</option>
-                          </select>
-                          {question.type === "select" && (
-                            <input
-                              aria-label={`申込質問${index + 1}の選択肢`}
-                              placeholder="選択肢をカンマ区切りで入力"
-                              value={(question.options ?? []).join(",")}
-                              onChange={(event) =>
-                                setApplicationQuestions((current) =>
-                                  current.map((item) =>
-                                    item.id === question.id
-                                      ? {
-                                          ...item,
-                                          options: event.target.value
-                                            .split(",")
-                                            .map((value) => value.trim())
-                                            .filter(Boolean)
-                                            .slice(0, 8),
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            />
-                          )}
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={question.required}
-                              onChange={(event) =>
-                                setApplicationQuestions((current) =>
-                                  current.map((item) =>
-                                    item.id === question.id
-                                      ? {
-                                          ...item,
-                                          required: event.target.checked,
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            />
-                            必須
-                          </label>
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={question.containsSensitiveInfo === true}
-                              onChange={(event) =>
-                                setApplicationQuestions((current) =>
-                                  current.map((item) =>
-                                    item.id === question.id
-                                      ? {
-                                          ...item,
-                                          containsSensitiveInfo:
-                                            event.target.checked,
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            />
-                            健康・障害等の要配慮情報を含む
-                          </label>
-                          <button
-                            className="muted"
-                            type="button"
-                            onClick={() =>
-                              setApplicationQuestions((current) =>
-                                current.filter(
-                                  (item) => item.id !== question.id,
-                                ),
-                              )
-                            }
-                          >
-                            削除
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <Field label="初心者歓迎度">
-                      <select
-                        value={beginnerLevel}
-                        onChange={(event) =>
-                          setBeginnerLevel(
-                            event.target.value as AizuEvent["beginnerLevel"],
-                          )
-                        }
-                      >
-                        <option>初参加歓迎</option>
-                        <option>誰でも歓迎</option>
-                        <option>少し経験者向け</option>
-                      </select>
-                    </Field>
-                    <div
-                      className="field"
-                      role="group"
-                      aria-labelledby="event-image-field-label"
-                    >
-                      <span id="event-image-field-label">イベント写真</span>
-                      <div className="image-picker event-image-picker">
-                        <div className="event-image-preview">
-                          {eventImagePreview ? (
-                            <img
-                              src={eventImagePreview}
-                              alt="イベント画像のプレビュー"
-                            />
-                          ) : (
-                            <span>活動の様子が伝わる写真を選択</span>
-                          )}
-                        </div>
-                        {eventImageFile && eventImageSourceFile && (
-                          <button
-                            className="image-recrop-button"
-                            type="button"
-                            onClick={() => setIsEventImageReviewOpen(true)}
-                          >
-                            元の写真から再調整
-                          </button>
-                        )}
-                        <input
-                          key={eventImageInputKey}
-                          type="file"
-                          aria-label="イベント写真"
-                          accept="image/jpeg,image/png,image/webp"
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (!file) return;
-                            try {
-                              validateImageSourceFile(file, "イベント画像");
-                              revokeObjectUrl(eventImagePreview);
-                              revokeObjectUrl(eventImageSourcePreview);
-                              const sourcePreview = URL.createObjectURL(file);
-                              setEventImageSourceFile(file);
-                              setEventImageSourcePreview(sourcePreview);
-                              setEventImageFile(null);
-                              setEventImagePreview(sourcePreview);
-                              setNotice("");
-                              setIsEventImageReviewOpen(true);
-                            } catch (error) {
-                              setNotice(
-                                getFirebaseErrorMessage(error),
-                                "error",
-                              );
-                              event.target.value = "";
-                            }
-                          }}
-                        />
-                        <small>
-                          JPEG・PNG・WebP / 20MB未満（保存時に自動圧縮）
-                        </small>
-                      </div>
-                    </div>
-                    <button
-                      className="secondary-action event-form-next"
-                      type="button"
-                      onClick={() => moveToEventFormStep(2)}
-                    >
-                      開催情報へ
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </details>
-                <details
-                  className="event-form-section event-form-collapsible"
-                  data-event-form-step="2"
-                  open
-                  hidden={eventFormStep !== 2}
-                >
-                  <summary>
-                    <span className="event-form-step">2</span>
-                    <span className="event-form-section-title">
-                      <strong>開催情報</strong>
-                      <small>日時・場所・参加条件を入力</small>
-                    </span>
-                    <ChevronRight
-                      className="event-form-section-chevron"
-                      size={18}
-                    />
-                  </summary>
-                  <div className="event-form-section-body">
-                    <div className="form-grid">
-                      <Field label="カテゴリ">
-                        <select
-                          value={category}
-                          onChange={(event) => setCategory(event.target.value)}
-                        >
-                          {categories
-                            .filter((item) => item !== "すべて")
-                            .map((item) => (
-                              <option key={item}>{item}</option>
-                            ))}
-                        </select>
-                      </Field>
-                      <Field label="定員">
-                        <input
-                          type="number"
-                          min={1}
-                          max={1000}
-                          value={capacity}
-                          onChange={(event) =>
-                            setCapacity(Number(event.target.value))
-                          }
-                        />
-                      </Field>
-                    </div>
-                    <div className="form-grid">
-                      <Field label="開始日時">
-                        <input
-                          type="datetime-local"
-                          required
-                          value={startAtInput}
-                          min={toDateTimeLocalValue(new Date())}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setStartAtInput(value);
-                            if (!endAtInput && value) {
-                              const start = new Date(value);
-                              setEndAtInput(
-                                toDateTimeLocalValue(
-                                  new Date(
-                                    start.getTime() + 2 * 60 * 60 * 1000,
-                                  ),
-                                ),
-                              );
-                            }
-                          }}
-                          onInput={(event) => {
-                            const value = event.currentTarget.value;
-                            setStartAtInput(value);
-                            if (!endAtInput && value) {
-                              const start = new Date(value);
-                              setEndAtInput(
-                                toDateTimeLocalValue(
-                                  new Date(
-                                    start.getTime() + 2 * 60 * 60 * 1000,
-                                  ),
-                                ),
-                              );
-                            }
-                          }}
-                        />
-                      </Field>
-                      <Field label="終了日時">
-                        <input
-                          type="datetime-local"
-                          required
-                          value={endAtInput}
-                          min={startAtInput || toDateTimeLocalValue(new Date())}
-                          onChange={(event) =>
-                            setEndAtInput(event.target.value)
-                          }
-                          onInput={(event) =>
-                            setEndAtInput(event.currentTarget.value)
-                          }
-                        />
-                      </Field>
-                      <Field label="キャンセル期限">
-                        <input
-                          type="datetime-local"
-                          value={cancellationDeadlineInput}
-                          max={startAtInput || undefined}
-                          onChange={(event) =>
-                            setCancellationDeadlineInput(event.target.value)
-                          }
-                        />
-                      </Field>
-                    </div>
-                    <div className="form-grid">
-                      <Field label="開催形式">
-                        <select
-                          value={eventFormat}
-                          onChange={(event) =>
-                            setEventFormat(
-                              event.target.value as AizuEvent["eventFormat"],
-                            )
-                          }
-                        >
-                          <option>現地</option>
-                          <option>オンライン</option>
-                          <option>ハイブリッド</option>
-                        </select>
-                      </Field>
-                      <Field label="料金">
-                        <select
-                          value={feeType}
-                          onChange={(event) =>
-                            setFeeType(
-                              event.target.value as AizuEvent["feeType"],
-                            )
-                          }
-                        >
-                          <option>無料</option>
-                          <option>有料</option>
-                        </select>
-                      </Field>
-                    </div>
-                    {feeType === "有料" && (
-                      <div className="commerce-disclosure-form">
-                        <p>
-                          有料イベントは、申込前に特定商取引法に基づく表示を参加者へ示します。
-                        </p>
-                        <Field label="参加費（税込・円）">
-                          <input
-                            type="number"
-                            min={1}
-                            max={1_000_000}
-                            required
-                            value={feeAmount}
-                            onChange={(event) =>
-                              setFeeAmount(Number(event.target.value))
-                            }
-                          />
-                        </Field>
-                        <div className="form-grid">
-                          <Field label="販売・役務提供事業者名">
-                            <input
-                              required
-                              maxLength={120}
-                              placeholder={organizationName}
-                              value={commercialSellerName}
-                              onChange={(event) =>
-                                setCommercialSellerName(event.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="運営責任者名">
-                            <input
-                              required
-                              maxLength={80}
-                              value={commercialResponsiblePerson}
-                              onChange={(event) =>
-                                setCommercialResponsiblePerson(
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </Field>
-                        </div>
-                        <Field label="事業者所在地">
-                          <input
-                            required
-                            maxLength={240}
-                            autoComplete="street-address"
-                            value={commercialSellerAddress}
-                            onChange={(event) =>
-                              setCommercialSellerAddress(event.target.value)
-                            }
-                          />
-                        </Field>
-                        <Field label="事業者電話番号">
-                          <input
-                            required
-                            maxLength={40}
-                            type="tel"
-                            autoComplete="tel"
-                            value={commercialSellerPhone}
-                            onChange={(event) =>
-                              setCommercialSellerPhone(event.target.value)
-                            }
-                          />
-                        </Field>
-                        <div className="form-grid">
-                          <Field label="支払方法">
-                            <input
-                              required
-                              maxLength={200}
-                              placeholder="例：当日受付で現金"
-                              value={paymentMethod}
-                              onChange={(event) =>
-                                setPaymentMethod(event.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="支払時期">
-                            <input
-                              required
-                              maxLength={200}
-                              placeholder="例：イベント当日の受付時"
-                              value={paymentTiming}
-                              onChange={(event) =>
-                                setPaymentTiming(event.target.value)
-                              }
-                            />
-                          </Field>
-                        </div>
-                        <Field label="参加費以外の追加費用">
-                          <input
-                            required
-                            maxLength={200}
-                            placeholder="ない場合は「なし」"
-                            value={additionalFees}
-                            onChange={(event) =>
-                              setAdditionalFees(event.target.value)
-                            }
-                          />
-                        </Field>
-                      </div>
-                    )}
-                    <div className="form-grid">
-                      <Field label="開催エリア・場所">
-                        <input
-                          required
-                          maxLength={80}
-                          value={location}
-                          onChange={(event) => setLocation(event.target.value)}
-                        />
-                      </Field>
-                      <Field label="集合場所・オンラインURL案内">
-                        <input
-                          required
-                          maxLength={160}
-                          value={meetingPoint}
-                          onChange={(event) =>
-                            setMeetingPoint(event.target.value)
-                          }
-                        />
-                      </Field>
-                    </div>
-                    <div className="event-form-step-actions">
-                      <button
-                        className="secondary-action"
-                        type="button"
-                        onClick={() => moveToEventFormStep(1)}
-                      >
-                        <ChevronLeft size={16} />
-                        基本情報へ
-                      </button>
-                      <button
-                        className="primary-action"
-                        type="button"
-                        onClick={() => moveToEventFormStep(3)}
-                      >
-                        詳細・確認へ
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </details>
-                <details
-                  className="event-form-section event-form-advanced"
-                  data-event-form-step="3"
-                  key={editingEventId ?? "new-event"}
-                  open
-                  hidden={eventFormStep !== 3}
-                >
-                  <summary>
-                    <span className="event-form-step">3</span>
-                    <span className="event-form-section-title">
-                      <strong>詳細設定</strong>
-                      <small>持ち物・中止時対応・主催者情報</small>
-                    </span>
-                    <ChevronRight
-                      className="event-form-section-chevron"
-                      size={18}
-                    />
-                  </summary>
-                  <div className="event-form-section-body">
-                    <Field label="アクセス方法">
-                      <textarea
-                        maxLength={300}
-                        value={accessInfo}
-                        placeholder="最寄り駅、駐車場、入室方法など"
-                        onChange={(event) => setAccessInfo(event.target.value)}
-                      />
-                    </Field>
-                    <Field label="持ち物・服装">
-                      <textarea
-                        required
-                        maxLength={300}
-                        value={bringItems}
-                        onChange={(event) => setBringItems(event.target.value)}
-                      />
-                    </Field>
-                    <Field label="キャンセル方針">
-                      <textarea
-                        required
-                        maxLength={500}
-                        value={cancellationPolicy}
-                        onChange={(event) =>
-                          setCancellationPolicy(event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="雨天・中止時の対応">
-                      <textarea
-                        required
-                        maxLength={500}
-                        value={weatherPolicy}
-                        onChange={(event) =>
-                          setWeatherPolicy(event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="バリアフリー・必要な配慮">
-                      <textarea
-                        required
-                        maxLength={500}
-                        value={accessibility}
-                        onChange={(event) =>
-                          setAccessibility(event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="問い合わせ方法">
-                      <textarea
-                        required
-                        maxLength={300}
-                        value={contactMethod}
-                        onChange={(event) =>
-                          setContactMethod(event.target.value)
-                        }
-                      />
-                    </Field>
-                    <div className="form-grid">
-                      <Field label="主催者紹介">
-                        <textarea
-                          required
-                          maxLength={500}
-                          value={organizerDescription}
-                          onChange={(event) =>
-                            setOrganizerDescription(event.target.value)
-                          }
-                        />
-                      </Field>
-                      <Field label="主催・開催実績">
-                        <textarea
-                          required
-                          maxLength={300}
-                          value={organizerExperience}
-                          onChange={(event) =>
-                            setOrganizerExperience(event.target.value)
-                          }
-                        />
-                      </Field>
-                    </div>
-                    <button
-                      className="secondary-action"
-                      type="button"
-                      onClick={() => moveToEventFormStep(2)}
-                    >
-                      <ChevronLeft size={16} />
-                      開催情報へ戻る
-                    </button>
-                  </div>
-                </details>
-                <div className="event-form-foot" hidden={eventFormStep !== 3}>
-                  <small className="draft-save-status" role="status">
-                    {editingEventId
-                      ? "変更内容は審査後に反映されます"
-                      : isDraftSaving
-                        ? "下書きを保存中…"
-                        : draftSavedAt
-                          ? `下書き保存済み・${draftSavedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}`
-                          : "入力するとこの端末へ自動保存されます"}
-                  </small>
-                  <div className="row-actions">
-                    <button
-                      className="secondary-action"
-                      type="button"
-                      onClick={() => setIsEventPreviewOpen(true)}
-                    >
-                      <Eye size={16} />
-                      公開前プレビュー
-                    </button>
-                    <button
-                      className="primary-action"
-                      disabled={isLoading}
-                      type="submit"
-                    >
-                      {isLoading ? (
-                        <Loader2 size={17} className="spin" />
-                      ) : (
-                        <Check size={17} />
-                      )}
-                      {editingEventId ? "変更を審査へ送る" : "企画を申請する"}
-                    </button>
-                  </div>
-                  {isLoading && eventImageUploadProgress !== null && (
-                    <div className="image-upload-progress" role="status">
-                      <span>イベント画像を送信中</span>
-                      <strong>{eventImageUploadProgress}%</strong>
-                      <progress
-                        max={100}
-                        value={eventImageUploadProgress}
-                        aria-label="イベント画像の送信進捗"
-                      />
-                    </div>
-                  )}
-                </div>
-              </form>
-            </section>
+            <OrganizationEventForm editor={editor} setNotice={setNotice} />
           )}
           {activeView === "events" && (
             <section className="role-card event-list-card">
@@ -2345,41 +921,41 @@ export function OrganizationDashboard({
       {isEventImageReviewOpen &&
         eventImageSourcePreview &&
         eventImageSourceFile && (
-        <ImageCropDialog
-          title="イベント写真の範囲を調整"
-          imageUrl={eventImageSourcePreview}
-          imageFile={eventImageSourceFile}
-          alt="イベント写真の確認用プレビュー"
-          aspect={16 / 9}
-          maxOutputWidth={1920}
-          onCancel={() => {
-            setIsEventImageReviewOpen(false);
-            if (!eventImageFile) {
-              revokeObjectUrl(eventImageSourcePreview);
-              setEventImageSourceFile(null);
-              setEventImageSourcePreview(null);
-              setEventImagePreview(
-                editingEventId
-                  ? (events.find((item) => item.id === editingEventId)
-                      ?.imageUrl ?? null)
-                  : selectedTemplate.imageUrl,
-              );
-              setEventImageInputKey((current) => current + 1);
-            }
-          }}
-          onConfirm={(file, previewUrl) => {
-            if (eventImagePreview !== eventImageSourcePreview) {
-              revokeObjectUrl(eventImagePreview);
-            }
-            setEventImageFile(file);
-            setEventImagePreview(previewUrl);
-            setIsEventImageReviewOpen(false);
-          }}
-        />
-      )}
+          <ImageCropDialog
+            title="イベント写真の範囲を調整"
+            imageUrl={eventImageSourcePreview}
+            imageFile={eventImageSourceFile}
+            alt="イベント写真の確認用プレビュー"
+            aspect={16 / 9}
+            maxOutputWidth={1920}
+            onCancel={() => {
+              setIsEventImageReviewOpen(false);
+              if (!eventImageFile) {
+                revokeObjectUrl(eventImageSourcePreview);
+                setEventImageSourceFile(null);
+                setEventImageSourcePreview(null);
+                setEventImagePreview(
+                  editingEventId
+                    ? (events.find((item) => item.id === editingEventId)
+                        ?.imageUrl ?? null)
+                    : selectedTemplate.imageUrl,
+                );
+                setEventImageInputKey((current) => current + 1);
+              }
+            }}
+            onConfirm={(file, previewUrl) => {
+              if (eventImagePreview !== eventImageSourcePreview) {
+                revokeObjectUrl(eventImagePreview);
+              }
+              setEventImageFile(file);
+              setEventImagePreview(previewUrl);
+              setIsEventImageReviewOpen(false);
+            }}
+          />
+        )}
       {isEventPreviewOpen && (
         <EventDrawer
-          event={previewEvent}
+          event={buildPreviewEvent()}
           applied={false}
           isLoading={false}
           previewMode
@@ -2785,6 +1361,12 @@ export function OrganizationDashboard({
             </button>
           )}
           {selectedEvent && (
+            <EventSurveyResults
+              key={selectedEvent.id}
+              eventId={selectedEvent.id}
+            />
+          )}
+          {selectedEvent && (
             <div className="event-report-editor">
               <h3>イベント終了後の活動報告</h3>
               <label className="event-report-field">
@@ -2816,7 +1398,7 @@ export function OrganizationDashboard({
                   <div className="selected-file-list" aria-label="選択した写真">
                     {eventReportFiles.map((file, index) => (
                       <span key={`${file.name}-${file.lastModified}`}>
-                        {file.name}
+                        <span className="file-name">{file.name}</span>
                         <button
                           type="button"
                           aria-label={`${file.name}を選択から外す`}
@@ -2875,14 +1457,10 @@ export function OrganizationDashboard({
             draft={messageDraft}
             unreadCounts={unreadChatCounts}
             readReceipts={chatReadReceipts}
-            mutedRoomIds={chatPreferences
-              .filter((preference) => preference.muted)
-              .map((preference) => preference.roomId)}
+            mutedRoomIds={mutedChatRoomIds}
             onSelectRoom={selectOrganizationChatRoom}
             onCloseRoom={() => setActiveRoomId(null)}
-            onLoadMoreRooms={() =>
-              setChatRoomQueryLimit((current) => current + 50)
-            }
+            onLoadMoreRooms={loadMoreChatRooms}
             onToggleMute={(roomId) =>
               void toggleOrganizationChatMute(roomId).catch((error) =>
                 setNotice(getFirebaseErrorMessage(error), "error"),
@@ -2898,13 +1476,7 @@ export function OrganizationDashboard({
               }
             }}
             onSaveRoomMeta={saveRoomMeta}
-            onEditMessage={(chatMessage, text) =>
-              editChatMessage(
-                activeRoomId ?? chatMessage.roomId,
-                chatMessage.id,
-                text,
-              )
-            }
+            onEditMessage={editMessage}
             onDeleteMessage={(chatMessage) =>
               deleteChatMessage(
                 activeRoomId ?? chatMessage.roomId,

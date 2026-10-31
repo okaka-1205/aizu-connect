@@ -102,4 +102,64 @@ test.describe("auth entry", () => {
       page.getByRole("heading", { name: "1. 取得する情報" }),
     ).toBeVisible();
   });
+
+  test("legal documents can be closed and reopened while the body loads", async ({
+    page,
+  }) => {
+    let releaseBody: () => void = () => {};
+    const bodyReady = new Promise<void>((resolve) => {
+      releaseBody = resolve;
+    });
+    await page.route(
+      /\/src\/components\/LegalDocumentBody\.tsx(?:\?.*)?$/,
+      async (route) => {
+        await bodyReady;
+        await route.continue();
+      },
+    );
+
+    try {
+      await page.goto("/");
+      const termsButton = page.getByRole("button", { name: "利用規約" });
+      await termsButton.focus();
+      await page.keyboard.press("Enter");
+      const dialog = page.getByRole("dialog", { name: "利用規約" });
+      await expect(dialog.getByRole("status")).toHaveText(
+        "本文を読み込んでいます。",
+      );
+      await expect(
+        dialog.getByRole("region", { name: "利用規約の本文" }),
+      ).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(
+        dialog.getByRole("button", { name: "閉じる" }),
+      ).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await expect(termsButton).toBeFocused();
+
+      releaseBody();
+      const privacyButton = page.getByRole("button", {
+        name: "プライバシーポリシー",
+      });
+      await privacyButton.focus();
+      await page.keyboard.press("Enter");
+      const privacyDialog = page.getByRole("dialog", {
+        name: "プライバシーポリシー",
+      });
+      await expect(
+        privacyDialog.getByRole("heading", { name: "1. 取得する情報" }),
+      ).toBeVisible();
+      await expect(
+        privacyDialog.getByRole("region", {
+          name: "プライバシーポリシーの本文",
+        }),
+      ).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(privacyButton).toBeFocused();
+    } finally {
+      releaseBody();
+      await page.unrouteAll({ behavior: "wait" });
+    }
+  });
 });

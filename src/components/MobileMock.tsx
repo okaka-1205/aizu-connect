@@ -1,4 +1,5 @@
 import { useState } from "react";
+import "../styles/mobile-mock.css";
 
 type MockScreen = "top" | "harvest" | "selection";
 

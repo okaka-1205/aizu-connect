@@ -65,14 +65,14 @@ export function useDialogAccessibility<T extends HTMLElement>(
           element.getAttribute("aria-hidden") !== "true" &&
           element.getClientRects().length > 0,
       );
-      if (focusable.length === 0) {
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) {
         event.preventDefault();
         dialogRef.current.focus();
         return;
       }
 
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();

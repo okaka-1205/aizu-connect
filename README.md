@@ -28,7 +28,7 @@
 - イベントの下書き、プレビュー、複製、公開申請
 - 定員・キャンセル待ち・申込質問・キャンセル期限の設定
 - 参加者の検索、承認、全体連絡、出欠・QR受付管理
-- 開催後アンケートの確認、写真付き活動報告の公開
+- 開催後アンケートの回答一覧・平均満足度・おすすめ率の確認、写真付き活動報告の公開
 - 過去イベントや参加状況を含む運営履歴の確認
 
 ### 管理者
@@ -65,12 +65,18 @@ Aizu Connectは、会津で新しい活動へ参加する際の「情報を見�
 
 詳細は[リリース準備最終確認](docs/release-readiness-2026-10-19.md)を参照してください。
 
+コード整理による容量・処理回数の比較は[改善効果の記録](docs/optimization-results-2026-10-30.md)にまとめています。
+画面ごとの責務と型チェックの設定は[責務分割・型安全性の記録](docs/code-structure-and-type-safety-2026-10-30.md)を参照してください。
+現行機能・画面・状態遷移・データ・権限・運用上の制約は[現行実装仕様書](docs/application-specification-2026-10-30.md)にまとめています。
+改善一式の本番反映対象と検証結果は[2026年10月30日のデプロイ記録](docs/deployment-2026-10-30.md)を参照してください。
+表示修正の本番反映と検証結果は[2026年10月31日のデプロイ記録](docs/deployment-2026-10-31.md)を参照してください。
+
 ## 技術構成
 
 | 領域                 | 使用技術                                                        |
 | -------------------- | --------------------------------------------------------------- |
 | フロントエンド       | React 19 / TypeScript / Vite / Tailwind CSS                     |
-| フォーム・データ取得 | React Hook Form / TanStack Query                                |
+| フォーム・データ取得 | React / Firestore SDK                                           |
 | バックエンド         | Firebase Authentication / Firestore / Storage / Cloud Functions |
 | 公開・定期処理       | Firebase Hosting / Cloud Scheduler                              |
 | テスト               | Vitest / Playwright / Firebase Emulator Suite / axe-core        |

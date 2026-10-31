@@ -5,7 +5,10 @@ import { Field } from "../../components/Field";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
 import { EmptyRoleState } from "../shared/RoleScreenPrimitives";
 import type { NotificationItem, ReportTarget } from "../../types/domain";
-import { timestampMillis } from "../../lib/eventUtils";
+import {
+  formatChatTime as formatNotificationTime,
+  timestampMillis,
+} from "../../lib/eventUtils";
 
 export function NotificationPanel({
   notifications,
@@ -107,12 +110,7 @@ export function NotificationPanel({
                     <small>{notification.body}</small>
                     <time>
                       {millis
-                        ? new Intl.DateTimeFormat("ja-JP", {
-                            month: "numeric",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          }).format(new Date(millis))
+                        ? formatNotificationTime(notification.createdAt)
                         : "日時不明"}
                     </time>
                   </span>

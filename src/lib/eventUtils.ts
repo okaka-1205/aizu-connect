@@ -25,30 +25,68 @@ export const csvEscape = (value: string | number | undefined | null) =>
 
 export const timestampMillis = (value?: Timestamp) => value?.toMillis?.() ?? 0;
 
+export const indexEventsById = (events: readonly AizuEvent[]) => {
+  const byId = new Map<string, AizuEvent>();
+  for (const event of events) {
+    if (!byId.has(event.id)) byId.set(event.id, event);
+  }
+  return byId;
+};
+
+export const selectRecommendedEvent = (
+  events: readonly AizuEvent[],
+  interests: readonly string[] = [],
+  now = Date.now(),
+) => {
+  let recommended: AizuEvent | undefined;
+  let highestScore = -Infinity;
+  for (const event of events) {
+    const searchable = [
+      event.category,
+      event.title,
+      ...event.tags,
+      ...(event.takeaways ?? []),
+    ].join(" ");
+    const interestScore = interests.filter((interest) =>
+      searchable.includes(interest),
+    ).length;
+    const daysUntil = Math.max(
+      0,
+      (timestampMillis(event.startAt) - now) / 86_400_000,
+    );
+    const score = interestScore * 100 - daysUntil;
+    if (!recommended || score > highestScore) {
+      recommended = event;
+      highestScore = score;
+    }
+  }
+  return recommended;
+};
+
 export const preferredScrollBehavior = (): ScrollBehavior =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches
     ? "auto"
     : "smooth";
 
+const chatTimeFormatter = new Intl.DateTimeFormat("ja-JP", {
+  month: "numeric",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+const chatDayFormatter = new Intl.DateTimeFormat("ja-JP", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  weekday: "short",
+});
+
 export const formatChatTime = (value?: Timestamp) =>
-  value
-    ? new Intl.DateTimeFormat("ja-JP", {
-        month: "numeric",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(value.toDate())
-    : "";
+  value ? chatTimeFormatter.format(value.toDate()) : "";
 
 export const formatChatDay = (value?: Timestamp) =>
-  value
-    ? new Intl.DateTimeFormat("ja-JP", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        weekday: "short",
-      }).format(value.toDate())
-    : "";
+  value ? chatDayFormatter.format(value.toDate()) : "";
 
 export const downloadEventCalendar = (event: AizuEvent) => {
   const startAt = event.startAt?.toDate();

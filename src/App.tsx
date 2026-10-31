@@ -1,4 +1,9 @@
 import {
+  onAuthStateChanged,
+  type MultiFactorResolver,
+  type User,
+} from "firebase/auth";
+import {
   addDoc,
   collection,
   deleteDoc,
@@ -7,17 +12,11 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
-  Timestamp,
   updateDoc,
   writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import {
-  onAuthStateChanged,
-  type MultiFactorResolver,
-  type User,
-} from "firebase/auth";
 import { httpsCallable } from "firebase/functions";
 import {
   Bell,
@@ -39,16 +38,35 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode,
 } from "react";
+import { MfaSignInScreen } from "./components/MfaSignInScreen";
 import {
   BrandMark,
   LoadingScreen,
   NoticeBanner,
   TabButton,
 } from "./components/ui/AppPrimitives";
-import { PRIVACY_VERSION, TERMS_VERSION } from "./content/legalDocuments";
+import { tabLabels } from "./config/events";
+import { PRIVACY_VERSION, TERMS_VERSION } from "./content/legalMetadata";
+import { useAccountDeletion } from "./hooks/useAccountDeletion";
+import { useAuthForm } from "./hooks/useAuthForm";
+import { useEventSearch } from "./hooks/useEventSearch";
+import { useNoticeState } from "./hooks/useNoticeState";
+import { useRoomConversation } from "./hooks/useRoomConversation";
+import { useStudentNavigation } from "./hooks/useStudentNavigation";
+import {
+  didCompleteManualApproval,
+  getApplicationSubmissionError,
+  getFirebaseErrorMessage,
+  resolveAccountAccessGate,
+  shouldAutoActivateVerifiedStudent,
+  validateImageFile,
+} from "./lib/appLogic";
+import {
+  defaultNotificationPreferences,
+  hasRequiredCommerceDisclosure,
+} from "./lib/eventUtils";
 import {
   auth,
   authPersistenceReady,
@@ -56,102 +74,71 @@ import {
   ensureAppCheck,
   functions,
 } from "./lib/firebase";
-import {
-  didCompleteManualApproval,
-  getApplicationSubmissionError,
-  getAuthFlowErrorMessage,
-  getFirebaseErrorMessage,
-  isAizuUniversityEmail,
-  isFutureEventStart,
-  matchesCategoryFilter,
-  normalizeLoginEmail,
-  resolveAccountAccessGate,
-  resolveInitialAccountStatus,
-  shouldAutoActivateVerifiedStudent,
-  validateChatAttachment,
-  validateImageFile,
-  type AuthFlowStage,
-  type Filter,
-} from "./lib/appLogic";
-import { tabLabels } from "./config/events";
-import { useNoticeState } from "./hooks/useNoticeState";
-import { useAccountDeletion } from "./hooks/useAccountDeletion";
-import { useRoomConversation } from "./hooks/useRoomConversation";
-import {
-  defaultNotificationPreferences,
-  hasRequiredCommerceDisclosure,
-  timestampMillis,
-} from "./lib/eventUtils";
 import { uploadImage } from "./lib/storage";
-import { fetchPublishedEventPage } from "./repositories/eventsRepository";
 import {
   loadChatPreferencesForRooms,
+  sendChatAttachment,
+  sendChatTextMessage,
   subscribeChatRoomsForUser,
 } from "./repositories/chatRepository";
 import {
   deleteChatMessage,
   editChatMessage,
 } from "./repositories/engagementRepository";
+import { fetchPublishedEventPage } from "./repositories/eventsRepository";
 import {
-  SAVED_EVENT_PAGE_SIZE,
-  SAVED_SEARCH_PAGE_SIZE,
   loadStudentActivities,
   loadStudentDashboardData,
   loadStudentNotifications,
   loadStudentSavedEvents,
   loadStudentSavedSearches,
   markAllStudentNotificationsRead,
+  SAVED_EVENT_PAGE_SIZE,
+  SAVED_SEARCH_PAGE_SIZE,
   subscribeStudentApplications,
 } from "./repositories/studentRepository";
-import {
-  deleteAuthUser,
-  loginWithEmail,
-  logout,
-  refreshAuthToken,
-  registerWithEmail,
-  reloadAuthUser,
-  resendVerificationEmail,
-} from "./services/authService";
-import { AdminMfaEnrollmentScreen } from "./components/AdminMfaEnrollmentScreen";
-import { MfaSignInScreen } from "./components/MfaSignInScreen";
-import { ActionReasonDialog } from "./screens/shared/RoleScreenPrimitives";
-import { ApplicationDialog } from "./screens/student/ApplicationDialog";
-import { HomeTab, SearchTab } from "./screens/student/DiscoverTabs";
-import { AuthScreen, LegalReconsentScreen } from "./screens/auth/AuthScreens";
 import {
   AccountRejectedScreen,
   AccountSetupScreen,
   AdminApprovalPendingScreen,
   VerifyEmailScreen,
 } from "./screens/auth/AccountGateScreens";
+import { AuthScreen, LegalReconsentScreen } from "./screens/auth/AuthScreens";
+import { ActionReasonDialog } from "./screens/shared/RoleScreenPrimitives";
 import {
   NotificationPanel,
   ReportDialog,
 } from "./screens/shared/StudentOverlays";
+import { ApplicationDialog } from "./screens/student/ApplicationDialog";
+import { HomeTab, SearchTab } from "./screens/student/DiscoverTabs";
+import {
+  logout,
+  refreshAuthToken,
+  reloadAuthUser,
+} from "./services/authService";
+import { hasTotpEnrollment } from "./services/mfaService";
 import type {
   AccountStatus,
   ActivityRecord,
   AizuEvent,
   ApplicationDetails,
   AppUser,
+  ChatMessage,
   ChatPreference,
   ChatRoom,
   EventApplication,
   NotificationItem,
   NotificationPreferences,
-  NoticeTone,
   ReportTarget,
   SavedSearch,
-  SearchDateFilter,
-  SearchDayFilter,
-  SearchFeeFilter,
-  SearchFormatFilter,
   SearchSort,
-  SearchTimeFilter,
-  SearchView,
-  Tab,
 } from "./types/domain";
 
+const AdminMfaEnrollmentScreen = lazy(() =>
+  import("./components/AdminMfaEnrollmentScreen").then((module) => ({
+    default: module.AdminMfaEnrollmentScreen,
+  })),
+);
 const AdminDashboard = lazy(() =>
   import("./screens/admin/AdminDashboard").then((module) => ({
     default: module.AdminDashboard,
@@ -187,51 +174,16 @@ const DeferredContentLoading = () => (
     <span>画面を読み込んでいます</span>
   </div>
 );
-import {
-  createMultiFactorResolver,
-  hasTotpEnrollment,
-  isMultiFactorRequiredError,
-} from "./services/mfaService";
-
-const studentTabs: Tab[] = [
-  "home",
-  "search",
-  "activity",
-  "messages",
-  "profile",
-];
-
-function tabFromLocation(): Tab {
-  if (typeof window === "undefined") return "home";
-  const candidate = new URLSearchParams(window.location.search).get("tab");
-  return studentTabs.includes(candidate as Tab) ? (candidate as Tab) : "home";
-}
 
 function App() {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
-  const [authMode, setAuthMode] = useState<"login" | "register">("register");
-  const [accountType, setAccountType] = useState<"student" | "organization">(
-    "student",
-  );
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [mfaResolver, setMfaResolver] = useState<MultiFactorResolver | null>(
     null,
   );
   const [newlyMfaEnrolledUserId, setNewlyMfaEnrolledUserId] = useState<
     string | null
   >(null);
-  const [displayName, setDisplayName] = useState("");
-  const [department, setDepartment] = useState("");
-  const [grade, setGrade] = useState(1);
-  const [interestText, setInterestText] = useState("");
-  const [currentActivities, setCurrentActivities] = useState("");
-  const [wantToTry, setWantToTry] = useState("");
-  const [organizationName, setOrganizationName] = useState("");
-  const [hasAcceptedLegal, setHasAcceptedLegal] = useState(false);
-  const [hasConfirmedEligibility, setHasConfirmedEligibility] = useState(false);
   const [events, setEvents] = useState<AizuEvent[]>([]);
   const [eventPageCursor, setEventPageCursor] =
     useState<QueryDocumentSnapshot<DocumentData> | null>(null);
@@ -245,41 +197,6 @@ function App() {
   const [hasMoreChatRooms, setHasMoreChatRooms] = useState(false);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState("");
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(() =>
-    typeof window === "undefined"
-      ? null
-      : new URLSearchParams(window.location.search).get("event"),
-  );
-  const [activeTab, setActiveTabState] = useState<Tab>(tabFromLocation);
-  const setActiveTab = useCallback((tab: Tab) => {
-    setActiveTabState(tab);
-    const url = new URL(window.location.href);
-    if (tab === "home") url.searchParams.delete("tab");
-    else url.searchParams.set("tab", tab);
-    window.history.pushState(
-      { tab },
-      "",
-      `${url.pathname}${url.search}${url.hash}`,
-    );
-  }, []);
-  const [filter, setFilter] = useState<Filter>("すべて");
-  const [searchText, setSearchText] = useState("");
-  const [searchDateFilter, setSearchDateFilter] =
-    useState<SearchDateFilter>("すべて");
-  const [searchSort, setSearchSort] = useState<SearchSort>("開催が近い順");
-  const [searchDayFilter, setSearchDayFilter] =
-    useState<SearchDayFilter>("すべて");
-  const [searchTimeFilter, setSearchTimeFilter] =
-    useState<SearchTimeFilter>("すべて");
-  const [searchFeeFilter, setSearchFeeFilter] =
-    useState<SearchFeeFilter>("すべて");
-  const [searchFormatFilter, setSearchFormatFilter] =
-    useState<SearchFormatFilter>("すべて");
-  const [searchView, setSearchView] = useState<SearchView>("list");
-  const [onlyAvailableEvents, setOnlyAvailableEvents] = useState(false);
-  const [onlyBeginnerEvents, setOnlyBeginnerEvents] = useState(false);
-  const [savedSearch, setSavedSearch] = useState<SavedSearch | null>(null);
-  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [savedSearchQueryLimit, setSavedSearchQueryLimit] = useState(
     SAVED_SEARCH_PAGE_SIZE,
   );
@@ -295,6 +212,43 @@ function App() {
   const [isAutoActivatingStudent, setIsAutoActivatingStudent] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [message, messageTone, setMessage] = useNoticeState();
+  const {
+    authMode,
+    setAuthMode,
+    accountType,
+    setAccountType,
+    email,
+    setEmail,
+    password,
+    setPassword,
+    showPassword,
+    setShowPassword,
+    displayName,
+    setDisplayName,
+    department,
+    setDepartment,
+    grade,
+    setGrade,
+    interestText,
+    setInterestText,
+    currentActivities,
+    setCurrentActivities,
+    wantToTry,
+    setWantToTry,
+    organizationName,
+    setOrganizationName,
+    hasAcceptedLegal,
+    setHasAcceptedLegal,
+    hasConfirmedEligibility,
+    setHasConfirmedEligibility,
+    handleAuthSubmit,
+  } = useAuthForm({
+    setMessage,
+    setIsActionLoading,
+    setAppUser,
+    setMfaResolver,
+  });
+
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadNotificationTotal, setUnreadNotificationTotal] = useState(0);
   const [notificationQueryLimit, setNotificationQueryLimit] = useState(30);
@@ -310,8 +264,19 @@ function App() {
     null,
   );
   const [chatPreferences, setChatPreferences] = useState<ChatPreference[]>([]);
+  const mutedChatRoomIds = useMemo(
+    () =>
+      chatPreferences
+        .filter((preference) => preference.muted)
+        .map((preference) => preference.roomId),
+    [chatPreferences],
+  );
   const chatRoomIdsKey = useMemo(
-    () => chatRooms.map((room) => room.id).sort().join("\n"),
+    () =>
+      chatRooms
+        .map((room) => room.id)
+        .sort()
+        .join("\n"),
     [chatRooms],
   );
   const [notificationPreferences, setNotificationPreferences] =
@@ -346,79 +311,57 @@ function App() {
     status: AccountStatus;
   } | null>(null);
   const verificationRefreshUidRef = useRef<string | null>(null);
-  const shouldFocusSearchRef = useRef(false);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const previousSearchSortRef = useRef<SearchSort>("開催が近い順");
   const searchSortRequestRef = useRef(0);
   const progressiveSearchRef = useRef({ key: "", loadedPages: 0 });
+  const { selectedEventId, setSelectedEventId, activeTab, setActiveTab } =
+    useStudentNavigation(events);
+
+  const {
+    resetSearch,
+    resetSavedSearches,
+    filter,
+    setFilter,
+    searchText,
+    setSearchText,
+    searchDateFilter,
+    setSearchDateFilter,
+    searchSort,
+    setSearchSort,
+    searchDayFilter,
+    setSearchDayFilter,
+    searchTimeFilter,
+    setSearchTimeFilter,
+    searchFeeFilter,
+    setSearchFeeFilter,
+    searchFormatFilter,
+    setSearchFormatFilter,
+    searchView,
+    setSearchView,
+    onlyAvailableEvents,
+    setOnlyAvailableEvents,
+    onlyBeginnerEvents,
+    setOnlyBeginnerEvents,
+    savedSearch,
+    setSavedSearch,
+    savedSearches,
+    setSavedSearches,
+    upcomingEvents,
+    filteredEvents,
+    hasActiveSearchCriteria,
+    searchCriteriaKey,
+    recommendedEvent,
+    recommendationLabel,
+    saveCurrentSearch,
+    applySavedSearch,
+    deleteSavedSearch,
+  } = useEventSearch({ events, appUser, setMessage });
 
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === selectedEventId),
     [events, selectedEventId],
   );
-
-  const upcomingEvents = useMemo(
-    () => events.filter((event) => isFutureEventStart(event.startAt?.toDate())),
-    [events],
-  );
-
-  useEffect(() => {
-    const handleHistoryNavigation = () => {
-      setActiveTabState(tabFromLocation());
-      const eventId = new URLSearchParams(window.location.search).get("event");
-      setSelectedEventId(eventId);
-    };
-    window.addEventListener("popstate", handleHistoryNavigation);
-    return () =>
-      window.removeEventListener("popstate", handleHistoryNavigation);
-  }, []);
-
-  useEffect(() => {
-    const eventId = new URLSearchParams(window.location.search).get("event");
-    if (eventId && events.some((event) => event.id === eventId)) {
-      setSelectedEventId(eventId);
-    }
-  }, [events]);
-
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    const currentEventId = url.searchParams.get("event");
-    if (currentEventId === selectedEventId) return;
-    if (selectedEventId) {
-      url.searchParams.set("event", selectedEventId);
-      window.history.pushState(
-        { ...window.history.state, tab: activeTab, event: selectedEventId },
-        "",
-        `${url.pathname}${url.search}${url.hash}`,
-      );
-    } else {
-      url.searchParams.delete("event");
-      window.history.replaceState(
-        { ...window.history.state, tab: activeTab },
-        "",
-        `${url.pathname}${url.search}${url.hash}`,
-      );
-    }
-  }, [activeTab, selectedEventId]);
-
-  useEffect(() => {
-    if (!(["home", "search"] as Tab[]).includes(activeTab) && selectedEventId) {
-      setSelectedEventId(null);
-    }
-  }, [activeTab, selectedEventId]);
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "auto" });
-    window.requestAnimationFrame(() => {
-      if (document.querySelector('[aria-modal="true"]')) return;
-      if (activeTab === "search" && shouldFocusSearchRef.current) {
-        document.getElementById("event-search-input")?.focus();
-        shouldFocusSearchRef.current = false;
-        return;
-      }
-      document.getElementById("student-main")?.focus({ preventScroll: true });
-    });
-  }, [activeTab]);
 
   useEffect(() => {
     let currentPageTitle = tabLabels[activeTab];
@@ -472,182 +415,6 @@ function App() {
     isEmailVerified,
   ]);
 
-  const filteredEvents = useMemo(() => {
-    const normalized = searchText.trim().toLowerCase();
-    const now = new Date();
-    const weekLimit = new Date(now);
-    weekLimit.setDate(now.getDate() + 7);
-    const filtered = upcomingEvents.filter((event) => {
-      const matchesFilter = matchesCategoryFilter(event.category, filter);
-      const matchesSearch =
-        !normalized ||
-        [
-          event.title,
-          event.summary,
-          event.location,
-          event.organizationName,
-          event.beginnerLevel ?? "",
-          ...(event.takeaways ?? []),
-          ...event.tags,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalized);
-      const eventDate = event.startAt?.toDate();
-      const matchesDate =
-        searchDateFilter === "すべて" ||
-        !eventDate ||
-        (searchDateFilter === "今週" &&
-          eventDate >= now &&
-          eventDate <= weekLimit) ||
-        (searchDateFilter === "今月" &&
-          eventDate >= now &&
-          eventDate.getMonth() === now.getMonth() &&
-          eventDate.getFullYear() === now.getFullYear());
-      const matchesCapacity =
-        !onlyAvailableEvents ||
-        Number(event.applicantCount ?? 0) < Number(event.capacity ?? 0);
-      const matchesBeginner =
-        !onlyBeginnerEvents ||
-        event.beginnerLevel === "初参加歓迎" ||
-        event.tags.some((tag) => tag.includes("初心者"));
-      const eventDay = eventDate?.getDay();
-      const matchesDay =
-        searchDayFilter === "すべて" ||
-        eventDay === undefined ||
-        (searchDayFilter === "土日"
-          ? eventDay === 0 || eventDay === 6
-          : eventDay >= 1 && eventDay <= 5);
-      const eventHour = eventDate?.getHours();
-      const matchesTime =
-        searchTimeFilter === "すべて" ||
-        eventHour === undefined ||
-        (searchTimeFilter === "午前"
-          ? eventHour < 12
-          : searchTimeFilter === "午後"
-            ? eventHour >= 12 && eventHour < 18
-            : eventHour >= 18);
-      const matchesFee =
-        searchFeeFilter === "すべて" ||
-        (event.feeType ?? "無料") === searchFeeFilter;
-      const matchesFormat =
-        searchFormatFilter === "すべて" ||
-        (event.eventFormat ?? "現地") === searchFormatFilter;
-      return (
-        matchesFilter &&
-        matchesSearch &&
-        matchesDate &&
-        matchesCapacity &&
-        matchesBeginner &&
-        matchesDay &&
-        matchesTime &&
-        matchesFee &&
-        matchesFormat
-      );
-    });
-    return filtered.sort((left, right) => {
-      if (searchSort === "人気順") {
-        return (
-          Number(right.applicantCount ?? 0) - Number(left.applicantCount ?? 0)
-        );
-      }
-      if (searchSort === "新着順") {
-        return (
-          timestampMillis(right.createdAt) - timestampMillis(left.createdAt)
-        );
-      }
-      return timestampMillis(left.startAt) - timestampMillis(right.startAt);
-    });
-  }, [
-    filter,
-    onlyAvailableEvents,
-    onlyBeginnerEvents,
-    searchDayFilter,
-    searchDateFilter,
-    searchFeeFilter,
-    searchFormatFilter,
-    searchSort,
-    searchText,
-    searchTimeFilter,
-    upcomingEvents,
-  ]);
-  const hasActiveSearchCriteria = Boolean(
-    searchText.trim() ||
-    filter !== "すべて" ||
-    searchDateFilter !== "すべて" ||
-    searchDayFilter !== "すべて" ||
-    searchTimeFilter !== "すべて" ||
-    searchFeeFilter !== "すべて" ||
-    searchFormatFilter !== "すべて" ||
-    onlyAvailableEvents ||
-    onlyBeginnerEvents,
-  );
-  const searchCriteriaKey = JSON.stringify([
-    searchText.trim(),
-    filter,
-    searchDateFilter,
-    searchDayFilter,
-    searchTimeFilter,
-    searchFeeFilter,
-    searchFormatFilter,
-    searchSort,
-    onlyAvailableEvents,
-    onlyBeginnerEvents,
-  ]);
-  const recommendedEvent = useMemo(() => {
-    const interests = appUser?.interests ?? [];
-    return [...upcomingEvents].sort((left, right) => {
-      const score = (event: AizuEvent) => {
-        const searchable = [
-          event.category,
-          event.title,
-          ...event.tags,
-          ...(event.takeaways ?? []),
-        ].join(" ");
-        const interestScore = interests.filter((interest) =>
-          searchable.includes(interest),
-        ).length;
-        const daysUntil = Math.max(
-          0,
-          (timestampMillis(event.startAt) - Date.now()) / 86_400_000,
-        );
-        return interestScore * 100 - daysUntil;
-      };
-      return score(right) - score(left);
-    })[0];
-  }, [appUser?.interests, upcomingEvents]);
-
-  const recommendationLabel = useMemo(() => {
-    if (!recommendedEvent) return "開催日が近いイベント";
-    const searchable = [
-      recommendedEvent.category,
-      recommendedEvent.title,
-      ...recommendedEvent.tags,
-    ].join(" ");
-    if (appUser?.interests.some((interest) => searchable.includes(interest))) {
-      return "興味分野に関連";
-    }
-    const daysUntil =
-      (timestampMillis(recommendedEvent.startAt) - Date.now()) / 86_400_000;
-    return daysUntil <= 7 ? "7日以内に開催" : "開催日が近いイベント";
-  }, [appUser?.interests, recommendedEvent]);
-
-  useEffect(() => {
-    const openSearch = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        if (activeTab === "search") {
-          document.getElementById("event-search-input")?.focus();
-          return;
-        }
-        shouldFocusSearchRef.current = true;
-        setActiveTab("search");
-      }
-    };
-    window.addEventListener("keydown", openSearch);
-    return () => window.removeEventListener("keydown", openSearch);
-  }, [activeTab, setActiveTab]);
-
   const activityYear = new Date().getFullYear();
   const activityByMonth = useMemo(() => {
     const months = Array.from({ length: 12 }, (_, index) => ({
@@ -662,7 +429,8 @@ function App() {
         return;
       }
       const month = Math.max(1, Math.min(12, activity.activityMonth));
-      months[month - 1].count += 1;
+      const bucket = months[month - 1];
+      if (bucket) bucket.count += 1;
     });
     return months;
   }, [activities, activityYear]);
@@ -712,17 +480,7 @@ function App() {
             setSelectedEventId(null);
             setActiveRoomId(null);
             setMessageDraft("");
-            setSearchText("");
-            setFilter("すべて");
-            setSearchDateFilter("すべて");
-            setSearchDayFilter("すべて");
-            setSearchTimeFilter("すべて");
-            setSearchFeeFilter("すべて");
-            setSearchFormatFilter("すべて");
-            setSearchSort("開催が近い順");
-            setSearchView("list");
-            setOnlyAvailableEvents(false);
-            setOnlyBeginnerEvents(false);
+            resetSearch();
             setIsNotificationOpen(false);
             setIsCreatorDashboardOpen(false);
             setApplicationEvent(null);
@@ -745,8 +503,7 @@ function App() {
             setActivityQueryLimit(50);
             setHasMoreActivities(false);
             setSavedEventIds([]);
-            setSavedSearch(null);
-            setSavedSearches([]);
+            resetSavedSearches();
           }
           setFirebaseUser(user);
           setIsEmailVerified(Boolean(user?.emailVerified));
@@ -848,7 +605,13 @@ function App() {
       unsubscribeProfile?.();
       unsubscribeAuth();
     };
-  }, [setActiveTab, setMessage]);
+  }, [
+    setActiveTab,
+    setMessage,
+    setSelectedEventId,
+    resetSearch,
+    resetSavedSearches,
+  ]);
 
   useEffect(() => {
     if (
@@ -941,6 +704,35 @@ function App() {
       ? appUser.uid
       : null;
 
+  const loadProductData = useCallback(
+    async (uid: string) => {
+      const data = await loadStudentDashboardData(uid);
+      const loadedEvents = data.eventPage.events;
+      setEvents(loadedEvents);
+      setEventPageCursor(data.eventPage.cursor);
+      setHasMoreEvents(data.eventPage.hasMore);
+      setSelectedEventId((current) =>
+        current && loadedEvents.some((event) => event.id === current)
+          ? current
+          : null,
+      );
+
+      setSavedEventIds(data.savedEventIds);
+      setSavedEvents(data.savedEvents);
+      setHasMoreSavedEvents(data.hasMoreSavedEvents);
+      setNotifications(data.notifications);
+      setUnreadNotificationTotal(data.unreadNotificationCount);
+      setHasMoreNotifications(data.hasMoreNotifications);
+      setActivities(data.activities);
+      setHasMoreActivities(data.hasMoreActivities);
+      setNotificationPreferences(data.notificationPreferences);
+      setSavedSearch(data.savedSearch);
+      setSavedSearches(data.savedSearches);
+      setHasMoreSavedSearches(data.hasMoreSavedSearches);
+    },
+    [setSavedSearch, setSavedSearches, setSelectedEventId],
+  );
+
   useEffect(() => {
     if (!activeStudentUid) {
       setEvents([]);
@@ -962,7 +754,7 @@ function App() {
     void loadProductData(activeStudentUid).catch((error) => {
       setMessage(getFirebaseErrorMessage(error), "error");
     });
-  }, [activeStudentUid, setMessage]);
+  }, [activeStudentUid, setMessage, loadProductData, setSavedSearches]);
 
   useEffect(() => {
     if (!activeStudentUid) return;
@@ -1126,32 +918,6 @@ function App() {
     searchCriteriaKey,
   ]);
 
-  const loadProductData = async (uid: string) => {
-    const data = await loadStudentDashboardData(uid);
-    const loadedEvents = data.eventPage.events;
-    setEvents(loadedEvents);
-    setEventPageCursor(data.eventPage.cursor);
-    setHasMoreEvents(data.eventPage.hasMore);
-    setSelectedEventId((current) =>
-      current && loadedEvents.some((event) => event.id === current)
-        ? current
-        : null,
-    );
-
-    setSavedEventIds(data.savedEventIds);
-    setSavedEvents(data.savedEvents);
-    setHasMoreSavedEvents(data.hasMoreSavedEvents);
-    setNotifications(data.notifications);
-    setUnreadNotificationTotal(data.unreadNotificationCount);
-    setHasMoreNotifications(data.hasMoreNotifications);
-    setActivities(data.activities);
-    setHasMoreActivities(data.hasMoreActivities);
-    setNotificationPreferences(data.notificationPreferences);
-    setSavedSearch(data.savedSearch);
-    setSavedSearches(data.savedSearches);
-    setHasMoreSavedSearches(data.hasMoreSavedSearches);
-  };
-
   const loadMoreNotifications = async () => {
     if (!appUser || !hasMoreNotifications) return;
     const nextLimit = notificationQueryLimit + 30;
@@ -1188,222 +954,6 @@ function App() {
     setSavedSearches(page.items);
     setSavedSearch((current) => current ?? page.items[0] ?? null);
     setHasMoreSavedSearches(page.hasMore);
-  };
-
-  const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setMessage("");
-    const devAdminEmail = import.meta.env.DEV
-      ? (import.meta.env.VITE_DEV_ADMIN_EMAIL ?? "").trim().toLowerCase()
-      : "";
-    const devAdminPassword = import.meta.env.DEV
-      ? (import.meta.env.VITE_DEV_ADMIN_PASSWORD ?? "")
-      : "";
-    const normalizedEmail =
-      authMode === "login"
-        ? normalizeLoginEmail(email, devAdminEmail)
-        : email.trim().toLowerCase();
-    const normalizedPassword =
-      devAdminEmail && normalizedEmail === devAdminEmail && password === "admin"
-        ? devAdminPassword
-        : password;
-    if (!normalizedEmail || !password) {
-      setMessage("メールアドレスとパスワードを入力してください。", "error");
-      return;
-    }
-    if (authMode === "register") {
-      if (!hasAcceptedLegal) {
-        setMessage(
-          "利用規約とプライバシーポリシーを確認し、同意してください。",
-          "error",
-        );
-        return;
-      }
-      if (!hasConfirmedEligibility) {
-        setMessage(
-          "年齢条件を確認し、未成年の場合は法定代理人の同意を得てください。",
-          "error",
-        );
-        return;
-      }
-      if (password.length < 10) {
-        setMessage("パスワードは10文字以上にしてください。", "error");
-        return;
-      }
-      if (accountType === "student" && !displayName.trim()) {
-        setMessage("表示名を入力してください。", "error");
-        return;
-      }
-      if (accountType === "organization" && !organizationName.trim()) {
-        setMessage("団体・自治体名を入力してください。", "error");
-        return;
-      }
-    }
-    setIsActionLoading(true);
-    let createdUser: User | null = null;
-    let authFlowStage: AuthFlowStage = "persistence";
-    try {
-      // The persistence mode must be settled before sign-in/sign-up. Without
-      // this await, a fast login can race the initial auth state observer and
-      // appear to be lost after a reload.
-      await authPersistenceReady;
-      authFlowStage = "app_check";
-      await ensureAppCheck();
-      if (authMode === "login") {
-        authFlowStage = "sign_in";
-        await loginWithEmail(normalizedEmail, normalizedPassword);
-        setMessage("");
-        return;
-      }
-      authFlowStage = "create_account";
-      const credential = await registerWithEmail(normalizedEmail, password);
-      createdUser = credential.user;
-      const interests = interestText
-        .split(",")
-        .map((interest) => interest.trim())
-        .filter(Boolean)
-        .slice(0, 5);
-      const normalizedCurrentActivities = currentActivities
-        .trim()
-        .slice(0, 240);
-      const normalizedWantToTry = wantToTry.trim().slice(0, 240);
-      const isStudent = accountType === "student";
-      const isAizuStudent = isStudent && isAizuUniversityEmail(normalizedEmail);
-      const status: AccountStatus = resolveInitialAccountStatus({
-        role: accountType,
-        email: normalizedEmail,
-      });
-      const normalizedOrganizationName = organizationName.trim().slice(0, 100);
-      const normalizedDisplayName = isStudent
-        ? displayName.trim().slice(0, 80)
-        : normalizedOrganizationName.slice(0, 80);
-      const userData: AppUser = {
-        uid: credential.user.uid,
-        role: accountType,
-        status,
-        email: credential.user.email,
-        displayName: normalizedDisplayName,
-        university: isStudent
-          ? isAizuStudent
-            ? "会津大学"
-            : "その他"
-          : "主催者・団体",
-        department: isStudent ? department.trim().slice(0, 80) : "",
-        grade: isStudent ? grade : 0,
-        interests: isStudent ? interests : [],
-        ...(isStudent
-          ? {
-              currentActivities: normalizedCurrentActivities,
-              wantToTry: normalizedWantToTry,
-            }
-          : {
-              organizationId: credential.user.uid,
-              organizationName: normalizedOrganizationName,
-            }),
-      };
-      const batch = writeBatch(db);
-      batch.set(doc(db, "users", credential.user.uid), {
-        ...userData,
-        termsVersion: TERMS_VERSION,
-        privacyVersion: PRIVACY_VERSION,
-        legalAcceptedAt: serverTimestamp(),
-        eligibilityConfirmedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      batch.set(
-        doc(
-          db,
-          "legalConsents",
-          `${credential.user.uid}_${TERMS_VERSION}_${PRIVACY_VERSION}`,
-        ),
-        {
-          userId: credential.user.uid,
-          termsVersion: TERMS_VERSION,
-          privacyVersion: PRIVACY_VERSION,
-          acceptedAt: serverTimestamp(),
-          eligibilityConfirmedAt: serverTimestamp(),
-          source: "registration",
-        },
-      );
-      if (isStudent) {
-        batch.set(doc(db, "studentProfiles", credential.user.uid), {
-          ...userData,
-          verificationMethod: isAizuStudent
-            ? "university_email"
-            : "manual_review",
-          profileCompletionRate: 80,
-          activityCount: 0,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        batch.set(doc(db, "organizations", credential.user.uid), {
-          id: credential.user.uid,
-          displayName: normalizedOrganizationName,
-          description: "",
-          contactEmail: normalizedEmail,
-          status: "pending_approval",
-          createdBy: credential.user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
-      authFlowStage = "save_profile";
-      await batch.commit();
-      let registrationMessage =
-        isStudent && isAizuStudent
-          ? "登録しました。メール認証が完了すると、すぐに利用できます。"
-          : "登録しました。メール認証と管理者の承認後に利用できます。";
-      let registrationTone: NoticeTone = "success";
-      try {
-        await resendVerificationEmail(credential.user);
-      } catch (verificationError) {
-        registrationTone = "info";
-        registrationMessage = `登録は完了しましたが、確認メールを送信できませんでした。${getFirebaseErrorMessage(verificationError)}`;
-      }
-      setAppUser({
-        ...userData,
-        termsVersion: TERMS_VERSION,
-        privacyVersion: PRIVACY_VERSION,
-        legalAcceptedAt: Timestamp.now(),
-        eligibilityConfirmedAt: Timestamp.now(),
-      });
-      setMessage(registrationMessage, registrationTone);
-    } catch (error) {
-      if (authMode === "login" && isMultiFactorRequiredError(error)) {
-        setMfaResolver(createMultiFactorResolver(error));
-        setPassword("");
-        setMessage("");
-        return;
-      }
-      let rollbackFailed = false;
-      if (createdUser) {
-        await deleteAuthUser(createdUser).catch(async () => {
-          rollbackFailed = true;
-          await logout().catch(() => undefined);
-        });
-      }
-      const errorCode =
-        typeof error === "object" && error !== null && "code" in error
-          ? String(error.code)
-          : "unknown";
-      console.error("Authentication flow failed", {
-        stage: authFlowStage,
-        code: errorCode,
-        rollbackFailed,
-      });
-      setMessage(
-        getAuthFlowErrorMessage({
-          stage: authFlowStage,
-          error,
-          rollbackFailed,
-        }),
-        "error",
-      );
-    } finally {
-      setIsActionLoading(false);
-    }
   };
 
   const applyToEvent = async (
@@ -1458,32 +1008,11 @@ function App() {
 
   const uploadChatAttachment = async (file: File) => {
     if (!appUser || !activeRoomId) return;
-    validateChatAttachment(file);
-    const attachmentUrl = await uploadImage(
+    await sendChatAttachment(
+      activeRoomId,
+      { senderId: appUser.uid, senderName: appUser.displayName },
       file,
-      `chat-attachments/${activeRoomId}/${appUser.uid}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
     );
-    const messageType = file.type.startsWith("image/") ? "image" : "file";
-    const roomRef = doc(db, "chatRooms", activeRoomId);
-    const messageRef = doc(collection(roomRef, "messages"));
-    const batch = writeBatch(db);
-    batch.set(messageRef, {
-      roomId: activeRoomId,
-      senderId: appUser.uid,
-      senderName: appUser.displayName,
-      type: messageType,
-      text: file.name.slice(0, 200),
-      attachmentUrl,
-      attachmentName: file.name.slice(0, 200),
-      attachmentType: file.type,
-      attachmentSize: file.size,
-      createdAt: serverTimestamp(),
-    });
-    batch.update(roomRef, {
-      lastMessageText: `${messageType === "image" ? "画像" : "ファイル"}を送信しました`,
-      lastMessageAt: serverTimestamp(),
-    });
-    await batch.commit();
   };
 
   const sendMessage = async () => {
@@ -1491,61 +1020,70 @@ function App() {
     const text = messageDraft.trim().slice(0, 2000);
     setMessageDraft("");
     try {
-      const roomRef = doc(db, "chatRooms", activeRoomId);
-      const messageRef = doc(collection(roomRef, "messages"));
-      const batch = writeBatch(db);
-      batch.set(messageRef, {
-        roomId: activeRoomId,
-        senderId: appUser.uid,
-        senderName: appUser.displayName,
-        type: "text",
+      await sendChatTextMessage(
+        activeRoomId,
+        { senderId: appUser.uid, senderName: appUser.displayName },
         text,
-        createdAt: serverTimestamp(),
-      });
-      batch.update(roomRef, {
-        lastMessageText: text,
-        lastMessageAt: serverTimestamp(),
-      });
-      await batch.commit();
+      );
     } catch (error) {
       setMessageDraft((current) => current || text);
       setMessage(getFirebaseErrorMessage(error), "error");
     }
   };
 
-  const selectChatRoom = (roomId: string) => {
-    if (roomId !== activeRoomId) {
-      resetMessageWindow();
-    }
-    setActiveRoomId(roomId);
-    const unread = notifications.filter(
-      (notification) =>
-        !notification.isRead &&
-        notification.targetType === "chat" &&
-        notification.targetId === roomId,
-    );
-    if (unread.length === 0) return;
-    setNotifications((current) =>
-      current.map((notification) =>
-        unread.some((item) => item.id === notification.id)
-          ? { ...notification, isRead: true }
-          : notification,
-      ),
-    );
-    setUnreadNotificationTotal((current) =>
-      Math.max(0, current - unread.length),
-    );
-    void Promise.all(
-      unread.map((notification) =>
-        updateDoc(doc(db, "notifications", notification.id), {
-          isRead: true,
-          readAt: serverTimestamp(),
-        }),
-      ),
-    ).catch((error: unknown) =>
-      setMessage(getFirebaseErrorMessage(error), "error"),
-    );
-  };
+  const editMessage = useCallback(
+    (chatMessage: ChatMessage, text: string) =>
+      editChatMessage(activeRoomId ?? chatMessage.roomId, chatMessage.id, text),
+    [activeRoomId],
+  );
+  const reportChatMessage = useCallback((chatMessage: ChatMessage) => {
+    setReportTarget({
+      targetType: "message",
+      targetId: chatMessage.id,
+      title: `${chatMessage.senderName}さんのメッセージ`,
+    });
+  }, []);
+  const loadMoreChatRooms = useCallback(
+    () => setChatRoomQueryLimit((current) => current + 50),
+    [],
+  );
+
+  const selectChatRoom = useCallback(
+    (roomId: string) => {
+      if (roomId !== activeRoomId) {
+        resetMessageWindow();
+      }
+      setActiveRoomId(roomId);
+      const unread = notifications.filter(
+        (notification) =>
+          !notification.isRead &&
+          notification.targetType === "chat" &&
+          notification.targetId === roomId,
+      );
+      if (unread.length === 0) return;
+      setNotifications((current) =>
+        current.map((notification) =>
+          unread.some((item) => item.id === notification.id)
+            ? { ...notification, isRead: true }
+            : notification,
+        ),
+      );
+      setUnreadNotificationTotal((current) =>
+        Math.max(0, current - unread.length),
+      );
+      void Promise.all(
+        unread.map((notification) =>
+          updateDoc(doc(db, "notifications", notification.id), {
+            isRead: true,
+            readAt: serverTimestamp(),
+          }),
+        ),
+      ).catch((error: unknown) =>
+        setMessage(getFirebaseErrorMessage(error), "error"),
+      );
+    },
+    [activeRoomId, notifications, resetMessageWindow, setMessage],
+  );
 
   const toggleChatMute = async (roomId: string) => {
     if (!appUser) return;
@@ -1673,17 +1211,7 @@ function App() {
     setReportTarget(null);
     setAuthMode("login");
     setActiveTab("home");
-    setSearchText("");
-    setFilter("すべて");
-    setSearchDateFilter("すべて");
-    setSearchDayFilter("すべて");
-    setSearchTimeFilter("すべて");
-    setSearchFeeFilter("すべて");
-    setSearchFormatFilter("すべて");
-    setSearchSort("開催が近い順");
-    setSearchView("list");
-    setOnlyAvailableEvents(false);
-    setOnlyBeginnerEvents(false);
+    resetSearch();
     setMessageDraft("");
     setIsEmailVerified(false);
     verificationRefreshUidRef.current = null;
@@ -1859,12 +1387,12 @@ function App() {
       !hasTotpEnrollment(firebaseUser) &&
       newlyMfaEnrolledUserId !== firebaseUser.uid
     ) {
-      return (
+      return withDashboardLoading(
         <AdminMfaEnrollmentScreen
           user={firebaseUser}
           onEnrolled={() => setNewlyMfaEnrolledUserId(firebaseUser.uid)}
           onLogout={() => void handleLogout()}
-        />
+        />,
       );
     }
     return withDashboardLoading(
@@ -1889,80 +1417,6 @@ function App() {
   const openApplicationDialog = (event: AizuEvent) => {
     setSelectedEventId(null);
     setApplicationEvent(event);
-  };
-  const saveCurrentSearch = async () => {
-    const searchCriteria = {
-      userId: appUser.uid,
-      name: searchText.trim() || `${filter}・${searchDateFilter}`,
-      searchText,
-      category: filter,
-      dateFilter: searchDateFilter,
-      dayFilter: searchDayFilter,
-      timeFilter: searchTimeFilter,
-      feeFilter: searchFeeFilter,
-      formatFilter: searchFormatFilter,
-      onlyAvailable: onlyAvailableEvents,
-      onlyBeginner: onlyBeginnerEvents,
-    };
-    const criteriaSignature = (search: Omit<SavedSearch, "id" | "updatedAt">) =>
-      JSON.stringify([
-        search.searchText.trim(),
-        search.category,
-        search.dateFilter,
-        search.dayFilter,
-        search.timeFilter,
-        search.feeFilter,
-        search.formatFilter,
-        search.onlyAvailable,
-        search.onlyBeginner,
-      ]);
-    const existingSearch = savedSearches.find(
-      (search) => criteriaSignature(search) === criteriaSignature(searchCriteria),
-    );
-    const nextSearch: SavedSearch = {
-      ...searchCriteria,
-      id: existingSearch?.id ?? `${appUser.uid}_${Date.now()}`,
-    };
-    const { id: savedSearchId, ...savedSearchData } = nextSearch;
-    await setDoc(
-      doc(db, "savedSearches", savedSearchId ?? `${appUser.uid}_default`),
-      { ...savedSearchData, updatedAt: serverTimestamp() },
-      { merge: true },
-    );
-    setSavedSearch(nextSearch);
-    setSavedSearches((current) => [
-      nextSearch,
-      ...current.filter((search) => search.id !== nextSearch.id),
-    ]);
-    setMessage(
-      "検索条件を保存しました。条件に合う新着イベントを通知します。",
-      "success",
-    );
-  };
-  const applySavedSearch = (selectedSearch?: SavedSearch) => {
-    const search = selectedSearch ?? savedSearch;
-    if (!search) return;
-    setSearchText(search.searchText);
-    setFilter(search.category);
-    setSearchDateFilter(search.dateFilter);
-    setSearchDayFilter(search.dayFilter);
-    setSearchTimeFilter(search.timeFilter);
-    setSearchFeeFilter(search.feeFilter);
-    setSearchFormatFilter(search.formatFilter);
-    setOnlyAvailableEvents(search.onlyAvailable);
-    setOnlyBeginnerEvents(search.onlyBeginner);
-  };
-  const deleteSavedSearch = async (search: SavedSearch) => {
-    if (!search.id) return;
-    await deleteDoc(doc(db, "savedSearches", search.id));
-    setSavedSearches((current) => {
-      const next = current.filter((item) => item.id !== search.id);
-      setSavedSearch((selected) =>
-        selected?.id === search.id ? (next[0] ?? null) : selected,
-      );
-      return next;
-    });
-    setMessage("保存した検索条件を削除しました。", "success");
   };
   const toggleSaved = (eventId: string) => {
     if (!appUser) return;
@@ -2363,133 +1817,117 @@ function App() {
         {activeTab === "messages" && (
           <Suspense fallback={<DeferredContentLoading />}>
             <MessagesTab
-            rooms={chatRooms}
-            hasMoreRooms={hasMoreChatRooms}
-            activeRoomId={activeRoomId}
-            messages={chatMessages}
-            hasOlderMessages={hasOlderChatMessages}
-            onLoadOlder={loadOlderMessages}
-            draft={messageDraft}
-            unreadCounts={unreadChatCounts}
-            readReceipts={chatReadReceipts}
-            mutedRoomIds={chatPreferences
-              .filter((preference) => preference.muted)
-              .map((preference) => preference.roomId)}
-            onSelectRoom={selectChatRoom}
-            onCloseRoom={() => setActiveRoomId(null)}
-            onLoadMoreRooms={() =>
-              setChatRoomQueryLimit((current) => current + 50)
-            }
-            onToggleMute={(roomId) => void toggleChatMute(roomId)}
-            onDraftChange={setMessageDraft}
-            onSend={() => void sendMessage()}
-            onUploadAttachment={async (file) => {
-              try {
-                await uploadChatAttachment(file);
-              } catch (error) {
-                setMessage(getFirebaseErrorMessage(error), "error");
+              rooms={chatRooms}
+              hasMoreRooms={hasMoreChatRooms}
+              activeRoomId={activeRoomId}
+              messages={chatMessages}
+              hasOlderMessages={hasOlderChatMessages}
+              onLoadOlder={loadOlderMessages}
+              draft={messageDraft}
+              unreadCounts={unreadChatCounts}
+              readReceipts={chatReadReceipts}
+              mutedRoomIds={mutedChatRoomIds}
+              onSelectRoom={selectChatRoom}
+              onCloseRoom={() => setActiveRoomId(null)}
+              onLoadMoreRooms={loadMoreChatRooms}
+              onToggleMute={(roomId) => void toggleChatMute(roomId)}
+              onDraftChange={setMessageDraft}
+              onSend={() => void sendMessage()}
+              onUploadAttachment={async (file) => {
+                try {
+                  await uploadChatAttachment(file);
+                } catch (error) {
+                  setMessage(getFirebaseErrorMessage(error), "error");
+                }
+              }}
+              onReportMessage={reportChatMessage}
+              onEditMessage={editMessage}
+              onDeleteMessage={(chatMessage) =>
+                deleteChatMessage(
+                  activeRoomId ?? chatMessage.roomId,
+                  chatMessage.id,
+                )
               }
-            }}
-            onReportMessage={(chatMessage) =>
-              setReportTarget({
-                targetType: "message",
-                targetId: chatMessage.id,
-                title: `${chatMessage.senderName}さんのメッセージ`,
-              })
-            }
-            onEditMessage={(chatMessage, text) =>
-              editChatMessage(
-                activeRoomId ?? chatMessage.roomId,
-                chatMessage.id,
-                text,
-              )
-            }
-            onDeleteMessage={(chatMessage) =>
-              deleteChatMessage(
-                activeRoomId ?? chatMessage.roomId,
-                chatMessage.id,
-              )
-            }
-            currentUserId={appUser.uid}
-            currentUserRole="student"
-            onOpenActivity={() => setActiveTab("activity")}
-            onOpenEvent={(eventId) => void openPublishedEvent(eventId)}
+              currentUserId={appUser.uid}
+              currentUserRole="student"
+              onOpenActivity={() => setActiveTab("activity")}
+              onOpenEvent={(eventId) => void openPublishedEvent(eventId)}
             />
           </Suspense>
         )}
         {activeTab === "profile" && (
           <Suspense fallback={<DeferredContentLoading />}>
             <ProfileTab
-            appUser={appUser}
-            applications={applications}
-            activities={activities}
-            activityByMonth={activityByMonth}
-            savedEventIds={savedEventIds}
-            events={savedEvents}
-            hasMoreSavedEvents={hasMoreSavedEvents}
-            onLoadMoreSavedEvents={() =>
-              void loadMoreSavedEvents().catch((error) =>
-                setMessage(getFirebaseErrorMessage(error), "error"),
-              )
-            }
-            notificationPreferences={notificationPreferences}
-            accountDeletionRequest={accountDeletionRequest}
-            onRequestAccountDeletion={requestAccountDeletion}
-            onCancelAccountDeletion={cancelAccountDeletion}
-            onSaveProfile={async (updates, onImageUploadProgress) => {
-              const { profileImageFile, ...profileUpdates } = updates;
-              let profileImageUrl = appUser.profileImageUrl;
-              if (profileImageFile) {
-                validateImageFile(profileImageFile, "プロフィール画像");
-                profileImageUrl = await uploadImage(
-                  profileImageFile,
-                  `profile-images/${appUser.uid}/profile-${Date.now()}`,
-                  onImageUploadProgress,
-                );
+              appUser={appUser}
+              applications={applications}
+              activities={activities}
+              activityByMonth={activityByMonth}
+              savedEventIds={savedEventIds}
+              events={savedEvents}
+              hasMoreSavedEvents={hasMoreSavedEvents}
+              onLoadMoreSavedEvents={() =>
+                void loadMoreSavedEvents().catch((error) =>
+                  setMessage(getFirebaseErrorMessage(error), "error"),
+                )
               }
-              const persistedUpdates = {
-                ...profileUpdates,
-                ...(profileImageUrl ? { profileImageUrl } : {}),
-              };
-              await updateDoc(doc(db, "users", appUser.uid), {
-                ...persistedUpdates,
-                updatedAt: serverTimestamp(),
-              });
-              await setDoc(
-                doc(db, "studentProfiles", appUser.uid),
-                {
+              notificationPreferences={notificationPreferences}
+              accountDeletionRequest={accountDeletionRequest}
+              onRequestAccountDeletion={requestAccountDeletion}
+              onCancelAccountDeletion={cancelAccountDeletion}
+              onSaveProfile={async (updates, onImageUploadProgress) => {
+                const { profileImageFile, ...profileUpdates } = updates;
+                let profileImageUrl = appUser.profileImageUrl;
+                if (profileImageFile) {
+                  validateImageFile(profileImageFile, "プロフィール画像");
+                  profileImageUrl = await uploadImage(
+                    profileImageFile,
+                    `profile-images/${appUser.uid}/profile-${Date.now()}`,
+                    onImageUploadProgress,
+                  );
+                }
+                const persistedUpdates = {
+                  ...profileUpdates,
+                  ...(profileImageUrl ? { profileImageUrl } : {}),
+                };
+                await updateDoc(doc(db, "users", appUser.uid), {
                   ...persistedUpdates,
                   updatedAt: serverTimestamp(),
-                },
-                { merge: true },
-              );
-              setAppUser((current) =>
-                current ? { ...current, ...persistedUpdates } : current,
-              );
-            }}
-            onSaveNotificationPreferences={async (updates) => {
-              const previousPreferences = notificationPreferences;
-              const nextPreferences = {
-                ...notificationPreferences,
-                ...updates,
-                userId: appUser.uid,
-              };
-              setNotificationPreferences(nextPreferences);
-              try {
+                });
                 await setDoc(
-                  doc(db, "notificationPreferences", appUser.uid),
-                  { ...nextPreferences, updatedAt: serverTimestamp() },
+                  doc(db, "studentProfiles", appUser.uid),
+                  {
+                    ...persistedUpdates,
+                    updatedAt: serverTimestamp(),
+                  },
                   { merge: true },
                 );
-              } catch (error) {
-                setNotificationPreferences(previousPreferences);
-                throw error;
-              }
-            }}
-            onOpenActivity={() => setActiveTab("activity")}
-            onOpenCreatorDashboard={() => setIsCreatorDashboardOpen(true)}
-            onOpenSavedEvent={(eventId) => void openPublishedEvent(eventId)}
-            onLogout={() => void handleLogout()}
+                setAppUser((current) =>
+                  current ? { ...current, ...persistedUpdates } : current,
+                );
+              }}
+              onSaveNotificationPreferences={async (updates) => {
+                const previousPreferences = notificationPreferences;
+                const nextPreferences = {
+                  ...notificationPreferences,
+                  ...updates,
+                  userId: appUser.uid,
+                };
+                setNotificationPreferences(nextPreferences);
+                try {
+                  await setDoc(
+                    doc(db, "notificationPreferences", appUser.uid),
+                    { ...nextPreferences, updatedAt: serverTimestamp() },
+                    { merge: true },
+                  );
+                } catch (error) {
+                  setNotificationPreferences(previousPreferences);
+                  throw error;
+                }
+              }}
+              onOpenActivity={() => setActiveTab("activity")}
+              onOpenCreatorDashboard={() => setIsCreatorDashboardOpen(true)}
+              onOpenSavedEvent={(eventId) => void openPublishedEvent(eventId)}
+              onLogout={() => void handleLogout()}
             />
           </Suspense>
         )}

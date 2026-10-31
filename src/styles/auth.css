@@ -353,6 +353,8 @@
 }
 .pending-card {
   width: min(420px, calc(100% - 40px));
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 34px;
   border: 1px solid var(--line);
   border-radius: 18px;

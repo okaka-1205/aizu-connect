@@ -11,7 +11,7 @@ import {
   Settings,
   ShieldCheck,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Field } from "../../components/Field";
 import { ImageCropDialog } from "../../components/ImageCropDialog";
 import { LegalDialog } from "../../components/LegalDialog";
@@ -19,13 +19,13 @@ import {
   NoticeBanner,
   SectionHeading,
 } from "../../components/ui/AppPrimitives";
-import type { LegalDocument } from "../../content/legalDocuments";
+import type { LegalDocument } from "../../content/legalMetadata";
 import { useNoticeState } from "../../hooks/useNoticeState";
 import {
   getFirebaseErrorMessage,
   validateImageSourceFile,
 } from "../../lib/appLogic";
-import { revokeObjectUrl } from "../../lib/eventUtils";
+import { indexEventsById, revokeObjectUrl } from "../../lib/eventUtils";
 import type {
   AccountDeletionRequest,
   ActivityRecord,
@@ -169,15 +169,6 @@ export function ProfileTab({
     setIsEditing(false);
   };
 
-  useEffect(() => {
-    if (!isEditing || !window.matchMedia("(max-width: 620px)").matches) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isEditing]);
-
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const interests = interestText
@@ -217,9 +208,14 @@ export function ProfileTab({
     }
   };
 
-  const visibleSavedEvents = savedEventIds
-    .map((eventId) => events.find((event) => event.id === eventId))
-    .filter((event): event is AizuEvent => event !== undefined);
+  const eventsById = useMemo(() => indexEventsById(events), [events]);
+  const visibleSavedEvents = useMemo(
+    () =>
+      savedEventIds
+        .map((eventId) => eventsById.get(eventId))
+        .filter((event): event is AizuEvent => event !== undefined),
+    [eventsById, savedEventIds],
+  );
 
   return (
     <section className="tab-page">

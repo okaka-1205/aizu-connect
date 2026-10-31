@@ -7,16 +7,31 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   width: min(100% - 40px, 1120px);
   min-height: 76px;
   margin: 0 auto;
+}
+.role-header > .brand-lockup {
+  flex: 0 0 auto;
 }
 .role-header-user {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   color: #4b6079;
   font-size: 12px;
+}
+.role-header-user > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.role-header-user > svg,
+.role-header-user > button {
+  flex: 0 0 auto;
 }
 .role-header-user .icon-button {
   margin-left: 8px;
@@ -459,6 +474,7 @@
   padding: 14px;
   border-top: 1px solid #e8eef5;
   background: var(--surface-soft);
+  overflow-wrap: anywhere;
 }
 .admin-event-preview > img {
   width: 100%;
@@ -469,6 +485,7 @@
 }
 .admin-event-preview > div {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 9px;
   min-width: 0;
@@ -510,6 +527,8 @@
 }
 .admin-event-preview dl > div {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
   gap: 2px;
   min-width: 0;
 }
@@ -519,13 +538,10 @@
   font-weight: 850;
 }
 .admin-event-preview dd {
-  overflow: hidden;
   margin: 0;
   color: #38516c;
   font-size: 10px;
   font-weight: 850;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .admin-event-note {
   display: grid;
@@ -577,6 +593,26 @@
   display: grid;
   min-width: 0;
   gap: 4px;
+}
+.review-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  overflow-wrap: anywhere;
+}
+.review-row > div {
+  grid-template-columns: minmax(0, 1fr);
+}
+.review-row > .admin-assignment-controls,
+.review-row > .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+}
+.review-row > .admin-assignment-controls {
+  margin-top: 0;
+}
+.review-row > button {
+  justify-self: start;
 }
 .applicant-avatar {
   display: grid;
@@ -806,6 +842,18 @@
 .applicant-card {
   margin-top: 16px;
 }
+.applicant-card > .role-card-head {
+  flex-wrap: wrap;
+}
+.applicant-card > .role-card-head > div:first-child {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.applicant-card > .role-card-head > .row-actions {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
 .event-form-card,
 .event-list-card,
 .applicant-card {
@@ -994,6 +1042,13 @@
   border-radius: 12px;
   background: #17283d;
 }
+.image-crop-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
 .image-crop-move-hint {
   position: absolute;
   z-index: 2;
@@ -1126,6 +1181,7 @@
 .profile-copy {
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .profile-copy h2 {
   font-size: 27px;
@@ -1143,6 +1199,8 @@
   margin-top: 12px;
 }
 .interest-list span {
+  min-width: 0;
+  max-width: 100%;
   padding: 5px 8px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.75);
@@ -1433,6 +1491,7 @@
 .account-deletion-reason {
   grid-column: 1 / -1;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 .account-deletion-panel .row-actions {
   justify-content: flex-end;
@@ -1480,6 +1539,7 @@
 }
 .activity-history {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 9px;
   margin-bottom: 30px;
 }
@@ -1504,8 +1564,10 @@
 }
 .activity-history-item > div:last-child {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 3px;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .activity-history-item strong {
   overflow: hidden;
@@ -1576,4 +1638,103 @@
   background: #e26a37;
   color: #fff;
   font-size: 8px;
+}
+
+.event-survey-results {
+  margin-top: 24px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.event-survey-results > summary {
+  padding: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.event-survey-panel {
+  padding: 0 16px 16px;
+}
+.event-survey-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.event-survey-toolbar p {
+  color: var(--muted);
+  font-size: 13px;
+}
+.event-survey-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+.event-survey-summary > div {
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+.event-survey-summary dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.event-survey-summary dd {
+  margin: 6px 0 0;
+  font-weight: 700;
+}
+.event-survey-response-list {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+.event-survey-response-list li {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.event-survey-response-list li > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+.event-survey-response-list time,
+.event-survey-response-list small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.event-survey-response-list p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.application-copy .event-survey-form > small {
+  display: block;
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+.admin-assignment-controls > small {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}
+.admin-assignment-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 8px;
+}
+.admin-assignment-controls select,
+.admin-assignment-controls input {
+  min-width: 0;
+  max-width: 100%;
+  font-size: 12px;
+}
+.admin-assignment-controls button {
+  max-width: 100%;
+  font-size: 12px;
 }

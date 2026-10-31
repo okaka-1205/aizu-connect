@@ -1,9 +1,14 @@
 import { X } from "lucide-react";
-import type { KeyboardEvent } from "react";
+import { lazy, Suspense, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { legalDocuments, type LegalDocument } from "../content/legalDocuments";
+import {
+  legalDocumentMetadata,
+  type LegalDocument,
+} from "../content/legalMetadata";
 import { useDialogAccessibility } from "../hooks/useDialogAccessibility";
+
+const LegalDocumentBody = lazy(() => import("./LegalDocumentBody"));
 
 function handleDocumentScrollKey(event: KeyboardEvent<HTMLDivElement>) {
   if (event.target !== event.currentTarget) return;
@@ -48,7 +53,7 @@ export function LegalDialog({
   document: LegalDocument;
   onClose: () => void;
 }) {
-  const content = legalDocuments[document];
+  const content = legalDocumentMetadata[document];
   const dialogRef = useDialogAccessibility<HTMLElement>(onClose);
 
   return createPortal(
@@ -85,57 +90,9 @@ export function LegalDialog({
           data-dialog-initial-focus
           onKeyDown={handleDocumentScrollKey}
         >
-          <div className="legal-document-intro">
-            <p>{content.introduction}</p>
-            <dl>
-              <div>
-                <dt>制定・適用日</dt>
-                <dd>{content.effectiveDate}</dd>
-              </div>
-              <div>
-                <dt>版</dt>
-                <dd>{content.version}</dd>
-              </div>
-              {content.meta.map((item) => (
-                <div key={item.label}>
-                  <dt>{item.label}</dt>
-                  <dd>
-                    {item.href ? (
-                      <a href={item.href}>{item.value}</a>
-                    ) : (
-                      item.value
-                    )}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-          {content.sections.map((section) => (
-            <section key={section.heading}>
-              <h3>{section.heading}</h3>
-              {section.paragraphs.map((paragraph) => (
-                <p key={paragraph}>{paragraph}</p>
-              ))}
-              {section.bullets && (
-                <ul>
-                  {section.bullets.map((bullet) => (
-                    <li key={bullet}>{bullet}</li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ))}
-          {document === "terms" && (
-            <p>
-              <a
-                href="/open-source-notices.txt"
-                target="_blank"
-                rel="noreferrer"
-              >
-                オープンソースソフトウェアのライセンス表示
-              </a>
-            </p>
-          )}
+          <Suspense fallback={<p role="status">本文を読み込んでいます。</p>}>
+            <LegalDocumentBody document={document} />
+          </Suspense>
         </div>
       </section>
     </div>,

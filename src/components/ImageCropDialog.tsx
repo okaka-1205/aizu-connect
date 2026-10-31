@@ -1,9 +1,10 @@
 import { Check, Loader2, Minus, Move, Plus, RotateCcw, X } from "lucide-react";
-import { useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
-import Cropper, { type Area } from "react-easy-crop";
-import "react-easy-crop/react-easy-crop.css";
+import type { Area } from "react-easy-crop";
 import { useDialogAccessibility } from "../hooks/useDialogAccessibility";
+
+const Cropper = lazy(() => import("./ImageCropper"));
 
 type ImageCropDialogProps = {
   title: string;
@@ -173,18 +174,26 @@ export function ImageCropDialog({
           </button>
         </div>
         <div className="image-crop-workspace" aria-label={alt}>
-          <Cropper
-            image={imageUrl}
-            crop={crop}
-            zoom={zoom}
-            aspect={aspect}
-            cropShape={circular ? "round" : "rect"}
-            showGrid={!circular}
-            zoomWithScroll={false}
-            onCropChange={setCrop}
-            onZoomChange={setZoom}
-            onCropComplete={onCropComplete}
-          />
+          <Suspense
+            fallback={
+              <div className="image-crop-loading" role="status">
+                画像編集を読み込んでいます。
+              </div>
+            }
+          >
+            <Cropper
+              image={imageUrl}
+              crop={crop}
+              zoom={zoom}
+              aspect={aspect}
+              cropShape={circular ? "round" : "rect"}
+              showGrid={!circular}
+              zoomWithScroll={false}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={onCropComplete}
+            />
+          </Suspense>
           <span className="image-crop-move-hint" aria-hidden="true">
             <Move size={15} />
             ドラッグで移動

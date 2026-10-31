@@ -1,9 +1,108 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
+import ts from "typescript";
 import { projectSuffix, projectVariant } from "./testVariants";
+import {
+  installEngagementFailures,
+  failEngagementOperation,
+  rejectEngagementOperation,
+  clearEngagementFailure,
+} from "./engagementTestHelpers";
 
 const password = "password123";
 const fixtureImage = path.resolve("src/assets/event-community.jpg");
+
+async function installChatSendFailures(page: Page) {
+  await page.route(
+    /\/src\/repositories\/chatRepository\.ts(?:\?.*)?$/,
+    async (route) => {
+      const response = await route.fetch();
+      const source = await response.text();
+      const ast = ts.createSourceFile(
+        "chatRepository.js",
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.JS,
+      );
+      let initializer: ts.Expression | undefined;
+      function visit(node: ts.Node) {
+        if (
+          ts.isVariableDeclaration(node) &&
+          ts.isIdentifier(node.name) &&
+          node.name.text === "sendChatTextMessage"
+        )
+          initializer = node.initializer;
+        ts.forEachChild(node, visit);
+      }
+      visit(ast);
+      if (!initializer)
+        throw new Error("Chat sender is unavailable for failure testing.");
+      const replacement = `(...args) => {
+      const mode = document.documentElement.dataset.chatSendFailure;
+      if (mode) {
+        delete document.documentElement.dataset.chatSendFailure;
+        const error = new Error("送信エラーの復元確認 " + mode);
+        if (mode === "deferred") {
+          return new Promise((_, reject) => document.addEventListener("aizu-test:chat-send-error", () => reject(error), { once: true }));
+        }
+        return Promise.reject(error);
+      }
+      return (${initializer.getText(ast)})(...args);
+    }`;
+      await route.fulfill({
+        response,
+        body:
+          source.slice(0, initializer.getStart(ast)) +
+          replacement +
+          source.slice(initializer.end),
+      });
+    },
+  );
+}
+
+async function verifyChatDraftRecovery(
+  page: Page,
+  label: string,
+  leaveAndReturn: () => Promise<void>,
+) {
+  const input = page.getByPlaceholder("全体チャットにメッセージを送る");
+  const send = page.getByRole("button", { name: "メッセージを送信" });
+  const draft = `${label}の未送信の下書き`;
+  await input.fill(draft);
+  await leaveAndReturn();
+  await expect(input).toHaveValue(draft);
+
+  await page.evaluate(() => {
+    document.documentElement.dataset.chatSendFailure = "immediate";
+  });
+  await send.click();
+  await expect(page.getByRole("alert")).toContainText(
+    "送信エラーの復元確認 immediate",
+  );
+  await expect(input).toHaveValue(draft);
+  await expect(page.locator(".chat-message p", { hasText: draft })).toHaveCount(
+    0,
+  );
+
+  await page.evaluate(() => {
+    document.documentElement.dataset.chatSendFailure = "deferred";
+  });
+  await send.click();
+  await expect(input).toHaveValue("");
+  const nextDraft = `${label}の新しい下書き`;
+  await input.fill(nextDraft);
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("aizu-test:chat-send-error")),
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "送信エラーの復元確認 deferred",
+  );
+  await expect(input).toHaveValue(nextDraft);
+  await input.fill("");
+  const closeNotice = page.getByRole("button", { name: "お知らせを閉じる" });
+  if (await closeNotice.isVisible()) await closeNotice.click();
+}
 
 function studentEmail(projectName: string) {
   return `student-e2e-${projectSuffix(projectName)}@u-aizu.ac.jp`;
@@ -234,6 +333,7 @@ test.describe("emulator-backed role flows", () => {
   test("student can enter the product and navigate core tabs", async ({
     page,
   }, testInfo) => {
+    await installChatSendFailures(page);
     const suffix = projectSuffix(testInfo.project.name);
     await login(page, studentEmail(testInfo.project.name));
     const nav = page.getByRole("navigation", { name: "メインナビゲーション" });
@@ -355,6 +455,21 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.locator("p", { hasText: "E2E 初期メッセージ" }),
     ).toBeVisible();
+    await verifyChatDraftRecovery(page, `学生 ${suffix}`, async () => {
+      await nav.getByRole("button", { name: /^活動/ }).click();
+      await nav.getByRole("button", { name: /^メッセージ/ }).click();
+    });
+    const studentMessage = `学生からの送信 ${suffix}`;
+    await page
+      .getByPlaceholder("全体チャットにメッセージを送る")
+      .fill(studentMessage);
+    await page.getByRole("button", { name: "メッセージを送信" }).click();
+    await expect(
+      page.locator(".chat-message p", { hasText: studentMessage }),
+    ).toBeVisible();
+    await expect(
+      page.getByPlaceholder("全体チャットにメッセージを送る"),
+    ).toHaveValue("");
     const attachmentName = `e2e-note-${projectSuffix(test.info().project.name)}.txt`;
     await page.locator(".chat-composer input[type=file]").setInputFiles({
       name: attachmentName,
@@ -439,6 +554,25 @@ test.describe("emulator-backed role flows", () => {
         name: "E2E ページングイベント 30の詳細を見る",
       }),
     ).toBeVisible();
+    const titles = (await page.locator(".event-card h3").allTextContents()).sort();
+    await page.locator("summary").filter({ hasText: "表示方法" }).click();
+    await page.getByRole("button", { name: "日付別表示", exact: true }).click();
+    await expect(page.locator(".calendar-event-groups")).toBeVisible();
+    await expect(
+      page.locator(".calendar-event-groups > section > h3").first(),
+    ).toHaveText(/\d{4}年\d{1,2}月\d{1,2}日\([日月火水木金土]\)/);
+    await expect
+      .poll(async () =>
+        (await page.locator(".event-card h3").allTextContents()).sort(),
+      )
+      .toEqual(titles);
+    await page.getByRole("button", { name: "一覧表示", exact: true }).click();
+    await expect(page.locator(".calendar-event-groups")).toHaveCount(0);
+    await expect
+      .poll(async () =>
+        (await page.locator(".event-card h3").allTextContents()).sort(),
+      )
+      .toEqual(titles);
     await expectNoHorizontalOverflow(page);
   });
 
@@ -676,6 +810,30 @@ test.describe("emulator-backed role flows", () => {
       .getByRole("button", { name: /詳細・確認/ })
       .click();
     await expect(page.getByLabel("アクセス方法")).toBeVisible();
+    const preview = page.getByRole("dialog", { name: eventTitle });
+    await page
+      .getByRole("button", { name: "公開前プレビュー", exact: true })
+      .click();
+    await expect(preview).toBeVisible();
+    await expect(preview).toContainText(
+      "学生が気軽に立ち上げる企画のE2E確認です。",
+    );
+    await expect(preview).toContainText("一緒に学ぶ仲間を見つける");
+    await preview.getByRole("button", { name: "プレビューを閉じる" }).click();
+    await expect(preview).toBeHidden();
+    await expect(page.getByLabel("開始日時")).toHaveValue(
+      nextWeek.toISOString().slice(0, 16),
+    );
+    await eventFormProgress.getByRole("button", { name: /基本情報/ }).click();
+    const updatedSummary = "プレビューを閉じて更新した企画の概要です。";
+    await summaryField.fill(updatedSummary);
+    await eventFormProgress.getByRole("button", { name: /詳細・確認/ }).click();
+    await page
+      .getByRole("button", { name: "公開前プレビュー", exact: true })
+      .click();
+    await expect(preview).toContainText(updatedSummary);
+    await preview.getByRole("button", { name: "プレビューを閉じる" }).click();
+    await expect(summaryField).toHaveValue(updatedSummary);
     await page.getByRole("button", { name: "企画を申請する" }).click();
 
     await expect(page.getByText("活動を審査へ申請しました。")).toBeVisible();
@@ -689,6 +847,11 @@ test.describe("emulator-backed role flows", () => {
       .locator(".managed-event-row")
       .filter({ hasText: eventTitle });
     await expect(submittedEvent.getByText("審査中")).toBeVisible();
+    await submittedEvent.getByRole("button", { name: new RegExp(`^${escapeRegExp(eventTitle)}\\s`) }).click();
+    await page.locator(".event-survey-results > summary").click();
+    await expect(page.getByRole("region", { name: "開催後アンケートの回答" }).getByText("まだ回答はありません。")).toBeVisible();
+    await page.getByRole("button", { name: /団体ホーム/ }).click();
+    await page.getByRole("button", { name: /^イベント/ }).click();
     await submittedEvent.getByRole("button", { name: "複製" }).click();
     await expect(page.getByLabel("活動名")).toHaveValue(
       `${eventTitle}（複製）`,
@@ -737,13 +900,42 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByText("JPEG・PNG・WebP / 20MB未満（保存時に自動圧縮）"),
     ).toBeVisible();
-    await page
-      .getByRole("button", { name: "プロフィール画像", exact: true })
-      .setInputFiles(fixtureImage);
-
+    const imageInput = page.getByRole("button", {
+      name: "プロフィール画像",
+      exact: true,
+    });
     const cropDialog = page.getByRole("dialog", {
       name: "プロフィール画像の範囲を調整",
     });
+    let releaseCropper: () => void = () => {};
+    const cropperReady = new Promise<void>((resolve) => {
+      releaseCropper = resolve;
+    });
+    await page.route(
+      /\/src\/components\/ImageCropper\.tsx(?:\?.*)?$/,
+      async (route) => {
+        await cropperReady;
+        await route.continue();
+      },
+    );
+    try {
+      await imageInput.setInputFiles(fixtureImage);
+      await expect(
+        cropDialog.getByText("画像編集を読み込んでいます。", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        cropDialog.getByRole("button", { name: "画像の切り抜きを閉じる" }),
+      ).toBeFocused();
+      await expect(
+        cropDialog.getByRole("button", { name: "この範囲を使う" }),
+      ).toBeDisabled();
+      await page.keyboard.press("Escape");
+      await expect(cropDialog).toBeHidden();
+    } finally {
+      releaseCropper();
+      await page.unrouteAll({ behavior: "wait" });
+    }
+    await imageInput.setInputFiles(fixtureImage);
     await expect(cropDialog).toBeVisible();
     await expect(
       cropDialog.getByText("ドラッグで移動", { exact: true }),
@@ -908,6 +1100,124 @@ test.describe("emulator-backed role flows", () => {
     ).toBeVisible();
     await expect(promotedApplication).not.toContainText("キャンセル待ち");
     await expectNoHorizontalOverflow(page);
+  });
+
+  test("student keeps check-in and survey drafts while switching activity views", async ({
+    page,
+  }, testInfo) => {
+    const variant = projectVariant(testInfo.project.name);
+    const checkInTitle = `E2E QR受付確認 ${variant}`;
+    const surveyTitle = `E2E 開催後アンケート ${variant}`;
+    await login(page, studentEmail(testInfo.project.name));
+    await page
+      .getByRole("navigation", { name: "メインナビゲーション" })
+      .getByRole("button", { name: /^活動/ })
+      .click();
+    const checkIn = page.getByLabel(`${checkInTitle}の受付コード`);
+    const comment = page.getByLabel(`${surveyTitle}の感想`);
+    const rating = page.getByLabel(`${surveyTitle}の満足度`);
+    await checkIn.fill("246810");
+    await comment.fill("活動画面を切り替えても感想の下書きを保持します。");
+    await rating.selectOption("4");
+    const views = page.getByRole("navigation", {
+      name: "参加履歴の表示切り替え",
+    });
+    await views.getByRole("button", { name: "参加履歴", exact: true }).click();
+    await views.getByRole("button", { name: "活動証明", exact: true }).click();
+    await views.getByRole("button", { name: "参加予定", exact: true }).click();
+    await expect(checkIn).toHaveValue("246810");
+    await expect(comment).toHaveValue(
+      "活動画面を切り替えても感想の下書きを保持します。",
+    );
+    await expect(rating).toHaveValue("4");
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("survey submissions recover from failures and organizers can read all results", async ({
+    page,
+  }, testInfo) => {
+    testInfo.setTimeout(60_000);
+    const suffix = projectSuffix(testInfo.project.name);
+    const title = `E2E 開催後アンケート ${projectVariant(testInfo.project.name)}`;
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await installEngagementFailures(page);
+    await login(page, studentEmail(testInfo.project.name));
+    const nav = page.getByRole("navigation", { name: "メインナビゲーション" });
+    await nav.getByRole("button", { name: /^活動/ }).click();
+    const item = page.locator(".application-item").filter({ hasText: title });
+    const comment = `送信失敗から復元した感想 ${suffix}`;
+    await item.getByLabel(`${title}の満足度`).selectOption("4");
+    await item.getByLabel(`${title}の感想`).fill(comment);
+    await failEngagementOperation(page, "saveEventSurvey", "deferred");
+    await item
+      .getByRole("button", { name: "アンケートを送信", exact: true })
+      .click();
+    await expect(
+      item.getByRole("button", { name: "送信中…", exact: true }),
+    ).toBeDisabled();
+    await expect(item.getByLabel(`${title}の感想`)).toBeDisabled();
+    await item
+      .getByRole("button", { name: "送信中…", exact: true })
+      .evaluate((button) =>
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+      );
+    expect(
+      await page.evaluate(() => window.engagementCalls?.saveEventSurvey),
+    ).toBe(1);
+    await rejectEngagementOperation(page);
+    await expect(item.getByRole("alert")).toContainText(
+      "検証用のsaveEventSurvey失敗",
+    );
+    await expect(item.getByLabel(`${title}の感想`)).toHaveValue(comment);
+    await item
+      .getByRole("button", { name: "アンケートを送信", exact: true })
+      .click();
+    await expect(item.getByText("アンケートを送信しました。")).toBeVisible();
+    await expect(
+      item.getByRole("button", { name: "回答済み", exact: true }),
+    ).toBeDisabled();
+    const saved = await readFirestoreDocument(
+      `eventSurveys/event-e2e-a11y-survey-${suffix}/responses/student-e2e-${suffix}`,
+    );
+    expect(saved.fields?.rating?.integerValue).toBe("4");
+    expect(saved.fields?.userId?.stringValue).toBe(`student-e2e-${suffix}`);
+    await nav.getByRole("button", { name: "プロフィール" }).click();
+    await page
+      .getByRole("button", { name: "ログアウト この端末からログアウト" })
+      .click();
+    await login(page, organizationEmail(testInfo.project.name));
+    await page.getByRole("button", { name: /^イベント/ }).click();
+    await page
+      .locator(".managed-event-row")
+      .filter({ hasText: title })
+      .getByRole("button", { name: new RegExp(`^${escapeRegExp(title)}\\s`) })
+      .click();
+    await failEngagementOperation(page, "loadEventSurveySummary", "immediate");
+    await page.locator(".event-survey-results > summary").click();
+    const panel = page.getByRole("region", { name: "開催後アンケートの回答" });
+    await expect(panel.getByRole("alert")).toContainText(
+      "アンケートを取得できませんでした",
+    );
+    await clearEngagementFailure(page);
+    await panel.getByRole("button", { name: "回答を再読み込み" }).click();
+    await expect(panel.locator(".event-survey-summary")).toContainText("52件");
+    await expect(panel.locator(".event-survey-summary")).toContainText("3.0 / 5");
+    await expect(panel.locator(".event-survey-summary")).toContainText("2%");
+    await expect(panel.getByText(comment, { exact: true })).toBeVisible();
+    await expect(panel.locator(".event-survey-response-list > li")).toHaveCount(
+      50,
+    );
+    await panel.getByRole("button", { name: "回答をさらに50件読み込む" }).click();
+    await expect(panel.locator(".event-survey-response-list > li")).toHaveCount(
+      52,
+    );
+    await expect(
+      panel.getByText("追加ページのアンケート回答", { exact: true }),
+    ).toBeVisible();
+    await expect(panel).not.toContainText(`student-e2e-${suffix}`);
+    await expectNoHorizontalOverflow(page);
+    expect(errors).toEqual([]);
   });
 
   test("confirmed participant can check in during the event window", async ({
@@ -1184,6 +1494,7 @@ test.describe("emulator-backed role flows", () => {
     page,
   }, testInfo) => {
     testInfo.setTimeout(45_000);
+    await installChatSendFailures(page);
     const variant = projectVariant(testInfo.project.name);
     const eventChatTitle = `E2E 全体チャットイベント ${variant}`;
     const dashboardEventTitle = `E2E 地域交流会 ${variant}`;
@@ -1240,6 +1551,31 @@ test.describe("emulator-backed role flows", () => {
     await expect(
       page.getByPlaceholder("全体チャットにメッセージを送る"),
     ).toBeVisible();
+    await verifyChatDraftRecovery(
+      page,
+      `主催者 ${projectSuffix(testInfo.project.name)}`,
+      async () => {
+        await page.getByRole("button", { name: /団体ホーム/ }).click();
+        await page.getByRole("button", { name: /^全体チャット/ }).click();
+      },
+    );
+    const organizationMessage = `主催者からの送信 ${projectSuffix(testInfo.project.name)}`;
+    await page
+      .getByPlaceholder("全体チャットにメッセージを送る")
+      .fill(organizationMessage);
+    await page.getByRole("button", { name: "メッセージを送信" }).click();
+    await expect(
+      page.locator(".chat-message p", { hasText: organizationMessage }),
+    ).toBeVisible();
+    const attachmentName = `organizer-note-${projectSuffix(testInfo.project.name)}.txt`;
+    await page.locator(".chat-composer input[type=file]").setInputFiles({
+      name: attachmentName,
+      mimeType: "text/plain",
+      buffer: Buffer.from("Organizer attachment test"),
+    });
+    await expect(
+      page.getByRole("link", { name: new RegExp(attachmentName) }),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "固定メッセージ・お知らせを編集" })
       .click();
@@ -1270,6 +1606,14 @@ test.describe("emulator-backed role flows", () => {
         name: new RegExp(`^${escapeRegExp(eventTitle)}\\s`),
       })
       .click();
+    const qrCode = page.locator(".check-in-qr");
+    await expect(qrCode).toBeVisible();
+    await expect(qrCode).toHaveAttribute("src", /^data:image\/png;base64,/);
+    await expect
+      .poll(() =>
+        qrCode.evaluate((image: HTMLImageElement) => image.naturalWidth),
+      )
+      .toBe(280);
     const applicant = page
       .locator(".applicant-row")
       .filter({ hasText: studentName });
@@ -1361,6 +1705,75 @@ test.describe("emulator-backed role flows", () => {
     await reportQueue.getByRole("button", { name: "さらに50件" }).click();
     await expect(reportQueue.getByText("E2E ページング通報 55")).toBeVisible();
     await expect(reportQueue.getByText("全件表示")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("admin assignments restore saved values and recover from read and save failures", async ({
+    page,
+  }, testInfo) => {
+    const suffix = projectSuffix(testInfo.project.name);
+    const eventId = `admin-review-event-${suffix}`;
+    const title = `E2E 管理審査イベント ${projectVariant(testInfo.project.name)}`;
+    await installEngagementFailures(page);
+    await page.addInitScript((targetId) => {
+      if (!sessionStorage.getItem("e2e-assignment-read-failed")) {
+        sessionStorage.setItem("e2e-assignment-read-failed", "1");
+        window.engagementFailure = {
+          operation: "loadAdminAssignment",
+          mode: "immediate",
+          targetId,
+          repeat: true,
+        };
+      }
+    }, eventId);
+    await login(page, adminEmail(testInfo.project.name), "admin123");
+    const control = page
+      .locator(".admin-review-item")
+      .filter({ hasText: title })
+      .locator(".admin-assignment-controls");
+    await expect(control.getByRole("alert")).toContainText(
+      "検証用のloadAdminAssignment失敗",
+    );
+    await clearEngagementFailure(page);
+    await control.getByRole("button", { name: "担当情報を再読み込み" }).click();
+    await expect(control.getByLabel("対応状況")).toBeEnabled();
+    await control.getByLabel("対応状況").selectOption("in_progress");
+    await control.getByLabel("対応期限").fill("2030-11-01");
+    await failEngagementOperation(page, "saveAdminAssignment", "deferred");
+    await control
+      .getByRole("button", { name: "自分が担当", exact: true })
+      .click();
+    await expect(
+      control.getByRole("button", { name: "保存中…", exact: true }),
+    ).toBeDisabled();
+    await rejectEngagementOperation(page);
+    await expect(control.getByRole("alert")).toContainText(
+      "検証用のsaveAdminAssignment失敗",
+    );
+    await expect(control.getByLabel("対応期限")).toHaveValue("2030-11-01");
+    await control
+      .getByRole("button", { name: "自分が担当", exact: true })
+      .click();
+    await expect(control.getByRole("status")).toHaveText(
+      "担当情報を保存しました。",
+    );
+    await page.reload();
+    await expect(control.getByLabel("対応状況")).toHaveValue("in_progress");
+    await expect(control.getByLabel("対応期限")).toHaveValue("2030-11-01");
+    await control.getByLabel("対応状況").selectOption("completed");
+    await control.getByLabel("対応期限").fill("");
+    await control.getByRole("button", { name: "担当内容を保存" }).click();
+    await expect(control.getByRole("status")).toHaveText(
+      "担当情報を保存しました。",
+    );
+    await page.reload();
+    await expect(control.getByLabel("対応状況")).toHaveValue("completed");
+    await expect(control.getByLabel("対応期限")).toHaveValue("");
+    const saved = await readFirestoreDocument(
+      `adminAssignments/event_${eventId}`,
+    );
+    expect(saved.fields?.status?.stringValue).toBe("completed");
+    expect(saved.fields?.dueAt).toBeUndefined();
     await expectNoHorizontalOverflow(page);
   });
 

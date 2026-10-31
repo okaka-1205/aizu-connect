@@ -1765,6 +1765,102 @@ describe("saved searches and operational records", () => {
     );
   });
 
+  it("limits survey result queries to admins and the event owner, including student organizers", async () => {
+    const {
+      student,
+      otherStudent,
+      organization,
+      otherOrganization,
+      pendingStudent,
+      anon,
+      admin,
+      adminWithoutMfa,
+    } = contexts();
+    const response = {
+      eventId: "event-published",
+      userId: "student-1",
+      rating: 4,
+      comment: "感想",
+      wouldRecommend: true,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context
+        .firestore()
+        .doc("eventSurveys/event-published/responses/student-1")
+        .set(response);
+      await context
+        .firestore()
+        .doc("eventSurveys/event-student/responses/student-2")
+        .set({ ...response, eventId: "event-student", userId: "student-2" });
+    });
+    const results = (context, eventId) =>
+      context.firestore().collection(`eventSurveys/${eventId}/responses`).get();
+    await assertSucceeds(results(organization, "event-published"));
+    await assertSucceeds(results(student, "event-student"));
+    await assertSucceeds(results(admin, "event-published"));
+    for (const context of [
+      otherStudent,
+      otherOrganization,
+      pendingStudent,
+      anon,
+      adminWithoutMfa,
+    ]) {
+      await assertFails(results(context, "event-published"));
+    }
+    await assertFails(results(organization, "event-student"));
+    await assertFails(student.firestore().collectionGroup("responses").get());
+    await assertSucceeds(
+      student
+        .firestore()
+        .doc("eventSurveys/event-published/responses/student-1")
+        .get(),
+    );
+    await assertFails(
+      otherStudent
+        .firestore()
+        .doc("eventSurveys/event-published/responses/student-1")
+        .get(),
+    );
+  });
+
+  it("prevents survey updates from changing ownership or bypassing validation", async () => {
+    const { student, otherStudent } = contexts();
+    const reference = student
+      .firestore()
+      .doc("eventSurveys/event-published/responses/student-1");
+    await assertSucceeds(
+      reference.set({
+        eventId: "event-published",
+        userId: "student-1",
+        rating: 4,
+        comment: "感想",
+        wouldRecommend: true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+    for (const patch of [
+      { userId: "student-2" },
+      { eventId: "event-other-org" },
+      { rating: 6 },
+      { rating: 1.5 },
+      { comment: "a".repeat(1001) },
+      { wouldRecommend: "yes" },
+      { createdAt: 1 },
+      { role: "admin" },
+    ]) {
+      await assertFails(reference.update(patch));
+    }
+    await assertFails(
+      otherStudent
+        .firestore()
+        .doc("eventSurveys/event-published/responses/student-1")
+        .update({ rating: 5 }),
+    );
+  });
+
   it("scopes favorites and user blocks to their owner", async () => {
     const { student, otherStudent } = contexts();
     await assertSucceeds(
@@ -1842,6 +1938,59 @@ describe("saved searches and operational records", () => {
         updatedAt: timestamp,
       }),
     );
+  });
+
+  it("allows only MFA administrators to batch-read assignment documents", async () => {
+    const {
+      admin,
+      adminWithoutMfa,
+      unverifiedAdmin,
+      student,
+      organization,
+      anon,
+    } = contexts();
+    await assertSucceeds(
+      admin.firestore().doc("adminAssignments/event_event-published").set({
+        targetType: "event",
+        targetId: "event-published",
+        assigneeId: "admin-1",
+        assigneeName: "Admin",
+        status: "in_progress",
+        updatedAt: timestamp,
+      }),
+    );
+    await assertSucceeds(
+      admin.firestore().doc("adminAssignments/report_report-1").set({
+        targetType: "report",
+        targetId: "report-1",
+        assigneeId: "admin-1",
+        assigneeName: "Admin",
+        status: "open",
+        updatedAt: timestamp,
+      }),
+    );
+    const ids = [
+      "event_event-published",
+      "report_report-1",
+      ...Array.from({ length: 28 }, (_, index) => `user_missing-${index}`),
+    ];
+    const read = (context, targetIds = ids) =>
+      context
+        .firestore()
+        .collection("adminAssignments")
+        .where(firebase.firestore.FieldPath.documentId(), "in", targetIds)
+        .get();
+    await assertSucceeds(read(admin));
+    for (const context of [
+      adminWithoutMfa,
+      unverifiedAdmin,
+      student,
+      organization,
+      anon,
+    ]) {
+      await assertFails(read(context));
+      await assertFails(read(context, ["user_missing"]));
+    }
   });
 
   it("restricts third-party provision records to the data subject and admins", async () => {

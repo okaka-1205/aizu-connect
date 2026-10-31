@@ -248,29 +248,31 @@ export const resolveAccountAccessGate = ({
   return "account_setup";
 };
 
-export const formatEventStart = (value: string) => {
-  const date = new Date(value);
-  return new Intl.DateTimeFormat("ja-JP", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-};
+const eventStartFormatter = new Intl.DateTimeFormat("ja-JP", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  weekday: "short",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+const dateTimeLocalFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+export const formatEventStart = (value: string) =>
+  eventStartFormatter.format(new Date(value));
 
 export const toDateTimeLocalValue = (date: Date) => {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  })
+  const parts = dateTimeLocalFormatter
     .formatToParts(date)
     .reduce<Record<string, string>>((result, part) => {
       if (part.type !== "literal") result[part.type] = part.value;

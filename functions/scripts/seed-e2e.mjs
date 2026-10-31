@@ -1392,6 +1392,21 @@ batch.set(db.doc("eventCheckIns/event-e2e-published"), {
 });
 
 await batch.commit();
+const surveyBatch = db.batch();
+for (const [variant] of testVariants) {
+  const eventId = `event-e2e-a11y-survey-${variant}`;
+  for (let index = 0; index < 51; index += 1) {
+    const userId = `survey-fixture-${variant}-${String(index).padStart(2, "0")}`;
+    surveyBatch.set(db.doc(`eventSurveys/${eventId}/responses/${userId}`), {
+      eventId, userId, rating: 3,
+      comment: index === 50 ? "追加ページのアンケート回答" : `確認回答 ${index + 1}`,
+      wouldRecommend: false,
+      createdAt: Timestamp.fromMillis(now.getTime() - (index + 1) * 1000),
+      updatedAt: timestamp,
+    });
+  }
+}
+await surveyBatch.commit();
 
 const paginationBatch = db.batch();
 for (let index = 0; index < 30; index += 1) {
