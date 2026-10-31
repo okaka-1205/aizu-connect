@@ -274,7 +274,7 @@ const contexts = () => ({
   admin: testEnv.authenticatedContext("admin-1", {
     email: "admin@example.com",
     email_verified: true,
-    firebase: {sign_in_second_factor: "totp"},
+    firebase: { sign_in_second_factor: "totp" },
   }),
   adminWithoutMfa: testEnv.authenticatedContext("admin-1", {
     email: "admin@example.com",
@@ -573,11 +573,9 @@ describe("users and profiles", () => {
   });
 
   it("requires TOTP MFA for admin access while preserving self-service enrollment", async () => {
-    const {admin, adminWithoutMfa} = contexts();
+    const { admin, adminWithoutMfa } = contexts();
     await assertSucceeds(admin.firestore().doc("users/student-1").get());
-    await assertFails(
-      adminWithoutMfa.firestore().doc("users/student-1").get(),
-    );
+    await assertFails(adminWithoutMfa.firestore().doc("users/student-1").get());
     await assertSucceeds(
       adminWithoutMfa.firestore().doc("users/admin-1").get(),
     );
@@ -587,7 +585,7 @@ describe("users and profiles", () => {
   });
 
   it("accepts the emulator-only MFA claim only for allowlisted demo projects", async () => {
-    const {emulatorAdmin, productionAdminWithTestClaim} = contexts();
+    const { emulatorAdmin, productionAdminWithTestClaim } = contexts();
     await assertSucceeds(
       emulatorAdmin.firestore().doc("auditLogs/audit-1").get(),
     );
@@ -1226,9 +1224,9 @@ describe("events", () => {
     );
   });
 
-  it("allows admin review and creator cancellation only", async () => {
+  it("requires callable review while preserving creator cancellation", async () => {
     const { organization, admin } = contexts();
-    await assertSucceeds(
+    await assertFails(
       admin.firestore().doc("events/event-pending").update({
         status: "published",
         updatedAt: timestamp,
@@ -1413,10 +1411,10 @@ describe("chat rooms and messages", () => {
       organization.firestore().doc("chatRooms/room-1").get(),
     );
     await assertFails(otherStudent.firestore().doc("chatRooms/room-1").get());
-    await assertSucceeds(
+    await assertFails(
       student.firestore().doc("chatRooms/room-1").update({
         lastMessageText: "Updated message",
-        lastMessageAt: timestamp,
+        lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
       }),
     );
     await assertFails(
@@ -1440,6 +1438,7 @@ describe("chat rooms and messages", () => {
             senderId: "org-1",
             senderName: "Aizu Org",
             text: "Welcome",
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           }),
         ),
     );
@@ -1480,6 +1479,79 @@ describe("chat rooms and messages", () => {
         text: "edited",
       }),
     );
+  });
+
+  it("requires trusted message, summary and read timestamps and an atomic preview", async () => {
+    const db = contexts().student.firestore();
+    const room = db.doc("chatRooms/room-1");
+    const message = room.collection("messages").doc("new-latest");
+    await assertFails(
+      message.set(messageDoc({ createdAt: farFutureTimestamp })),
+    );
+    await assertFails(message.set(messageDoc({ createdAt: timestamp })));
+    const batch = db.batch();
+    batch.set(
+      message,
+      messageDoc({
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }),
+    );
+    batch.update(room, {
+      lastMessageId: message.id,
+      lastMessageText: "Hello",
+      lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    await assertSucceeds(batch.commit());
+    await assertFails(
+      room.update({
+        lastMessageId: message.id,
+        lastMessageText: "Spoofed preview",
+        lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }),
+    );
+    const reads = room.collection("reads").doc("student-1");
+    await assertFails(
+      reads.set({ userId: "student-1", readAt: farFutureTimestamp }),
+    );
+    await assertSucceeds(
+      reads.set({
+        userId: "student-1",
+        readAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }),
+    );
+  });
+
+  it("allows bounded membership room queries without exposing other rooms", async () => {
+    const db = contexts().student.firestore();
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context
+        .firestore()
+        .doc("chatRooms/member-only")
+        .set({ roomType: "event", status: "active" });
+      await context
+        .firestore()
+        .doc("chatRooms/member-only/members/student-1")
+        .set({ userId: "student-1" });
+    });
+    await assertSucceeds(
+      db
+        .collection("chatRooms")
+        .where(firebase.firestore.FieldPath.documentId(), "in", [
+          "member-only",
+          "room-1",
+        ])
+        .limit(8)
+        .get(),
+    );
+    await assertFails(
+      contexts()
+        .otherStudent.firestore()
+        .collection("chatRooms")
+        .where(firebase.firestore.FieldPath.documentId(), "in", ["member-only"])
+        .limit(8)
+        .get(),
+    );
+    await assertFails(db.collection("chatRooms").limit(8).get());
   });
 });
 
@@ -2066,7 +2138,7 @@ describe("saved searches and operational records", () => {
 
 describe("storage rules", () => {
   it("requires TOTP MFA for administrator file access", async () => {
-    const {admin, adminWithoutMfa} = contexts();
+    const { admin, adminWithoutMfa } = contexts();
     const target = "profile-images/student-1/avatar.png";
     await assertSucceeds(admin.storage().ref(target).getMetadata());
     await assertFails(adminWithoutMfa.storage().ref(target).getMetadata());

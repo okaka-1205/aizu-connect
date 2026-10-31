@@ -57,29 +57,41 @@ describe("fetchPublishedEventPage", () => {
     vi.clearAllMocks();
   });
 
-  it("scans beyond an expired popular page without skipping upcoming events", async () => {
-    const now = Date.now();
-    const expired = Array.from({ length: EVENT_PAGE_SIZE + 1 }, (_, index) =>
-      eventDocument(`expired-${index}`, now - 60_000),
-    );
-    const upcoming = [
-      eventDocument("upcoming-1", now + 60_000),
-      eventDocument("upcoming-2", now + 120_000),
-    ];
-    vi.mocked(getDocs)
-      .mockResolvedValueOnce(snapshot(expired))
-      .mockResolvedValueOnce(snapshot(upcoming));
+  it.each(["人気順", "新着順"] as const)(
+    "filters expired events on the server for %s in one request",
+    async (sort) => {
+      const now = Date.now();
+      const upcoming = [
+        eventDocument("upcoming-1", now + 60_000),
+        eventDocument("upcoming-2", now + 120_000),
+      ];
+      vi.mocked(getDocs).mockResolvedValueOnce(snapshot(upcoming));
 
-    const page = await fetchPublishedEventPage(null, "人気順");
+      const page = await fetchPublishedEventPage(null, sort);
 
-    expect(page.events.map((event) => event.id)).toEqual([
-      "upcoming-1",
-      "upcoming-2",
-    ]);
-    expect(page.cursor?.id).toBe("upcoming-2");
-    expect(page.hasMore).toBe(false);
-    expect(getDocs).toHaveBeenCalledTimes(2);
-  });
+      expect(page.events.map((event) => event.id)).toEqual([
+        "upcoming-1",
+        "upcoming-2",
+      ]);
+      expect(page.cursor?.id).toBe("upcoming-2");
+      expect(page.hasMore).toBe(false);
+      expect(getDocs).toHaveBeenCalledTimes(1);
+      expect(getDocs).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "where",
+            field: "startAt",
+            operation: ">=",
+          }),
+          expect.objectContaining({
+            type: "orderBy",
+            field: sort === "人気順" ? "applicantCount" : "createdAt",
+            direction: "desc",
+          }),
+        ]),
+      );
+    },
+  );
 
   it("keeps the cursor on the last returned document when a page is full", async () => {
     const now = Date.now();

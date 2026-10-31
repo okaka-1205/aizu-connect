@@ -1,0 +1,18 @@
+{
+  "score": 5,
+  "summary": "今回のRules差分に限定した評価。クライアント時刻の偽装を拒否し、投稿とプレビューの整合を検証する。イベント審査の直接書き込みを閉じ、確認した版の照合と監査記録はMFA・App Checkで保護された管理APIに統一する。部屋の一括取得はメンバー確認を維持する。アプリ全体の安全性を保証する評価ではない。",
+  "findings": [],
+  "checks": {
+    "updateBypass": "投稿のクライアント更新は禁止のまま。部屋のプレビュー更新は許可フィールド、サーバー時刻、getAfterで確認する投稿者・本文と一致する場合に制限する。",
+    "authoritySource": "権限は保存済みusersの有効ロール・メール確認・既存の部屋メンバーから確認し、クライアントが送る身分情報には依存しない。",
+    "businessLogic": "新規投稿の原子的なプレビュー更新、本人の既読、旧形式とメンバー文書形式の部屋取得を維持する。編集と削除はサーバーで所有者を確認する。",
+    "storageAbuse": "今回、文字列・配列・添付サイズの上限は緩和していない。8件のクエリと全参加参照からの並び替えは別の制約として扱う。",
+    "typeSafety": "投稿・最終投稿・既読の時刻はtimestampかつrequest.timeとの一致を要求する。",
+    "identityLevelSecurity": "新しい一括取得に無関係な部屋を混ぜた要求、本人以外の既読書き込み、投稿者の偽装を拒否する。クライアントからcapacityReleasedを変更する権限は追加していない。"
+  },
+  "evidence": [
+    "test/security-rules.test.mjs",
+    "functions/scripts/verify-review-regressions.mjs",
+    "src/repositories/chatRooms.test.ts"
+  ]
+}

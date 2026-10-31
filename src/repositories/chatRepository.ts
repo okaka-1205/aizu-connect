@@ -2,6 +2,7 @@ import {
   collection,
   collectionGroup,
   doc,
+  documentId,
   getDocs,
   limit,
   limitToLast,
@@ -24,6 +25,9 @@ import type {
 } from "../types/domain";
 
 export const CHAT_ROOM_PAGE_SIZE = 50;
+// One user document plus at most eight membership lookups stays within the
+// Rules query access-call budget. Never truncate memberships before sorting.
+const ROOM_QUERY_BATCH_SIZE = 8;
 
 type ChatSender = Pick<ChatMessage, "senderId" | "senderName">;
 
@@ -51,6 +55,7 @@ const commitChatMessage = (
     createdAt: serverTimestamp(),
   });
   batch.update(roomRef, {
+    lastMessageId: messageRef.id,
     lastMessageText,
     lastMessageAt: serverTimestamp(),
   });
@@ -136,43 +141,32 @@ export const subscribeChatRoomsForUser = (
 ) => {
   let membershipRooms: ChatRoom[] = [];
   let legacyRooms: ChatRoom[] = [];
-  let membershipHasMore = false;
-  let legacyHasMore = false;
   const membershipRoomsById = new Map<string, ChatRoom>();
   const roomUnsubscribers = new Map<string, () => void>();
-  const emitRooms = () =>
-    onValue(
-      mergeRooms(roomLimit, membershipRooms, legacyRooms),
-      membershipHasMore || legacyHasMore,
-    );
+  const emitRooms = () => {
+    const rooms = mergeRooms(roomLimit + 1, membershipRooms, legacyRooms);
+    onValue(rooms.slice(0, roomLimit), rooms.length > roomLimit);
+  };
 
   const unsubscribeLegacyRooms = onSnapshot(
     query(
       collection(db, "chatRooms"),
       where("participantIds", "array-contains", userId),
-      limit(roomLimit + 1),
     ),
     (snapshot) => {
-      legacyHasMore = snapshot.size > roomLimit;
-      legacyRooms = snapshot.docs
-        .slice(0, roomLimit)
-        .map((room) => ({ id: room.id, ...room.data() }) as ChatRoom);
+      legacyRooms = snapshot.docs.map(
+        (room) => ({ id: room.id, ...room.data() }) as ChatRoom,
+      );
       emitRooms();
     },
     onError,
   );
 
   const unsubscribeMemberships = onSnapshot(
-    query(
-      collectionGroup(db, "members"),
-      where("userId", "==", userId),
-      limit(roomLimit + 1),
-    ),
+    query(collectionGroup(db, "members"), where("userId", "==", userId)),
     (snapshot) => {
-      membershipHasMore = snapshot.size > roomLimit;
       const roomRefsById = new Map(
         snapshot.docs
-          .slice(0, roomLimit)
           .map((member) => member.ref.parent.parent)
           .filter(
             (roomRef): roomRef is NonNullable<typeof roomRef> =>
@@ -181,30 +175,41 @@ export const subscribeChatRoomsForUser = (
           .map((roomRef) => [roomRef.id, roomRef] as const),
       );
 
-      roomUnsubscribers.forEach((unsubscribe, roomId) => {
-        if (roomRefsById.has(roomId)) return;
+      const ids = Array.from(roomRefsById.keys()).sort();
+      const groups = new Map<string, string[]>();
+      for (let i = 0; i < ids.length; i += ROOM_QUERY_BATCH_SIZE) {
+        const group = ids.slice(i, i + ROOM_QUERY_BATCH_SIZE);
+        groups.set(group.join("|"), group);
+      }
+      roomUnsubscribers.forEach((unsubscribe, key) => {
+        if (groups.has(key)) return;
         unsubscribe();
-        roomUnsubscribers.delete(roomId);
-        membershipRoomsById.delete(roomId);
+        roomUnsubscribers.delete(key);
+      });
+      membershipRoomsById.forEach((_, id) => {
+        if (!roomRefsById.has(id)) membershipRoomsById.delete(id);
       });
       membershipRooms = Array.from(membershipRoomsById.values());
       emitRooms();
 
-      roomRefsById.forEach((roomRef, roomId) => {
-        if (roomUnsubscribers.has(roomId)) return;
+      groups.forEach((group, key) => {
+        if (roomUnsubscribers.has(key)) return;
         roomUnsubscribers.set(
-          roomId,
+          key,
           onSnapshot(
-            roomRef,
-            (roomSnapshot) => {
-              if (roomSnapshot.exists()) {
+            query(
+              collection(db, "chatRooms"),
+              where(documentId(), "in", group),
+              limit(ROOM_QUERY_BATCH_SIZE),
+            ),
+            (snapshot) => {
+              group.forEach((id) => membershipRoomsById.delete(id));
+              snapshot.docs.forEach((roomSnapshot) => {
                 membershipRoomsById.set(roomSnapshot.id, {
                   id: roomSnapshot.id,
                   ...roomSnapshot.data(),
                 } as ChatRoom);
-              } else {
-                membershipRoomsById.delete(roomSnapshot.id);
-              }
+              });
               membershipRooms = Array.from(membershipRoomsById.values());
               emitRooms();
             },

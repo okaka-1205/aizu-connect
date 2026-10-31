@@ -1,0 +1,12 @@
+{
+  "score": 3,
+  "summary": "コミット698b40aのFirestore・Storage Rulesを静的に確認し、既存の権限テスト40件が成功した。限定した追加検証では、正規メンバーが未来時刻のチャット投稿を作成でき、新着表示を妨害できた。管理者への自己昇格や他人の非公開プロフィール取得の突破は今回確認していない。アプリ全体の安全性を保証する評価ではない。",
+  "findings": [
+    {
+      "check": "Timestamp Manipulation / Business Logic vs. Rules",
+      "severity": "moderate",
+      "issue": "firestore.rules:679ではチャット投稿のcreatedAtがtimestampであることしか検証しない。参加メンバーは2099年などの未来時刻を指定でき、時刻順の末尾100件を取得する通常の履歴表示から、その後の正常な新着投稿を押し出せる。隔離エミュレーターで未来投稿100件の書き込みと正常投稿が通常ウィンドウに含まれないことを再現した。",
+      "recommendation": "新規投稿のcreatedAtをrequest.timeと一致させ、serverTimestamp()を使用する既存クライアントと揃える。部屋の最終投稿時刻・既読時刻にも同じ信頼境界を適用することを検討する。"
+    }
+  ]
+}

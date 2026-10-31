@@ -90,6 +90,10 @@ service cloud.firestore {
         || (value is string && value.size() >= 0 && value.size() <= max);
     }
 
+    function validServerTimestamp(value) {
+      return value is timestamp && value == request.time;
+    }
+
     function validGrade(value) {
       return value is number && value >= 0 && value <= 6;
     }
@@ -488,42 +492,8 @@ service cloud.firestore {
         || (isActiveStudent() && resource.data.status == 'published')
         || (isActiveCreator() && resource.data.createdBy == request.auth.uid);
       allow create: if false;
+      // Review and moderation use the callable's version check and atomic audit.
       allow update: if (
-          isAdmin()
-          && request.resource.data.createdBy == resource.data.createdBy
-          && request.resource.data.organizationId == resource.data.organizationId
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status', 'revisionReason', 'reviewNote', 'reviewedBy',
-            'reviewedAt', 'moderationReason', 'updatedAt'
-          ])
-          && (
-            (
-              resource.data.status == 'pending_review'
-              && request.resource.data.status in [
-                'published', 'revision_required'
-              ]
-            )
-            || (
-              resource.data.status == 'published'
-              && request.resource.data.status == 'unpublished'
-            )
-            || (
-              resource.data.status == 'unpublished'
-              && request.resource.data.status == 'published'
-            )
-          )
-          && request.resource.data.updatedAt is timestamp
-          && (!request.resource.data.keys().hasAny(['revisionReason'])
-            || validOptionalString(request.resource.data.revisionReason, 1000))
-          && (!request.resource.data.keys().hasAny(['reviewNote'])
-            || validOptionalString(request.resource.data.reviewNote, 1000))
-          && (!request.resource.data.keys().hasAny(['reviewedBy'])
-            || validOptionalString(request.resource.data.reviewedBy, 128))
-          && (!request.resource.data.keys().hasAny(['reviewedAt'])
-            || request.resource.data.reviewedAt is timestamp)
-          && (!request.resource.data.keys().hasAny(['moderationReason'])
-            || validOptionalString(request.resource.data.moderationReason, 1000))
-        ) || (
           isActiveCreator()
           && resource.data.createdBy == request.auth.uid
           && resource.data.status in [
@@ -589,6 +559,17 @@ service cloud.firestore {
     }
 
     match /chatRooms/{roomId} {
+      function validLatestMessage() {
+        let id = request.resource.data.lastMessageId;
+        let message = getAfter(/databases/$(database)/documents/chatRooms/$(roomId)/messages/$(id));
+        return validString(id, 1, 200)
+          && message.data.senderId == request.auth.uid
+          && message.data.createdAt == request.time
+          && request.resource.data.lastMessageText == (
+            message.data.type == 'text' ? message.data.text
+              : message.data.type == 'image' ? '画像を送信しました' : 'ファイルを送信しました'
+          );
+      }
       function roomEvent() {
         return get(/databases/$(database)/documents/events/$(resource.data.eventId));
       }
@@ -604,7 +585,10 @@ service cloud.firestore {
           )
         );
       allow list: if isActiveCreator()
-        && (request.auth.uid in resource.data.participantIds);
+        && ((resource.data.keys().hasAny(['participantIds'])
+              && request.auth.uid in resource.data.participantIds)
+          || (request.query.limit != null && request.query.limit <= 8
+              && isRoomMember(roomId, request.auth.uid)));
       allow create: if false;
       allow update: if isActiveCreator()
         && (
@@ -618,10 +602,11 @@ service cloud.firestore {
         )
         && resource.data.status == 'active'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'lastMessageText', 'lastMessageAt'
+          'lastMessageId', 'lastMessageText', 'lastMessageAt'
         ])
         && validString(request.resource.data.lastMessageText, 1, 2000)
-        && request.resource.data.lastMessageAt is timestamp
+        && validServerTimestamp(request.resource.data.lastMessageAt)
+        && validLatestMessage()
         || (
           isActiveCreator()
           && roomEvent().data.createdBy == request.auth.uid
@@ -676,7 +661,7 @@ service cloud.firestore {
               && request.resource.data.attachmentSize < 10 * 1024 * 1024
             )
           )
-          && request.resource.data.createdAt is timestamp;
+          && validServerTimestamp(request.resource.data.createdAt);
         allow update: if false;
         allow delete: if false;
       }
@@ -689,7 +674,7 @@ service cloud.firestore {
           && isRoomMember(roomId, request.auth.uid)
           && request.resource.data.keys().hasOnly(['userId', 'readAt'])
           && request.resource.data.userId == request.auth.uid
-          && request.resource.data.readAt is timestamp;
+          && validServerTimestamp(request.resource.data.readAt);
         allow delete: if false;
       }
     }

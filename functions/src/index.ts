@@ -44,10 +44,7 @@ export const markAllNotificationsRead = onCall(
 
     const userSnapshot = await db.doc(`users/${userId}`).get();
     if (!userSnapshot.exists || userSnapshot.data()?.status !== "active") {
-      throw new HttpsError(
-        "permission-denied",
-        "Active account required.",
-      );
+      throw new HttpsError("permission-denied", "Active account required.");
     }
 
     let updatedCount = 0;
@@ -312,8 +309,13 @@ export const submitApplication = onCall(
       waitlistSequence = 0;
       hasSensitiveAnswers = false;
       validatedAnswers = [];
-      const [userSnapshot, eventSnapshot, applicationSnapshot] =
-        await transaction.getAll(userRef, eventRef, applicationRef);
+      const [userSnapshot, eventSnapshot, applicationSnapshot, roomSnapshot] =
+        await transaction.getAll(
+          userRef,
+          eventRef,
+          applicationRef,
+          eventRoomRef,
+        );
       if (!userSnapshot.exists || userSnapshot.data()?.role !== "student") {
         throw new HttpsError("permission-denied", "Student account required.");
       }
@@ -460,12 +462,16 @@ export const submitApplication = onCall(
           studentName: "",
           organizationName: eventData.organizationName,
           organizationId,
-          memberCount: FieldValue.increment(1),
+          memberCount: roomSnapshot.exists ? FieldValue.increment(1) : 2,
           status: "active",
-          lastMessageText:
-            "イベント全体チャットに参加しました。過去のやり取りも確認できます。",
-          lastMessageAt: FieldValue.serverTimestamp(),
-          createdAt: FieldValue.serverTimestamp(),
+          ...(!roomSnapshot.exists ?
+            {
+              lastMessageText:
+                  "イベント全体チャットに参加しました。過去のやり取りも確認できます。",
+              lastMessageAt: FieldValue.serverTimestamp(),
+              createdAt: FieldValue.serverTimestamp(),
+            } :
+            {}),
           updatedAt: FieldValue.serverTimestamp(),
         },
         {merge: true},
@@ -623,7 +629,24 @@ export const manageChatMessage = onCall(
       if (messageData?.deletedAt) {
         throw new HttpsError("failed-precondition", "削除済みです。");
       }
+      // Older rooms have no preview message ID; resolve it before writing.
+      const latest = roomData?.lastMessageId ?
+        undefined :
+        await transaction.get(
+          roomRef
+            .collection("messages")
+            .orderBy("createdAt", "desc")
+            .limit(1),
+        );
+      const isLatest =
+        (roomData?.lastMessageId ?? latest?.docs[0]?.id) === messageId;
       if (action === "edit") {
+        if (roomData?.status !== "active") {
+          throw new HttpsError(
+            "failed-precondition",
+            "終了したチャットのメッセージは編集できません。",
+          );
+        }
         const text = String(request.data?.text ?? "").trim();
         if (!text || text.length > 2000) {
           throw new HttpsError(
@@ -645,6 +668,12 @@ export const manageChatMessage = onCall(
             },
           ],
         });
+        if (isLatest) {
+          transaction.update(roomRef, {
+            lastMessageId: messageId,
+            lastMessageText: text,
+          });
+        }
         return;
       }
       if (action === "delete") {
@@ -658,6 +687,12 @@ export const manageChatMessage = onCall(
           editHistory: FieldValue.delete(),
           deletedAt: FieldValue.serverTimestamp(),
         });
+        if (isLatest) {
+          transaction.update(roomRef, {
+            lastMessageId: messageId,
+            lastMessageText: "このメッセージは削除されました。",
+          });
+        }
         return;
       }
       throw new HttpsError("invalid-argument", "操作が不正です。");

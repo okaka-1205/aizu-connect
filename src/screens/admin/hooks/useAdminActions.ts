@@ -26,6 +26,7 @@ export function useAdminActions({
       event.id,
       "公開基準を満たしていることを確認",
       "イベントを公開しました。",
+      event,
     );
   };
 
@@ -35,6 +36,7 @@ export function useAdminActions({
       event.id,
       reason,
       "理由を添えてイベントを差し戻しました。",
+      event,
     );
   };
 
@@ -90,6 +92,7 @@ export function useAdminActions({
     targetId: string,
     reason: string,
     successMessage: string,
+    reviewedEvent?: AizuEvent,
   ) => {
     setIsLoading(true);
     try {
@@ -99,10 +102,15 @@ export function useAdminActions({
           targetId: string;
           reason: string;
           requestId: string;
+          expectedUpdatedAt?: { seconds: number; nanoseconds: number } | null;
         },
         { status: string }
       >(functions, "adminManageResource");
-      const operationKey = `${action}:${targetId}`;
+      const reviewedVersion = reviewedEvent?.updatedAt;
+      const versionKey = reviewedVersion
+        ? `${reviewedVersion.seconds}:${reviewedVersion.nanoseconds}`
+        : "legacy";
+      const operationKey = `${action}:${targetId}:${reviewedEvent ? versionKey : ""}`;
       const requestId =
         pendingOperationIds.current.get(operationKey) ??
         globalThis.crypto.randomUUID().replaceAll("-", "");
@@ -112,6 +120,16 @@ export function useAdminActions({
         targetId,
         reason: reason.trim().slice(0, 1000),
         requestId,
+        ...(reviewedEvent
+          ? {
+              expectedUpdatedAt: reviewedEvent.updatedAt
+                ? {
+                    seconds: reviewedEvent.updatedAt.seconds,
+                    nanoseconds: reviewedEvent.updatedAt.nanoseconds,
+                  }
+                : null,
+            }
+          : {}),
       });
       pendingOperationIds.current.delete(operationKey);
       setReasonAction(null);
@@ -150,6 +168,7 @@ export function useAdminActions({
       status === "unpublished"
         ? "イベントを非公開にしました。"
         : "イベントを再公開しました。",
+      event,
     );
   };
 

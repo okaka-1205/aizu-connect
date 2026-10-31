@@ -188,6 +188,7 @@ export type ChatRoom = {
   memberCount?: number;
   status: "active" | "read_only" | "closed";
   lastMessageText: string;
+  lastMessageId?: string;
   lastMessageAt?: Timestamp;
   pinnedMessage?: string;
   organizerNotice?: string;

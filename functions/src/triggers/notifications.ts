@@ -16,6 +16,7 @@ import {
   notificationEnabled,
 } from "../services/notifications";
 import {db} from "../lib/firebaseAdmin";
+import {releaseApplicationCapacity} from "../services/applicationCapacity";
 const eventChatRoomId = (eventId: string) => `event_${eventId}`;
 const isFunctionsEmulator = process.env.FUNCTIONS_EMULATOR === "true";
 
@@ -117,10 +118,9 @@ export const notifyApplicationUpdated = onDocumentUpdated(
         );
     }
     if (typeof after.eventId === "string") {
-      const shouldDecrement = shouldDecrementApplicantCount(
-        before.status,
-        after.status,
-      );
+      const shouldDecrement =
+        after.capacityReleased !== true &&
+        shouldDecrementApplicantCount(before.status, after.status);
       const shouldIncrement =
         shouldIncrementApplicantCount(before.status, after.status) &&
         after.promotedFromWaitlist !== true;
@@ -136,58 +136,21 @@ export const notifyApplicationUpdated = onDocumentUpdated(
         await db.runTransaction(async (transaction) => {
           const receiptSnapshot = await transaction.get(receiptRef);
           if (receiptSnapshot.exists) return;
-          const availabilityEvent = await transaction.get(availabilityEventRef);
-          let nextWaitlisted:
-            FirebaseFirestore.QueryDocumentSnapshot | undefined;
-          if (
-            shouldDecrement &&
-            availabilityEvent.exists &&
-            availabilityEvent.data()?.status !== "cancelled"
-          ) {
-            const waitlistSnapshot = await transaction.get(
-              db
-                .collection("eventApplications")
-                .where("eventId", "==", after.eventId)
-                .where("status", "==", "waitlisted")
-                .orderBy("waitlistSequence", "asc")
-                .limit(1),
-            );
-            nextWaitlisted = waitlistSnapshot.docs[0];
-            if (!nextWaitlisted) {
-              const legacyWaitlist = await transaction.get(
-                db
-                  .collection("eventApplications")
-                  .where("eventId", "==", after.eventId)
-                  .where("status", "==", "waitlisted")
-                  .orderBy("createdAt", "asc")
-                  .limit(1),
-              );
-              nextWaitlisted = legacyWaitlist.docs[0];
-            }
-          }
-          if (
-            availabilityEvent.exists &&
-            availabilityEvent.data()?.status !== "cancelled"
-          ) {
-            const currentCount = Math.max(
-              0,
-              Number(availabilityEvent.data()?.applicantCount ?? 0),
-            );
-            if (shouldDecrement && nextWaitlisted) {
-              transaction.update(nextWaitlisted.ref, {
-                status: "pending",
-                waitlistPosition: FieldValue.delete(),
-                waitlistSequence: FieldValue.delete(),
-                promotedFromWaitlist: true,
-              });
-            } else if (shouldDecrement) {
+          if (shouldDecrement) {
+            await releaseApplicationCapacity(transaction, availabilityEventRef);
+          } else if (shouldIncrement) {
+            const availabilityEvent =
+              await transaction.get(availabilityEventRef);
+            if (
+              availabilityEvent.exists &&
+              availabilityEvent.data()?.status !== "cancelled"
+            ) {
               transaction.update(availabilityEventRef, {
-                applicantCount: Math.max(0, currentCount - 1),
-                updatedAt: FieldValue.serverTimestamp(),
-              });
-            } else if (shouldIncrement) {
-              transaction.update(availabilityEventRef, {
-                applicantCount: currentCount + 1,
+                applicantCount:
+                  Math.max(
+                    0,
+                    Number(availabilityEvent.data()?.applicantCount ?? 0),
+                  ) + 1,
                 updatedAt: FieldValue.serverTimestamp(),
               });
             }

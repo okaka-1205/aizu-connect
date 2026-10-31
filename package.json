@@ -29,12 +29,13 @@
     "check": "npm run lint && npm run build && npm --prefix functions run lint && npm --prefix functions run build",
     "verify": "npm run check && npm run test:unit && npm --prefix functions test && npm run test:rules && npm run test:e2e && npm run test:e2e:emulator",
     "release:check": "./scripts/run-with-node24.sh npm run release:check:internal",
-    "release:check:internal": "npm run verify && npm run test:scheduled:emulator && npm run test:scale:emulator && npm run test:reset:emulator",
+    "release:check:internal": "npm run verify && npm run test:scheduled:emulator && npm run test:scale:emulator && npm run test:reset:emulator && npm run test:review:emulator",
     "runtime:check": "./scripts/run-with-node24.sh node --version",
     "test:rules": "./scripts/run-with-node24.sh npx -y firebase-tools@latest emulators:exec --config firebase.rules-test.json --project demo-aizu-connect-rules --only firestore,storage \"node --test test/security-rules.test.mjs\"",
     "test:reset:emulator": "./scripts/run-with-node24.sh npx -y firebase-tools@latest emulators:exec --config firebase.reset-test.json --project demo-aizu-connect-reset --only auth,firestore,storage \"node functions/scripts/verify-reset-non-admin.mjs\"",
     "smoke:production:plan": "node scripts/production-smoke-plan.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:review:emulator": "npm --prefix functions run build && ./scripts/run-with-node24.sh npx -y firebase-tools@latest emulators:exec --config firebase.rules-test.json --project demo-aizu-connect-review-fixes --only firestore \"FUNCTIONS_EMULATOR=true node functions/scripts/verify-review-regressions.mjs\""
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -56,7 +57,6 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
-    "eslint-config-prettier": "^10.1.8",
     "oxlint": "^1.88.0",
     "prettier": "^3.9.6",
     "typescript": "~6.0.2",

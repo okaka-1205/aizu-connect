@@ -39,6 +39,7 @@ jobs:
       - run: npm test --prefix functions
       - run: npm run test:rules
       - run: npm run test:concurrency:emulator
+      - run: npm run test:review:emulator
 
   browser-e2e:
     runs-on: ubuntu-latest

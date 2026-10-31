@@ -193,7 +193,7 @@ postcss@8.5.30 | MIT | postcss/postcss
 protobufjs@7.6.6 | BSD-3-Clause | protobufjs/protobuf.js
 qrcode@1.5.4 | MIT | git://github.com/soldair/node-qrcode.git
 raf@3.4.1 | MIT | git://github.com/chrisdickinson/raf.git
-re2js@2.8.6 | MIT | github:le0pard/re2js
+re2js@2.9.1 | MIT | git+https://github.com/le0pard/re2js.git
 react-dom@19.3.1 | MIT | https://github.com/react/react.git
 react-easy-crop@6.2.4 | MIT | https://github.com/ValentinH/react-easy-crop
 react@19.3.1 | MIT | https://github.com/react/react.git
@@ -2219,7 +2219,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-Applies to: re2js@2.8.6
+Applies to: re2js@2.9.1
 
 MIT License
 

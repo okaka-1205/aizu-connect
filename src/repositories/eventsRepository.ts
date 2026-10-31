@@ -27,62 +27,43 @@ export const fetchPublishedEventPage = async (
   const now = Timestamp.now();
   const constraints =
     sort === "人気順"
-      ? [where("status", "==", "published"), orderBy("applicantCount", "desc")]
+      ? [
+          where("status", "==", "published"),
+          where("applicantCount", ">=", 0),
+          where("startAt", ">=", now),
+          orderBy("applicantCount", "desc"),
+          orderBy("startAt", "asc"),
+        ]
       : sort === "新着順"
-        ? [where("status", "==", "published"), orderBy("createdAt", "desc")]
+        ? [
+            where("status", "==", "published"),
+            where("createdAt", ">=", Timestamp.fromMillis(0)),
+            where("startAt", ">=", now),
+            orderBy("createdAt", "desc"),
+            orderBy("startAt", "asc"),
+          ]
         : [
             where("status", "==", "published"),
             where("startAt", ">=", now),
             orderBy("startAt", "asc"),
           ];
 
-  // Popular and newest ordering cannot use startAt as the primary Firestore
-  // order without changing the requested sort. Scan past expired events until
-  // a complete page of upcoming events is assembled, and return the last
-  // scanned document as the cursor so no valid event is skipped.
-  const events: AizuEvent[] = [];
-  let scanCursor = cursor;
-  let hasMore = true;
-  while (events.length < EVENT_PAGE_SIZE && hasMore) {
-    const snapshot = await getDocs(
-      query(
-        collection(db, "events"),
-        ...constraints,
-        ...(scanCursor ? [startAfter(scanCursor)] : []),
-        limit(EVENT_PAGE_SIZE + 1),
-      ),
-    );
-    if (snapshot.empty) {
-      hasMore = false;
-      break;
-    }
-
-    let processedDocuments = 0;
-    for (const eventDocument of snapshot.docs) {
-      scanCursor = eventDocument;
-      processedDocuments += 1;
-      const event = {
-        id: eventDocument.id,
-        ...eventDocument.data(),
-      } as AizuEvent;
-      if (
-        sort === "開催が近い順" ||
-        !event.startAt ||
-        event.startAt.toMillis() >= now.toMillis()
-      ) {
-        events.push(event);
-      }
-      if (events.length === EVENT_PAGE_SIZE) break;
-    }
-
-    hasMore =
-      processedDocuments < snapshot.size ||
-      snapshot.size === EVENT_PAGE_SIZE + 1;
-  }
-
+  // Both ranges are enforced by Firestore, so past events do not require
+  // serial browser-side scans before a page can be displayed.
+  const snapshot = await getDocs(
+    query(
+      collection(db, "events"),
+      ...constraints,
+      ...(cursor ? [startAfter(cursor)] : []),
+      limit(EVENT_PAGE_SIZE + 1),
+    ),
+  );
+  const documents = snapshot.docs.slice(0, EVENT_PAGE_SIZE);
   return {
-    events,
-    cursor: scanCursor,
-    hasMore,
+    events: documents.map(
+      (document) => ({ id: document.id, ...document.data() }) as AizuEvent,
+    ),
+    cursor: documents.at(-1) ?? null,
+    hasMore: snapshot.size > EVENT_PAGE_SIZE,
   };
 };

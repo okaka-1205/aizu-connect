@@ -17,7 +17,10 @@ vi.mock("firebase/firestore", async (importOriginal) => {
     collection: vi.fn((parent: unknown, name: string) => `${parent}/${name}`),
     doc: vi.fn((parent: unknown, ...segments: string[]) =>
       typeof parent === "string"
-        ? `${parent}/${segments.join("/") || "message-1"}`
+        ? {
+            id: "message-1",
+            path: `${parent}/${segments.join("/") || "message-1"}`,
+          }
         : segments.join("/"),
     ),
     serverTimestamp: vi.fn(() => "server-time"),
@@ -45,7 +48,7 @@ describe("chat message delivery", () => {
       await sendChatTextMessage("event-1", sender, "参加します。");
 
       expect(batch.set).toHaveBeenCalledWith(
-        "chatRooms/event-1/messages/message-1",
+        { id: "message-1", path: "chatRooms/event-1/messages/message-1" },
         {
           roomId: "event-1",
           ...sender,
@@ -55,6 +58,7 @@ describe("chat message delivery", () => {
         },
       );
       expect(batch.update).toHaveBeenCalledWith("chatRooms/event-1", {
+        lastMessageId: "message-1",
         lastMessageText: "参加します。",
         lastMessageAt: "server-time",
       });
@@ -85,7 +89,7 @@ describe("chat message delivery", () => {
         ),
       );
       expect(batch.set).toHaveBeenCalledWith(
-        "chatRooms/event-1/messages/message-1",
+        { id: "message-1", path: "chatRooms/event-1/messages/message-1" },
         expect.objectContaining({
           ...sender,
           type: expectedType,
@@ -97,6 +101,7 @@ describe("chat message delivery", () => {
         }),
       );
       expect(batch.update).toHaveBeenCalledWith("chatRooms/event-1", {
+        lastMessageId: "message-1",
         lastMessageText: preview,
         lastMessageAt: "server-time",
       });

@@ -313,7 +313,9 @@ export function MessagesTab({
                   readReceipts={readReceipts}
                   currentUserId={currentUserId}
                   onReportMessage={onReportMessage}
-                  onEditMessage={onEditMessage}
+                  onEditMessage={
+                    activeRoom.status === "active" ? onEditMessage : undefined
+                  }
                   editingMessageId={editingMessageId}
                   editingMessageText={editingMessageText}
                   onEditingMessageIdChange={setEditingMessageId}
