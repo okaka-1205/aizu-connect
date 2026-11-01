@@ -37,7 +37,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [adminSearch, setAdminSearch] = useState("");
   const [managedUserStatus, setManagedUserStatus] = useState<
-    "active" | "suspended" | "rejected"
+    "active" | "suspended" | "rejected" | "deleting"
   >("active");
   const [reasonAction, setReasonAction] = useState<{
     title: string;
@@ -657,6 +657,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 ["active", "利用中"],
                 ["suspended", "停止中"],
                 ["rejected", "見送り"],
+                ["deleting", "削除処理中"],
               ] as const
             ).map(([status, label]) => (
               <button
@@ -725,7 +726,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     ) : (
                       <button
                         type="button"
-                        disabled={isLoading}
+                        disabled={isLoading || user.status === "deleting"}
                         onClick={() =>
                           setReasonAction({
                             title: "アカウントを復旧",
@@ -739,7 +740,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                           })
                         }
                       >
-                        復旧
+                        {user.status === "deleting" ? "削除処理中" : "復旧"}
                       </button>
                     )}
                     <button
@@ -809,7 +810,11 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     <strong>{event.title}</strong>
                     <small>
                       {event.organizationName} ·{" "}
-                      {event.status === "published" ? "公開中" : "非公開"}
+                      {event.status === "deleting"
+                        ? "削除処理中"
+                        : event.status === "published"
+                          ? "公開中"
+                          : "非公開"}
                     </small>
                     {event.moderationReason && (
                       <small>理由: {event.moderationReason}</small>
@@ -819,7 +824,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     <button
                       className={event.status === "published" ? "muted" : ""}
                       type="button"
-                      disabled={isLoading}
+                      disabled={isLoading || event.status === "deleting"}
                       onClick={() =>
                         setReasonAction({
                           title:
@@ -851,7 +856,11 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         })
                       }
                     >
-                      {event.status === "published" ? "非公開" : "再公開"}
+                      {event.status === "deleting"
+                        ? "削除処理中"
+                        : event.status === "published"
+                          ? "非公開"
+                          : "再公開"}
                     </button>
                     <button
                       className="danger-action"

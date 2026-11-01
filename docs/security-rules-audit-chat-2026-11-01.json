@@ -1,0 +1,27 @@
+{
+  "score": 5,
+  "summary": "今回のチャット添付とStorage共通参照の差分に限定した評価。添付作成の認可はFunctionsで行い、Firestoreへの添付情報の直接作成・変更とStorage RPCを拒否する。既存のトークン付きURLの共有可能性は維持しており、アプリ全体の安全性や本番動作を保証する採点ではない。",
+  "findings": [],
+  "checks": {
+    "updateBypass": "クライアントによるメッセージupdate/deleteの拒否を維持。添付情報を持つcreateも拒否。サーバー専用の試行記録は全クライアントから読み書き不可。",
+    "authoritySource": "認証UID、メール認証、現在のusersのロール・有効状態、サーバー管理のmembership、現在のroom/event/owner/deletionLocksを確認する。送信者名・添付URL・プレビューはサーバー生成。保存後にも同じ認可を実行する。",
+    "businessLogic": "通常添付、既存participantIds方式、学生表示名・団体名、既存のトークン付きURL表示、空テキスト、10MiB未満の上限と許可形式を維持。停止・非メンバー・閲覧専用・中止・削除中の新規送信を拒否する。",
+    "storageAbuse": "サーバーで厳密にバイト数・base64・MIME・ファイル名・要求ID・追加フィールドを検証。作成専用のUUIDパスを使用。結果不明のファイルは私有の試行記録で照合し、generation条件付きで回収する。",
+    "typeSafety": "文字列長、整数のサイズ、許可形式、正規化されたbase64とデコード結果、許可フィールドのみを検査する。既存テキストcreateのスキーマとtimestamp検証を維持。",
+    "identityLevelSecurity": "非メンバー・別アカウントへの切替・未認証・未確認メールを拒否。スコープはUIDとroomIdに固定。異なる内容による同じ要求IDの上書き、競合した試行による別ファイル削除を拒否する。",
+    "storageAccessBudget": "実際のRules評価器が要求する異なる文書パスを計測。チャットRPCは0、プロフィール読み書きと管理者読み取りは1、イベント画像・報告画像の保存は2。許可・拒否の結果だけに依存しない。"
+  },
+  "limits": [
+    "本番での認証済み実アップロードは未実施。旧画面から新しい添付経路へ移行するには再読み込みが必要。",
+    "トークン付きURLを知る人が取得できる既存仕様は維持。利用停止による既発行URLの即時失効は今回の対象外。",
+    "正規利用者の大量送信を完全に防ぐための利用量制限や実機回線での負荷測定は今回の検証に含めない。"
+  ],
+  "evidence": [
+    "functions/test/chatAttachmentValidation.test.mjs",
+    "src/repositories/chatRepository.test.ts",
+    "test/security-rules.test.mjs",
+    "functions/scripts/verify-storage-access-budget.mjs",
+    "functions/scripts/verify-chat-attachments.mjs",
+    "functions/scripts/verify-chat-attachment-http.mjs"
+  ]
+}

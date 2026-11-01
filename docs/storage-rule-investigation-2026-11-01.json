@@ -1,0 +1,326 @@
+{
+  "date": "2026-11-01",
+  "assessment": "confirmed_specification_mismatch",
+  "productionFailureReproduced": false,
+  "implementationChanged": false,
+  "productionDataChanged": false,
+  "productionEvidence": {
+    "project": "aizu-connect-prod",
+    "storageRelease": {
+      "name": "projects/aizu-connect-prod/releases/firebase.storage/aizu-connect-prod.firebasestorage.app",
+      "rulesetName": "projects/aizu-connect-prod/rulesets/f5ac7529-7e06-4933-8f64-52837442b052",
+      "updateTime": "2026-10-20T15:54:03.772699Z",
+      "sha256": "680bc80b6d9f76a498f0370e2106424c6407dcf05054786ca7b7187125fbad20"
+    },
+    "chatAttachmentRulesMatchWorkingTree": true,
+    "chatHelperFunctionsMatchWorkingTree": true,
+    "logInspection": {
+      "lookbackStart": "2026-10-25T00:00:00Z",
+      "httpStatus": 200,
+      "matchedEntriesInPage": 0,
+      "morePages": false,
+      "firestoreLimitQuery": {
+        "httpStatus": 200,
+        "matchedEntriesInPage": 0,
+        "morePages": false
+      }
+    }
+  },
+  "localRuntimeCases": [
+    {
+      "label": "current-new-member-upload",
+      "permitted": true,
+      "accesses": [
+        "users/synthetic-student",
+        "users/synthetic-student",
+        "chatRooms/synthetic-room/members/synthetic-student",
+        "chatRooms/synthetic-room"
+      ],
+      "uniquePaths": 3,
+      "existingDocuments": 3,
+      "issues": []
+    },
+    {
+      "label": "current-new-member-read",
+      "permitted": true,
+      "accesses": [
+        "users/synthetic-student",
+        "users/synthetic-student",
+        "chatRooms/synthetic-room/members/synthetic-student"
+      ],
+      "uniquePaths": 2,
+      "existingDocuments": 2,
+      "issues": []
+    },
+    {
+      "label": "current-new-member-read-only-upload",
+      "permitted": false,
+      "accesses": [
+        "users/synthetic-student",
+        "users/synthetic-student",
+        "chatRooms/synthetic-room/members/synthetic-student",
+        "chatRooms/synthetic-room"
+      ],
+      "uniquePaths": 3,
+      "existingDocuments": 3,
+      "issues": []
+    },
+    {
+      "label": "current-suspended-upload",
+      "permitted": false,
+      "accesses": [
+        "users/synthetic-student",
+        "users/synthetic-student",
+        "users/synthetic-student"
+      ],
+      "uniquePaths": 1,
+      "existingDocuments": 1,
+      "issues": []
+    },
+    {
+      "label": "current-legacy-upload",
+      "permitted": true,
+      "accesses": [
+        "users/synthetic-student",
+        "users/synthetic-student",
+        "chatRooms/synthetic-room/members/synthetic-student",
+        "chatRooms/synthetic-room",
+        "chatRooms/synthetic-room"
+      ],
+      "uniquePaths": 3,
+      "existingDocuments": 2,
+      "issues": []
+    },
+    {
+      "label": "current-legacy-read",
+      "permitted": true,
+      "accesses": [
+        "users/synthetic-student",
+        "users/synthetic-student",
+        "chatRooms/synthetic-room/members/synthetic-student",
+        "chatRooms/synthetic-room"
+      ],
+      "uniquePaths": 3,
+      "existingDocuments": 2,
+      "issues": []
+    },
+    {
+      "label": "synthetic-1-unique-references",
+      "permitted": true,
+      "accesses": [
+        "probe/d0"
+      ],
+      "uniquePaths": 1,
+      "existingDocuments": 1,
+      "issues": []
+    },
+    {
+      "label": "synthetic-2-unique-references",
+      "permitted": true,
+      "accesses": [
+        "probe/d0",
+        "probe/d1"
+      ],
+      "uniquePaths": 2,
+      "existingDocuments": 2,
+      "issues": []
+    },
+    {
+      "label": "synthetic-3-unique-references",
+      "permitted": true,
+      "accesses": [
+        "probe/d0",
+        "probe/d1",
+        "probe/d2"
+      ],
+      "uniquePaths": 3,
+      "existingDocuments": 3,
+      "issues": []
+    },
+    {
+      "label": "synthetic-4-unique-references",
+      "permitted": true,
+      "accesses": [
+        "probe/d0",
+        "probe/d1",
+        "probe/d2",
+        "probe/d3"
+      ],
+      "uniquePaths": 4,
+      "existingDocuments": 4,
+      "issues": []
+    }
+  ],
+  "sdkCases": [
+    {
+      "label": "actual-sdk-new-member-upload",
+      "permitted": true
+    },
+    {
+      "label": "actual-sdk-new-member-read",
+      "permitted": true
+    },
+    {
+      "label": "actual-sdk-read-only-upload",
+      "permitted": false,
+      "code": "storage/unauthorized"
+    },
+    {
+      "label": "actual-sdk-suspended-upload",
+      "permitted": false,
+      "code": "storage/unauthorized"
+    },
+    {
+      "label": "actual-sdk-legacy-upload",
+      "permitted": true
+    },
+    {
+      "label": "actual-sdk-legacy-read",
+      "permitted": true
+    },
+    {
+      "label": "actual-sdk-1-unique-references",
+      "permitted": true
+    },
+    {
+      "label": "actual-sdk-2-unique-references",
+      "permitted": true
+    },
+    {
+      "label": "actual-sdk-3-unique-references",
+      "permitted": true
+    },
+    {
+      "label": "actual-sdk-4-unique-references",
+      "permitted": true
+    }
+  ],
+  "cloudMockCases": [
+    {
+      "uniqueReferences": 0,
+      "httpStatus": 200,
+      "results": [
+        {
+          "state": "SUCCESS",
+          "functionCalls": [],
+          "debugMessages": []
+        }
+      ]
+    },
+    {
+      "uniqueReferences": 1,
+      "httpStatus": 200,
+      "results": [
+        {
+          "state": "SUCCESS",
+          "functionCalls": [
+            {
+              "function": "firestore.exists",
+              "args": [
+                "/databases/%28default%29/documents/synthetic_investigation/d0"
+              ]
+            }
+          ],
+          "debugMessages": []
+        }
+      ]
+    },
+    {
+      "uniqueReferences": 2,
+      "httpStatus": 200,
+      "results": [
+        {
+          "state": "SUCCESS",
+          "functionCalls": [
+            {
+              "function": "firestore.exists",
+              "args": [
+                "/databases/%28default%29/documents/synthetic_investigation/d0"
+              ]
+            },
+            {
+              "function": "firestore.exists",
+              "args": [
+                "/databases/%28default%29/documents/synthetic_investigation/d1"
+              ]
+            }
+          ],
+          "debugMessages": []
+        }
+      ]
+    },
+    {
+      "uniqueReferences": 3,
+      "httpStatus": 200,
+      "results": [
+        {
+          "state": "SUCCESS",
+          "functionCalls": [
+            {
+              "function": "firestore.exists",
+              "args": [
+                "/databases/%28default%29/documents/synthetic_investigation/d0"
+              ]
+            },
+            {
+              "function": "firestore.exists",
+              "args": [
+                "/databases/%28default%29/documents/synthetic_investigation/d1"
+              ]
+            },
+            {
+              "function": "firestore.exists",
+              "args": [
+                "/databases/%28default%29/documents/synthetic_investigation/d2"
+              ]
+            }
+          ],
+          "debugMessages": []
+        }
+      ]
+    },
+    {
+      "uniqueReferences": 4,
+      "httpStatus": 200,
+      "results": [
+        {
+          "state": "SUCCESS",
+          "functionCalls": [
+            {
+              "function": "firestore.exists",
+              "args": [
+                "/databases/%28default%29/documents/synthetic_investigation/d0"
+              ]
+            },
+            {
+              "function": "firestore.exists",
+              "args": [
+                "/databases/%28default%29/documents/synthetic_investigation/d1"
+              ]
+            },
+            {
+              "function": "firestore.exists",
+              "args": [
+                "/databases/%28default%29/documents/synthetic_investigation/d2"
+              ]
+            },
+            {
+              "function": "firestore.exists",
+              "args": [
+                "/databases/%28default%29/documents/synthetic_investigation/d3"
+              ]
+            }
+          ],
+          "debugMessages": []
+        }
+      ]
+    }
+  ],
+  "recommendation": "Preserve active-account, membership and writable-room checks and move chat-attachment authorization to the server, or redesign authoritative permission data within two document accesses.",
+  "followUp": {
+    "localFixImplemented": true,
+    "productionDeployed": false,
+    "report": "docs/chat-attachment-fixes-2026-11-01.md",
+    "originalRecordScope": "Investigation before local attachment fix"
+  }
+}

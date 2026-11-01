@@ -1,0 +1,12 @@
+{
+  "score": 2,
+  "summary": "出欠登録の業務制約を対象とする限定監査。現在のRulesで中止済みイベントのconfirmed申請をattendedへ変更でき、実際のトリガー実行後もverified活動実績が残ることをローカル再現した。アプリ全体の採点や、新たな管理者権限昇格・任意ユーザーの情報取得を示す評価ではない。",
+  "findings": [
+    {
+      "check": "Business Logic vs. Rules",
+      "severity": "major",
+      "issue": "firestore.rules:346のattendanceWindowOpenは開始時刻のみを確認する。531行からのconfirmedからattended/absentへの更新条件にイベントの状態確認がなく、主催者は中止後の申請キャンセル処理が走る前に出席を登録できる。開始1時間前に中止したイベントでRulesの許可とverified実績の作成を確認した。",
+      "recommendation": "出欠登録可能なイベント状態をRules・画面・実績作成処理で揃えて検証する。非同期トリガーも現在の申請・イベント状態をトランザクションで検証し、中止処理との競合で不整合な実績を作らないようにする。中止前に確定した実績の扱いは別途維持する。"
+    }
+  ]
+}

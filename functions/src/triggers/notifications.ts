@@ -2,22 +2,28 @@ import {FieldPath, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {
   onDocumentCreated,
   onDocumentUpdated,
+  onDocumentWritten,
 } from "firebase-functions/v2/firestore";
 import {
-  applicationStatusMessage,
   matchesSavedSearch,
-  shouldDecrementApplicantCount,
-  shouldIncrementApplicantCount,
   shouldNotifyPublishedEventStudent,
-  tokyoYearMonth,
 } from "../applicationLogic";
 import {
   createNotificationOnce,
   notificationEnabled,
 } from "../services/notifications";
 import {db} from "../lib/firebaseAdmin";
-import {releaseApplicationCapacity} from "../services/applicationCapacity";
-const eventChatRoomId = (eventId: string) => `event_${eventId}`;
+import {processApplicationUpdate} from "../services/applicationUpdates";
+import {
+  isLiveResource,
+  readLiveApplication,
+  readLiveEvent,
+} from "../services/resourceLifecycle";
+import {refreshOrganizerProfile} from "../services/organizerProfiles";
+import {
+  closeCancelledEventRoom,
+  processUnavailableApplication,
+} from "../services/eventAvailability";
 const isFunctionsEmulator = process.env.FUNCTIONS_EMULATOR === "true";
 
 export const notifyApplicationCreated = onDocumentCreated(
@@ -54,6 +60,10 @@ export const notifyApplicationCreated = onDocumentCreated(
           isRead: false,
           createdAt: FieldValue.serverTimestamp(),
         },
+        async (transaction) =>
+          Boolean(
+            await readLiveApplication(transaction, event.params.applicationId),
+          ),
       );
     }
   },
@@ -66,104 +76,7 @@ export const notifyApplicationUpdated = onDocumentUpdated(
     const after = event.data?.after.data();
     if (!before || !after || before.status === after.status) return;
 
-    if (await notificationEnabled(after.studentId, "applicationUpdates")) {
-      const notificationId = [
-        "application_updated",
-        event.params.applicationId,
-        after.status,
-      ].join("_");
-      await createNotificationOnce(`notifications/${notificationId}`, {
-        recipientId: after.studentId,
-        type: "application_updated",
-        title: "参加申請が更新されました",
-        body: applicationStatusMessage(after.status),
-        targetType: "application",
-        targetId: event.params.applicationId,
-        isRead: false,
-        createdAt: FieldValue.serverTimestamp(),
-      });
-    }
-
-    if (after.status === "attended") {
-      const eventSnapshot = await db.doc(`events/${after.eventId}`).get();
-      const eventData = eventSnapshot.data() ?? {};
-      const eventStartAt = eventSnapshot.data()?.startAt;
-      const occurredAt =
-        eventStartAt instanceof Timestamp ? eventStartAt : Timestamp.now();
-      const {activityYear, activityMonth} = tokyoYearMonth(occurredAt.toDate());
-      await db
-        .collection("activities")
-        .doc(event.params.applicationId)
-        .set(
-          {
-            id: event.params.applicationId,
-            userId: after.studentId,
-            eventId: after.eventId,
-            title: after.eventTitle,
-            organizationId: after.organizationId,
-            organizationName: after.organizationName,
-            certificateId: `AC-${event.params.applicationId}`,
-            participantRole: "参加者",
-            takeaways: Array.isArray(eventData.takeaways) ?
-              eventData.takeaways.slice(0, 3) :
-              [],
-            verificationStatus: "verified",
-            verifiedBy: after.organizationId,
-            occurredAt,
-            activityMonth,
-            activityYear,
-            createdAt: FieldValue.serverTimestamp(),
-          },
-          {merge: true},
-        );
-    }
-    if (typeof after.eventId === "string") {
-      const shouldDecrement =
-        after.capacityReleased !== true &&
-        shouldDecrementApplicantCount(before.status, after.status);
-      const shouldIncrement =
-        shouldIncrementApplicantCount(before.status, after.status) &&
-        after.promotedFromWaitlist !== true;
-      if (shouldDecrement || shouldIncrement) {
-        const receiptId = [
-          "application",
-          event.params.applicationId,
-          before.status,
-          after.status,
-        ].join("_");
-        const receiptRef = db.doc(`functionReceipts/${receiptId}`);
-        const availabilityEventRef = db.doc(`events/${after.eventId}`);
-        await db.runTransaction(async (transaction) => {
-          const receiptSnapshot = await transaction.get(receiptRef);
-          if (receiptSnapshot.exists) return;
-          if (shouldDecrement) {
-            await releaseApplicationCapacity(transaction, availabilityEventRef);
-          } else if (shouldIncrement) {
-            const availabilityEvent =
-              await transaction.get(availabilityEventRef);
-            if (
-              availabilityEvent.exists &&
-              availabilityEvent.data()?.status !== "cancelled"
-            ) {
-              transaction.update(availabilityEventRef, {
-                applicantCount:
-                  Math.max(
-                    0,
-                    Number(availabilityEvent.data()?.applicantCount ?? 0),
-                  ) + 1,
-                updatedAt: FieldValue.serverTimestamp(),
-              });
-            }
-          }
-          transaction.create(receiptRef, {
-            applicationId: event.params.applicationId,
-            beforeStatus: before.status,
-            afterStatus: after.status,
-            processedAt: FieldValue.serverTimestamp(),
-          });
-        });
-      }
-    }
+    await processApplicationUpdate(event.params.applicationId, before, after);
   },
 );
 
@@ -200,6 +113,10 @@ export const notifyEventPublished = onDocumentUpdated(
           isRead: false,
           createdAt: FieldValue.serverTimestamp(),
         },
+        async (transaction) =>
+          Boolean(
+            await readLiveEvent(transaction, event.params.eventId, "published"),
+          ),
       );
     }
 
@@ -270,58 +187,33 @@ export const notifyEventPublished = onDocumentUpdated(
               event.params.eventId,
               preference.id,
             ].join("_");
-            await createNotificationOnce(notificationPath, {
-              recipientId: preference.id,
-              type: "new_event",
-              title: "新しいイベントが公開されました",
-              body: `「${after.title}」をチェックしてみませんか？`,
-              targetType: "event",
-              targetId: event.params.eventId,
-              isRead: false,
-              createdAt: FieldValue.serverTimestamp(),
-            });
+            await createNotificationOnce(
+              notificationPath,
+              {
+                recipientId: preference.id,
+                type: "new_event",
+                title: "新しいイベントが公開されました",
+                body: `「${after.title}」をチェックしてみませんか？`,
+                targetType: "event",
+                targetId: event.params.eventId,
+                isRead: false,
+                createdAt: FieldValue.serverTimestamp(),
+              },
+              async (transaction) =>
+                Boolean(
+                  await readLiveEvent(
+                    transaction,
+                    event.params.eventId,
+                    "published",
+                  ),
+                ),
+            );
           }),
         );
         lastStudent = students.docs[students.docs.length - 1];
         hasStudents = students.size === 200;
       }
     }
-
-    let publishedEventCount = 0;
-    let lastOrganizerEvent: FirebaseFirestore.QueryDocumentSnapshot | undefined;
-    let hasOrganizerEvents = true;
-    while (hasOrganizerEvents) {
-      let organizerEventsQuery = db
-        .collection("events")
-        .where("createdBy", "==", after.createdBy)
-        .orderBy(FieldPath.documentId())
-        .limit(200);
-      if (lastOrganizerEvent) {
-        organizerEventsQuery =
-          organizerEventsQuery.startAfter(lastOrganizerEvent);
-      }
-      const organizerEvents = await organizerEventsQuery.get();
-      publishedEventCount += organizerEvents.docs.filter(
-        (eventDocument) => eventDocument.data().status === "published",
-      ).length;
-      lastOrganizerEvent =
-        organizerEvents.docs[organizerEvents.docs.length - 1];
-      hasOrganizerEvents = organizerEvents.size === 200;
-    }
-    await db.doc(`publicOrganizerProfiles/${after.createdBy}`).set(
-      {
-        userId: after.createdBy,
-        displayName: after.organizationName,
-        description:
-          after.organizerDescription ??
-          "参加者が安心して参加できるイベント運営を行います。",
-        experience: after.organizerExperience ?? "Aizu Connectでイベントを企画",
-        publishedEventCount,
-        verified: after.organizationVerified === true,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      {merge: true},
-    );
   },
 );
 
@@ -359,74 +251,20 @@ export const notifyEventUnavailable = onDocumentUpdated(
         hasApplications = false;
         continue;
       }
-      const applicationChunk = applications.docs.filter((application) =>
-        ["pending", "waitlisted", "confirmed"].includes(
-          application.data().status,
+      await Promise.all(
+        applications.docs.map((application) =>
+          processUnavailableApplication(
+            application.id,
+            event.params.eventId,
+            after.status,
+          ),
         ),
       );
-      const batch = db.batch();
-      const notificationWrites: Promise<void>[] = [];
-      for (const application of applicationChunk) {
-        const applicationData = application.data();
-        if (after.status === "cancelled") {
-          batch.update(application.ref, {status: "cancelled"});
-        }
-        const notificationId = [
-          "event_unavailable",
-          event.params.eventId,
-          after.status,
-          application.id,
-        ].join("_");
-        const notificationData = {
-          recipientId: applicationData.studentId,
-          type:
-            after.status === "cancelled" ?
-              "event_cancelled" :
-              "event_temporarily_unpublished",
-          title:
-            after.status === "cancelled" ?
-              "イベントが中止になりました" :
-              "イベントの公開が一時停止されました",
-          body:
-            after.status === "cancelled" ?
-              `「${after.title}」は中止になりました。${after.cancellationReason ?? ""}` :
-              `「${after.title}」は運営確認のため一時的に非公開になりました。`,
-          targetType: "application",
-          targetId: application.id,
-          isRead: false,
-          createdAt: FieldValue.serverTimestamp(),
-        };
-        if (after.status === "cancelled") {
-          batch.set(
-            db.doc(`notifications/${notificationId}`),
-            notificationData,
-          );
-        } else {
-          notificationWrites.push(
-            createNotificationOnce(
-              `notifications/${notificationId}`,
-              notificationData,
-            ),
-          );
-        }
-      }
-      if (after.status === "cancelled" && applicationChunk.length > 0) {
-        await batch.commit();
-      }
-      await Promise.all(notificationWrites);
       lastApplication = applications.docs[applications.docs.length - 1];
       hasApplications = applications.size === 150;
     }
     if (after.status === "cancelled") {
-      await db.doc(`chatRooms/${eventChatRoomId(event.params.eventId)}`).set(
-        {
-          status: "read_only",
-          organizerNotice:
-            after.cancellationReason ?? "このイベントは中止になりました。",
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        {merge: true},
-      );
+      await closeCancelledEventRoom(event.params.eventId);
     }
   },
 );
@@ -491,20 +329,78 @@ export const notifyChatMessageCreated = onDocumentCreated(
           event.params.messageId,
           recipientId,
         ].join("_");
-        await createNotificationOnce(`notifications/${notificationId}`, {
-          recipientId,
-          type: "new_message",
-          title: "新しいメッセージがあります",
-          body:
-            message.type === "text" ?
-              `${message.senderName}さんからメッセージが届きました。` :
-              `${message.senderName}さんから添付ファイルが届きました。`,
-          targetType: "chat",
-          targetId: event.params.roomId,
-          isRead: false,
-          createdAt: FieldValue.serverTimestamp(),
-        });
+        await createNotificationOnce(
+          `notifications/${notificationId}`,
+          {
+            recipientId,
+            type: "new_message",
+            title: "新しいメッセージがあります",
+            body:
+              message.type === "text" ?
+                `${message.senderName}さんからメッセージが届きました。` :
+                `${message.senderName}さんから添付ファイルが届きました。`,
+            targetType: "chat",
+            targetId: event.params.roomId,
+            isRead: false,
+            createdAt: FieldValue.serverTimestamp(),
+          },
+          async (transaction) => {
+            const [currentMessage, currentRoom, sender] =
+              await transaction.getAll(
+                room.ref.collection("messages").doc(event.params.messageId),
+                db.doc(`chatRooms/${event.params.roomId}`),
+                db.doc(`users/${message.senderId}`),
+              );
+            return (
+              isLiveResource(sender) &&
+              currentRoom.exists &&
+              currentMessage.exists &&
+              !currentMessage.data()?.deletedAt &&
+              currentMessage.data()?.senderId === message.senderId &&
+              Boolean(
+                await readLiveEvent(
+                  transaction,
+                  String(currentRoom.data()?.eventId),
+                ),
+              )
+            );
+          },
+        );
       }),
     );
+  },
+);
+
+export const syncEventPublicProfile = onDocumentWritten(
+  {document: "events/{eventId}", retry: true, timeoutSeconds: 120},
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    const fields = [
+      "status",
+      "createdBy",
+      "organizationName",
+      "organizerDescription",
+      "organizerExperience",
+      "organizationVerified",
+      "startAt",
+    ];
+    if (
+      before &&
+      after &&
+      fields.every((key) =>
+        key === "startAt" ?
+          before[key]?.isEqual?.(after[key]) :
+          before[key] === after[key],
+      )
+    ) {
+      return;
+    }
+    const owners = new Set([before?.createdBy, after?.createdBy]);
+    for (const owner of owners) {
+      if (typeof owner === "string" && owner) {
+        await refreshOrganizerProfile(owner);
+      }
+    }
   },
 );

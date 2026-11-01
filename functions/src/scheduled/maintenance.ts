@@ -9,6 +9,10 @@ import {
   notificationEnabled,
 } from "../services/notifications";
 import {db} from "../lib/firebaseAdmin";
+import {readLiveApplication} from "../services/resourceLifecycle";
+import {
+  runCleanupExpiredChatAttachments,
+} from "../services/chatAttachmentCleanup";
 
 export const runPurgeExpiredLegalRecords = async (
   now: Timestamp = Timestamp.now(),
@@ -16,8 +20,8 @@ export const runPurgeExpiredLegalRecords = async (
   let deletedProvisionLogs = 0;
   let deletedCheckInAttempts = 0;
   for (const [collectionName, countDeletion] of [
-    ["thirdPartyProvisionLogs", () => deletedProvisionLogs += 1],
-    ["checkInAttempts", () => deletedCheckInAttempts += 1],
+    ["thirdPartyProvisionLogs", () => (deletedProvisionLogs += 1)],
+    ["checkInAttempts", () => (deletedCheckInAttempts += 1)],
   ] as const) {
     let hasExpiredRecords = true;
     while (hasExpiredRecords) {
@@ -48,6 +52,7 @@ export const purgeExpiredLegalRecords = onSchedule(
   },
   async () => {
     await runPurgeExpiredLegalRecords();
+    await runCleanupExpiredChatAttachments();
   },
 );
 
@@ -105,6 +110,7 @@ export const runSendEventReminders = async (
         confirmedApplicationsScanned += applications.size;
         const preferences = await Promise.all(
           applications.docs.map(async (application) => ({
+            applicationId: application.id,
             application: application.data(),
             enabled: await notificationEnabled(
               application.data().studentId,
@@ -132,6 +138,16 @@ export const runSendEventReminders = async (
                 isRead: false,
                 createdAt: FieldValue.serverTimestamp(),
               },
+              async (transaction) => {
+                const current = await readLiveApplication(
+                  transaction,
+                  preference.applicationId,
+                );
+                return (
+                  current?.application.data()?.status === "confirmed" &&
+                  current?.event.data()?.status === "published"
+                );
+              },
             );
           }),
         );
@@ -143,7 +159,11 @@ export const runSendEventReminders = async (
     lastEvent = eventSnapshot.docs[eventSnapshot.docs.length - 1];
     hasEvents = eventSnapshot.size === 100;
   }
-  return {eventsScanned, confirmedApplicationsScanned, notificationsAttempted};
+  return {
+    eventsScanned,
+    confirmedApplicationsScanned,
+    notificationsAttempted,
+  };
 };
 
 export const sendEventReminders = onSchedule(

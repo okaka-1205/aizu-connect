@@ -20,8 +20,16 @@ export const hasRequiredCommerceDisclosure = (event: AizuEvent) =>
       event.cancellationPolicy,
     ].every((value) => typeof value === "string" && value.trim().length > 0));
 
-export const csvEscape = (value: string | number | undefined | null) =>
-  `"${String(value ?? "").replace(/"/g, '""')}"`;
+export const csvEscape = (value: string | number | undefined | null) => {
+  const text = String(value ?? "");
+  // CSV reports are for spreadsheet viewing. Quotes alone do not disable
+  // formulas; preserve the input as text, including Japanese full-width forms.
+  const needsTextPrefix =
+    typeof value === "string" &&
+    (/^[\s\p{Cc}]*[=+\-@＝＋－＠]/u.test(text) ||
+      /^[\t\r\n]/u.test(text));
+  return `"${(needsTextPrefix ? `\t${text}` : text).replace(/"/g, '""')}"`;
+};
 
 export const timestampMillis = (value?: Timestamp) => value?.toMillis?.() ?? 0;
 
@@ -179,6 +187,13 @@ export const downloadActivityPortfolioPdf = async (
     );
   });
   const pdf = new jsPDF({ unit: "px", format: [canvas.width, canvas.height] });
-  pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, canvas.width, canvas.height);
+  pdf.addImage(
+    canvas.toDataURL("image/png"),
+    "PNG",
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
   pdf.save(`Aizu-Connect-${userName}-活動実績.pdf`);
 };

@@ -14,6 +14,7 @@ import {
 import {db} from "./lib/firebaseAdmin";
 import {hasRequiredCommerceDisclosure} from "./lib/eventValidation";
 import {requiredDocumentId} from "./lib/callableValidation";
+import {deletionLockRef, isLiveResource} from "./services/resourceLifecycle";
 
 export {healthCheck} from "./http/healthCheck";
 export {reportClientError} from "./callables/reportClientError";
@@ -75,6 +76,7 @@ export const markAllNotificationsRead = onCall(
 );
 
 export {adminManageResource} from "./callables/adminManageResource";
+export {sendChatAttachment} from "./callables/sendChatAttachment";
 export const saveEventPlan = onCall(
   {enforceAppCheck: enforceCallableAppCheck},
   async (request) => {
@@ -135,7 +137,26 @@ export const saveEventPlan = onCall(
     }
     const eventRef = db.doc(`events/${eventId}`);
     await db.runTransaction(async (transaction) => {
-      const eventSnapshot = await transaction.get(eventRef);
+      const [eventSnapshot, currentUser, eventLock] = await transaction.getAll(
+        eventRef,
+        db.doc(`users/${userId}`),
+        deletionLockRef("event", eventId),
+      );
+      if (
+        !isLiveResource(currentUser) ||
+        currentUser.data()?.status !== "active"
+      ) {
+        throw new HttpsError(
+          "permission-denied",
+          "有効なアカウントが必要です。",
+        );
+      }
+      if (eventLock.exists) {
+        throw new HttpsError(
+          "failed-precondition",
+          "このイベントは削除処理中です。",
+        );
+      }
       if (mode === "create" && eventSnapshot.exists) {
         throw new HttpsError("already-exists", "Event already exists.");
       }
@@ -406,6 +427,15 @@ export const submitApplication = onCall(
       if (typeof organizationId !== "string" || !organizationId) {
         throw new HttpsError("failed-precondition", "Organizer is missing.");
       }
+      const organizer = await transaction.get(
+        db.doc(`users/${organizationId}`),
+      );
+      if (!isLiveResource(organizer)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Organizer is not available.",
+        );
+      }
 
       transaction.create(applicationRef, {
         id: applicationId,
@@ -422,6 +452,7 @@ export const submitApplication = onCall(
         eventStartAt: eventData.startAt,
         eventEndAt: eventData.endAt ?? eventData.startAt,
         status: applicationStatus,
+        capacityHeld: applicationStatus === "pending",
         participantMessage,
         accessibilityNeeds,
         emergencyContact,
@@ -527,12 +558,22 @@ export const createEventChatRoom = onDocumentCreated(
     const welcomeRef = roomRef.collection("messages").doc("welcome");
     const checkInRef = db.doc(`eventCheckIns/${event.params.eventId}`);
     await db.runTransaction(async (transaction) => {
-      const [room, member, welcome, checkIn] = await transaction.getAll(
-        roomRef,
-        memberRef,
-        welcomeRef,
-        checkInRef,
-      );
+      const [currentEvent, owner, room, member, welcome, checkIn] =
+        await transaction.getAll(
+          db.doc(`events/${event.params.eventId}`),
+          db.doc(`users/${eventData.createdBy}`),
+          roomRef,
+          memberRef,
+          welcomeRef,
+          checkInRef,
+        );
+      if (
+        !isLiveResource(currentEvent) ||
+        !isLiveResource(owner) ||
+        currentEvent.data()?.status === "cancelled"
+      ) {
+        return;
+      }
       if (!room.exists) {
         transaction.create(roomRef, {
           id: roomId,
@@ -607,8 +648,32 @@ export const manageChatMessage = onCall(
     const memberRef = roomRef.collection("members").doc(userId);
     const messageRef = roomRef.collection("messages").doc(messageId);
     await db.runTransaction(async (transaction) => {
-      const [roomSnapshot, memberSnapshot, messageSnapshot] =
-        await transaction.getAll(roomRef, memberRef, messageRef);
+      const [currentUser, roomSnapshot, memberSnapshot, messageSnapshot] =
+        await transaction.getAll(
+          db.doc(`users/${userId}`),
+          roomRef,
+          memberRef,
+          messageRef,
+        );
+      if (
+        !isLiveResource(currentUser) ||
+        currentUser.data()?.status !== "active"
+      ) {
+        throw new HttpsError(
+          "permission-denied",
+          "有効なアカウントが必要です。",
+        );
+      }
+      const eventId = roomSnapshot.data()?.eventId;
+      if (
+        typeof eventId === "string" &&
+        (await transaction.get(deletionLockRef("event", eventId))).exists
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "このイベントは削除処理中です。",
+        );
+      }
       const roomData = roomSnapshot.data();
       const legacyMember =
         Array.isArray(roomData?.participantIds) &&
@@ -842,6 +907,7 @@ export {
   notifyApplicationUpdated,
   notifyEventPublished,
   notifyEventUnavailable,
+  syncEventPublicProfile,
   notifyChatMessageCreated,
 } from "./triggers/notifications";
 export {

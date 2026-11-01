@@ -17,7 +17,7 @@ type AdminDashboardViewInput = {
   deletionRequestUsers: Record<string, AppUser>;
   managedUsers: AppUser[];
   managedEvents: AizuEvent[];
-  managedUserStatus: "active" | "suspended" | "rejected";
+  managedUserStatus: "active" | "suspended" | "rejected" | "deleting";
   auditLogs: AuditLog[];
   now?: Date;
 };

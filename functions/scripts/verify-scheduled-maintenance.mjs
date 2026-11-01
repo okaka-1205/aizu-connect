@@ -3,7 +3,9 @@ import { initializeApp } from "firebase-admin/app";
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
-  console.error("verify-scheduled-maintenance.mjs requires Firestore Emulator.");
+  console.error(
+    "verify-scheduled-maintenance.mjs requires Firestore Emulator.",
+  );
   process.exit(1);
 }
 
@@ -13,15 +15,28 @@ const projectId =
   "demo-aizu-connect-scheduled";
 initializeApp({ projectId });
 const db = getFirestore();
-const { runPurgeExpiredLegalRecords, runSendEventReminders } = await import(
-  "../lib/scheduled/maintenance.js"
-);
+const { runPurgeExpiredLegalRecords, runSendEventReminders } =
+  await import("../lib/scheduled/maintenance.js");
 
 const now = Timestamp.fromMillis(Date.UTC(2026, 9, 15, 3, 0, 0));
 const hoursFromNow = (hours) =>
   Timestamp.fromMillis(now.toMillis() + hours * 60 * 60 * 1000);
 
 const batch = db.batch();
+batch.set(db.doc("users/reminder-organizer"), {
+  role: "organization",
+  status: "active",
+});
+for (const uid of [
+  "student-enabled",
+  "student-disabled",
+  "student-pending",
+  "student-outside",
+  "student-past",
+  "student-draft",
+]) {
+  batch.set(db.doc(`users/${uid}`), { role: "student", status: "active" });
+}
 for (const [eventId, status, startAt, title] of [
   ["event-24h", "published", hoursFromNow(23), "24時間前イベント"],
   ["event-2h", "published", hoursFromNow(1.5), "2時間前イベント"],
@@ -29,7 +44,12 @@ for (const [eventId, status, startAt, title] of [
   ["event-past", "published", hoursFromNow(-1), "開催済みイベント"],
   ["event-draft", "pending_review", hoursFromNow(1), "未公開イベント"],
 ]) {
-  batch.set(db.doc(`events/${eventId}`), { status, startAt, title });
+  batch.set(db.doc(`events/${eventId}`), {
+    status,
+    startAt,
+    title,
+    createdBy: "reminder-organizer",
+  });
 }
 for (const [applicationId, eventId, studentId, status] of [
   ["app-enabled-24h", "event-24h", "student-enabled", "confirmed"],
@@ -44,6 +64,7 @@ for (const [applicationId, eventId, studentId, status] of [
     eventId,
     studentId,
     status,
+    organizationId: "reminder-organizer",
   });
 }
 batch.set(db.doc("notificationPreferences/student-disabled"), {
@@ -72,13 +93,15 @@ assert.deepEqual(firstReminderRun, {
 });
 assert.equal((await db.collection("notifications").get()).size, 2);
 assert.equal(
-  (await db.doc("notifications/reminder_event-24h_student-enabled_24h").get())
-    .data()?.recipientId,
+  (
+    await db.doc("notifications/reminder_event-24h_student-enabled_24h").get()
+  ).data()?.recipientId,
   "student-enabled",
 );
 assert.equal(
-  (await db.doc("notifications/reminder_event-2h_student-enabled_2h").get())
-    .data()?.title,
+  (
+    await db.doc("notifications/reminder_event-2h_student-enabled_2h").get()
+  ).data()?.title,
   "まもなく開催です",
 );
 assert.equal(
@@ -94,12 +117,30 @@ assert.equal(
   "reminder reruns must be idempotent",
 );
 
+await db.doc("users/student-enabled").delete();
+const notifications = await db.collection("notifications").get();
+await Promise.all(
+  notifications.docs.map((notification) => notification.ref.delete()),
+);
+await runSendEventReminders(now);
+assert.equal(
+  (await db.collection("notifications").get()).size,
+  0,
+  "deleted recipients must not receive recreated reminders",
+);
+
 assert.deepEqual(await runPurgeExpiredLegalRecords(now), {
   deletedProvisionLogs: 1,
   deletedCheckInAttempts: 1,
 });
-assert.equal((await db.doc("thirdPartyProvisionLogs/expired").get()).exists, false);
-assert.equal((await db.doc("thirdPartyProvisionLogs/future").get()).exists, true);
+assert.equal(
+  (await db.doc("thirdPartyProvisionLogs/expired").get()).exists,
+  false,
+);
+assert.equal(
+  (await db.doc("thirdPartyProvisionLogs/future").get()).exists,
+  true,
+);
 assert.equal((await db.doc("checkInAttempts/expired").get()).exists, false);
 assert.equal((await db.doc("checkInAttempts/future").get()).exists, true);
 assert.equal((await db.doc("reports/unrelated").get()).exists, true);

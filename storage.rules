@@ -12,47 +12,47 @@ service firebase.storage {
       );
     }
 
-    function activeStudent(uid) {
-      return signedIn()
-        && request.auth.uid == uid
-        && userRef(uid).data.role == 'student'
-        && userRef(uid).data.status == 'active'
-        && request.auth.token.email_verified == true;
-    }
-
-    function activeOrganization(uid) {
-      return signedIn()
-        && request.auth.uid == uid
-        && userRef(uid).data.role == 'organization'
-        && userRef(uid).data.status == 'active'
-        && request.auth.token.email_verified == true;
+    function activeUserData(data, roles) {
+      return data.status == 'active' && data.role in roles;
     }
 
     function activeCreator(uid) {
-      return activeStudent(uid) || activeOrganization(uid);
+      return signedIn()
+        && request.auth.uid == uid
+        && request.auth.token.email_verified == true
+        && activeUserData(userRef(uid).data, ['student', 'organization']);
     }
 
-    function activeAdmin() {
+    function verifiedAdminSecondFactor() {
+      return (
+        request.auth.token.firebase is map
+        && request.auth.token.firebase.keys().hasAll(['sign_in_second_factor'])
+        && request.auth.token.firebase.sign_in_second_factor == 'totp'
+      ) || (
+        request.auth.token.keys().hasAll(['aud', 'test_admin_mfa'])
+        && request.auth.token.test_admin_mfa == true
+        && request.auth.token.aud in [
+          'demo-aizu-connect-admin-approval', 'demo-aizu-connect-e2e',
+          'demo-aizu-connect-a11y', 'demo-aizu-connect-local'
+        ]
+      );
+    }
+
+    function validFileReader(data) {
+      return data.status == 'active' && (
+        data.role in ['student', 'organization']
+        || (data.role == 'admin' && verifiedAdminSecondFactor())
+      );
+    }
+
+    function activeFileReader() {
       return signedIn()
-        && userRef(request.auth.uid).data.role == 'admin'
-        && userRef(request.auth.uid).data.status == 'active'
         && request.auth.token.email_verified == true
-        && (
-          (
-            request.auth.token.firebase is map
-            && request.auth.token.firebase.keys().hasAll(['sign_in_second_factor'])
-            && request.auth.token.firebase.sign_in_second_factor == 'totp'
-          ) || (
-            request.auth.token.keys().hasAll(['aud', 'test_admin_mfa'])
-            && request.auth.token.test_admin_mfa == true
-            && request.auth.token.aud in [
-              'demo-aizu-connect-admin-approval',
-              'demo-aizu-connect-e2e',
-              'demo-aizu-connect-a11y',
-              'demo-aizu-connect-local'
-            ]
-          )
-        );
+        && validFileReader(userRef(request.auth.uid).data);
+    }
+
+    function reportOwner(data, ownerId) {
+      return data.createdBy == ownerId && data.status != 'deleting';
     }
 
     function validImage() {
@@ -60,53 +60,31 @@ service firebase.storage {
         && request.resource.contentType.matches('image/(jpeg|png|webp)');
     }
 
-    function roomRef(roomId) {
-      return firestore.get(
-        /databases/(default)/documents/chatRooms/$(roomId)
-      );
-    }
-
-    function isRoomMember(roomId, uid) {
-      return firestore.exists(
-          /databases/(default)/documents/chatRooms/$(roomId)/members/$(uid)
-        ) || uid in roomRef(roomId).data.participantIds;
-    }
-
-    function validChatAttachment() {
-      return request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches(
-          'image/(jpeg|png|webp)|application/pdf|text/plain|text/csv'
-        );
-    }
-
     match /profile-images/{userId}/{fileName} {
-      allow read: if activeCreator(request.auth.uid) || activeAdmin();
+      allow read: if activeFileReader();
       allow write: if activeCreator(userId) && validImage();
     }
 
     match /event-images/{organizationId}/{eventId}/{fileName} {
-      allow read: if activeCreator(request.auth.uid) || activeAdmin();
+      allow read: if activeFileReader();
       allow write: if activeCreator(organizationId)
+        && !firestore.exists(/databases/(default)/documents/deletionLocks/$('event_' + eventId))
         && validImage();
     }
 
     match /event-reports/{organizationId}/{eventId}/{fileName} {
-      allow read: if activeCreator(request.auth.uid) || activeAdmin();
-      allow write: if activeOrganization(organizationId)
-        && firestore.get(
+      allow read: if activeFileReader();
+      allow write: if activeCreator(organizationId)
+        && reportOwner(firestore.get(
           /databases/(default)/documents/events/$(eventId)
-        ).data.createdBy == organizationId
+        ).data, organizationId)
         && validImage();
     }
 
-    match /chat-attachments/{roomId}/{userId}/{fileName} {
-      allow read: if activeCreator(request.auth.uid)
-        && isRoomMember(roomId, request.auth.uid);
-      allow write: if activeCreator(userId)
-        && request.auth.uid == userId
-        && isRoomMember(roomId, request.auth.uid)
-        && roomRef(roomId).data.status == 'active'
-        && validChatAttachment();
+    // Upload and attachment metadata are authorized by the callable. The app
+    // displays the same tokenized URLs as before; no client Storage RPC is used.
+    match /chat-attachments/{path=**} {
+      allow read, write: if false;
     }
   }
 }

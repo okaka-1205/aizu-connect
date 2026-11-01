@@ -15,8 +15,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { validateChatAttachment } from "../lib/appLogic";
-import { uploadImage } from "../lib/storage";
+import { uploadChatAttachment } from "./chatAttachments";
 import type {
   ChatMessage,
   ChatPreference,
@@ -25,7 +24,7 @@ import type {
 } from "../types/domain";
 
 export const CHAT_ROOM_PAGE_SIZE = 50;
-// One user document plus at most eight membership lookups stays within the
+// One user, one deletion lock and eight memberships stay within the
 // Rules query access-call budget. Never truncate memberships before sorting.
 const ROOM_QUERY_BATCH_SIZE = 8;
 
@@ -73,25 +72,7 @@ export const sendChatAttachment = async (
   sender: ChatSender,
   file: File,
 ) => {
-  validateChatAttachment(file);
-  const attachmentUrl = await uploadImage(
-    file,
-    `chat-attachments/${roomId}/${sender.senderId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
-  );
-  const type = file.type.startsWith("image/") ? "image" : "file";
-  await commitChatMessage(
-    roomId,
-    sender,
-    {
-      type,
-      text: file.name.slice(0, 200),
-      attachmentUrl,
-      attachmentName: file.name.slice(0, 200),
-      attachmentType: file.type,
-      attachmentSize: file.size,
-    },
-    `${type === "image" ? "画像" : "ファイル"}を送信しました`,
-  );
+  await uploadChatAttachment(roomId, sender.senderId, file);
 };
 
 export const loadChatPreferencesForRooms = async (

@@ -14,7 +14,9 @@ const requiredEmulators = [
 ];
 
 if (requiredEmulators.some((name) => !process.env[name])) {
-  throw new Error("The reset verification requires Auth, Firestore and Storage emulators.");
+  throw new Error(
+    "The reset verification requires Auth, Firestore and Storage emulators.",
+  );
 }
 
 initializeApp({ projectId, storageBucket });
@@ -71,6 +73,11 @@ await Promise.all([
   }),
   db.doc("studentProfiles/student-reset-test").set({
     uid: "student-reset-test",
+  }),
+  db.doc("chatAttachmentUploads/pending-reset-upload").set({
+    userId: "student-reset-test",
+    objectPath:
+      "chat-attachments/student-reset-room/student-reset-test/pending",
   }),
   db.doc("events/student-reset-event").set({
     createdBy: "student-reset-test",
@@ -134,13 +141,37 @@ assert.equal(
   (await db.doc("notificationPreferences/admin-reset-test").get()).exists,
   true,
 );
-assert.equal((await db.doc("studentProfiles/student-reset-test").get()).exists, false);
+assert.equal(
+  (await db.doc("studentProfiles/student-reset-test").get()).exists,
+  false,
+);
 assert.equal((await db.doc("events/student-reset-event").get()).exists, false);
-assert.equal((await db.doc("chatRooms/student-reset-room").get()).exists, false);
-assert.equal((await db.doc("auditLogs/reset-audit-preserved").get()).exists, true);
-assert.equal((await bucket.file("profile-images/admin-reset-test/avatar.png").exists())[0], true);
-assert.equal((await bucket.file("profile-images/student-reset-test/avatar.png").exists())[0], false);
+assert.equal(
+  (await db.doc("chatRooms/student-reset-room").get()).exists,
+  false,
+);
+assert.equal(
+  (await db.doc("chatAttachmentUploads/pending-reset-upload").get()).exists,
+  false,
+);
+assert.equal(
+  (await db.doc("auditLogs/reset-audit-preserved").get()).exists,
+  true,
+);
+assert.equal(
+  (await bucket.file("profile-images/admin-reset-test/avatar.png").exists())[0],
+  true,
+);
+assert.equal(
+  (
+    await bucket.file("profile-images/student-reset-test/avatar.png").exists()
+  )[0],
+  false,
+);
 assert.equal((await bucket.getFiles({ prefix: "event-images/" }))[0].length, 0);
-assert.equal((await bucket.getFiles({ prefix: "chat-attachments/" }))[0].length, 0);
+assert.equal(
+  (await bucket.getFiles({ prefix: "chat-attachments/" }))[0].length,
+  0,
+);
 
 console.log("Non-admin reset verification complete.");

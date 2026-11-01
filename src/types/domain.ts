@@ -8,7 +8,8 @@ export type AccountStatus =
   | "email_unverified"
   | "profile_incomplete"
   | "rejected"
-  | "suspended";
+  | "suspended"
+  | "deleting";
 
 export type Tab = "home" | "search" | "activity" | "messages" | "profile";
 export type NoticeTone = "success" | "error" | "info";
@@ -97,7 +98,8 @@ export type AizuEvent = {
     | "pending_review"
     | "revision_required"
     | "cancelled"
-    | "unpublished";
+    | "unpublished"
+    | "deleting";
   capacity: number;
   applicantCount: number;
   popularityScore?: number;

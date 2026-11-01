@@ -1,14 +1,11 @@
-import {
-  applicationDefault,
-  initializeApp,
-} from "firebase-admin/app";
+import { applicationDefault, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {loadFirebaseCliOAuth} from "./lib/firebase-cli-credential.mjs";
+import { loadFirebaseCliOAuth } from "./lib/firebase-cli-credential.mjs";
 
 const EXPECTED_PROJECT_ID = "aizu-connect-prod";
 const EXPECTED_STORAGE_BUCKET = "aizu-connect-prod.firebasestorage.app";
@@ -93,6 +90,7 @@ const resetCollections = [
   "events",
   "eventApplications",
   "chatRooms",
+  "chatAttachmentUploads",
   "activities",
   "reports",
   "savedEvents",
@@ -147,8 +145,7 @@ const activeFirestoreAdminIds = new Set(
   usersSnapshot.docs
     .filter(
       (document) =>
-        document.data().role === "admin" &&
-        document.data().status === "active",
+        document.data().role === "admin" && document.data().status === "active",
     )
     .map((document) => document.id),
 );
@@ -241,7 +238,10 @@ for (let index = 0; index < authUserIdsToDelete.length; index += 1000) {
   }
 }
 for (const userId of accountIdsToDelete) {
-  await bucket.deleteFiles({ prefix: `profile-images/${userId}/`, force: true });
+  await bucket.deleteFiles({
+    prefix: `profile-images/${userId}/`,
+    force: true,
+  });
 }
 await bucket.deleteFiles({ prefix: "event-images/", force: true });
 await bucket.deleteFiles({ prefix: "chat-attachments/", force: true });
@@ -292,9 +292,9 @@ const expectedAdminScopedCounts = Object.fromEntries(
     }),
   ),
 );
-const hasRemainingAccountData = resetCollections.some(
-  (name) => remainingCollectionCounts[name] !== 0,
-) || Object.values(expectedAdminScopedCounts).some((count) => count !== 0);
+const hasRemainingAccountData =
+  resetCollections.some((name) => remainingCollectionCounts[name] !== 0) ||
+  Object.values(expectedAdminScopedCounts).some((count) => count !== 0);
 const hasRemainingStorageData =
   remainingNonAdminProfileFiles !== 0 ||
   remainingStorageCounts["event-images/"] !== 0 ||

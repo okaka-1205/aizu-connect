@@ -281,7 +281,7 @@ export function useAdminDashboardData({
     const eventsUnsubscribe = onSnapshot(
       query(
         collection(db, "events"),
-        where("status", "in", ["published", "unpublished"]),
+        where("status", "in", ["published", "unpublished", "deleting"]),
         orderBy("createdAt", "desc"),
         limit(managedEventQueryLimit),
       ),

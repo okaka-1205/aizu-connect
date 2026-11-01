@@ -1481,6 +1481,35 @@ describe("chat rooms and messages", () => {
     );
   });
 
+  it("rejects client-authored attachment metadata and private upload receipts", async () => {
+    const db = contexts().student.firestore();
+    for (const type of ["image", "file"]) {
+      const room = db.doc("chatRooms/room-1");
+      const message = room.collection("messages").doc(`forged-${type}`);
+      const batch = db.batch();
+      batch.set(
+        message,
+        messageDoc({
+          type,
+          attachmentName: "forged.png",
+          attachmentUrl: "https://example.invalid/forged.png",
+          attachmentType: "image/png",
+          attachmentSize: 1,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        }),
+      );
+      batch.update(room, {
+        lastMessageId: message.id,
+        lastMessageText: `${type === "image" ? "画像" : "ファイル"}を送信しました`,
+        lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      await assertFails(batch.commit());
+    }
+    const receipt = db.doc("chatAttachmentUploads/forged-upload");
+    await assertFails(receipt.set({ userId: "student-1" }));
+    await assertFails(receipt.get());
+  });
+
   it("requires trusted message, summary and read timestamps and an atomic preview", async () => {
     const db = contexts().student.firestore();
     const room = db.doc("chatRooms/room-1");
@@ -2263,15 +2292,15 @@ describe("storage rules", () => {
     );
   });
 
-  it("limits chat attachments to active participants and writable rooms", async () => {
+  it("denies direct chat-attachment Storage RPCs; callable authorization is required", async () => {
     const { student, otherStudent, organization } = contexts();
-    await assertSucceeds(
+    await assertFails(
       student
         .storage()
         .ref("chat-attachments/room-1/student-1/guide.txt")
         .getMetadata(),
     );
-    await assertSucceeds(
+    await assertFails(
       organization
         .storage()
         .ref("chat-attachments/room-1/student-1/guide.txt")
@@ -2283,7 +2312,7 @@ describe("storage rules", () => {
         .ref("chat-attachments/room-1/student-1/guide.txt")
         .getMetadata(),
     );
-    await assertSucceeds(
+    await assertFails(
       student
         .storage()
         .ref("chat-attachments/room-1/student-1/notes.pdf")

@@ -1,7 +1,30 @@
 import { Timestamp } from "firebase/firestore";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AizuEvent } from "../types/domain";
-import { selectRecommendedEvent } from "./eventUtils";
+import { csvEscape, selectRecommendedEvent } from "./eventUtils";
+
+describe("CSV report text", () => {
+  it.each([
+    "=1+1",
+    "+81-1234",
+    "-1+2",
+    "@SUM(A1)",
+    "  =1+1",
+    "\r=1+1",
+    "\ntext",
+    "＝1+1",
+    "＋1",
+    "－1",
+    "＠SUM(A1)",
+  ])("keeps formula-like input as spreadsheet text: %j", (input) =>
+    expect(csvEscape(input)).toBe(`"\t${input.replace(/"/g, '""')}"`),
+  );
+  it("preserves ordinary text, quotes, multiline cells and numeric values", () => {
+    expect(csvEscape('参加者,"A"\n配慮事項')).toBe('"参加者,""A""\n配慮事項"');
+    expect(csvEscape(-12)).toBe('"-12"');
+    expect(csvEscape(null)).toBe('""');
+  });
+});
 
 const now = Date.UTC(2026, 9, 30);
 const day = 86_400_000;

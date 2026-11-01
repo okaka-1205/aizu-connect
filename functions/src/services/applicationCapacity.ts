@@ -26,6 +26,7 @@ export const releaseApplicationCapacity = async (
       waitlistPosition: FieldValue.delete(),
       waitlistSequence: FieldValue.delete(),
       promotedFromWaitlist: true,
+      capacityHeld: true,
     });
   } else {
     transaction.update(eventRef, {
@@ -36,4 +37,36 @@ export const releaseApplicationCapacity = async (
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
+};
+
+// A cancellation trigger may still be queued when account deletion starts.
+// Settle that reservation here, using legacy receipts when no marker exists.
+export const releaseDeletedApplicationCapacity = async (
+  transaction: FirebaseFirestore.Transaction,
+  application: FirebaseFirestore.DocumentSnapshot,
+) => {
+  const data = application.data();
+  if (!data || data.capacityReleased === true) return;
+  const terminal = ["cancelled", "rejected"].includes(data.status);
+  const reserved = data.capacityHeld === true ||
+    (data.capacityHeld !== false && !data.waitlistSequence &&
+      !data.waitlistPosition);
+  let alreadyReleased = false;
+  if (terminal && reserved) {
+    const receipts = await transaction.getAll(...["pending", "confirmed"]
+      .map((before) => db.doc("functionReceipts/" +
+        ["application", application.id, before, data.status].join("_"))));
+    alreadyReleased = receipts.some((receipt) => receipt.exists);
+  }
+  const pending = ["pending", "confirmed"].includes(data.status);
+  if (typeof data.eventId === "string" && !alreadyReleased &&
+    (pending || (terminal && reserved))) {
+    await releaseApplicationCapacity(
+      transaction, db.doc(`events/${data.eventId}`),
+    );
+  }
+  transaction.update(application.ref, {
+    capacityReleased: true,
+    capacityHeld: false,
+  });
 };

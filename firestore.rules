@@ -10,12 +10,29 @@ rules_version = '2';
 // - publicOrganizerProfiles: authenticated public projection without private PII.
 // - eventCheckIns/checkInAttempts/functionReceipts/adminOperations:
 //   server-owned operational state; clients cannot write attempt/receipt data.
+// - chatAttachmentUploads: server-only pending file attempts; clients cannot write.
+// - deletionLocks: server-only identifier tombstones, retained after deletion.
 // All unmatched paths are denied at the end of this file.
 
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && userNotDeleting(request.auth.uid);
+    }
+
+    function userNotDeleting(userId) {
+      return !exists(/databases/$(database)/documents/deletionLocks/$('user_' + userId));
+    }
+
+    function eventNotDeleting(eventId) {
+      return !exists(/databases/$(database)/documents/deletionLocks/$('event_' + eventId));
+    }
+
+    function roomNotDeleting(roomId) {
+      return eventNotDeleting(get(
+        /databases/$(database)/documents/chatRooms/$(roomId)
+      ).data.eventId);
     }
 
     function userRef(uid) {
@@ -347,7 +364,8 @@ service cloud.firestore {
       let event = get(
         /databases/$(database)/documents/events/$(eventId)
       );
-      return event.data.startAt is timestamp
+      return event.data.status == 'published'
+        && event.data.startAt is timestamp
         && request.time >= event.data.startAt - duration.value(3, 'h');
     }
 
@@ -515,7 +533,7 @@ service cloud.firestore {
         || (isActiveStudent() && resource.data.studentId == request.auth.uid)
         || (isActiveCreator() && resource.data.organizationId == request.auth.uid);
       allow create: if false;
-      allow update: if isActiveCreator()
+      allow update: if eventNotDeleting(resource.data.eventId) && (isActiveCreator()
         && resource.data.organizationId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status', 'organizerNote'
@@ -554,7 +572,7 @@ service cloud.firestore {
             || request.time <= get(
               /databases/$(database)/documents/events/$(resource.data.eventId)
             ).data.cancellationDeadline
-          ));
+          )));
       allow delete: if false;
     }
 
@@ -590,7 +608,7 @@ service cloud.firestore {
           || (request.query.limit != null && request.query.limit <= 8
               && isRoomMember(roomId, request.auth.uid)));
       allow create: if false;
-      allow update: if isActiveCreator()
+      allow update: if roomNotDeleting(roomId) && (isActiveCreator()
         && (
           exists(
             /databases/$(database)/documents/chatRooms/$(roomId)/members/$(request.auth.uid)
@@ -617,7 +635,7 @@ service cloud.firestore {
           && validOptionalString(request.resource.data.pinnedMessage, 180)
           && validOptionalString(request.resource.data.organizerNotice, 220)
           && request.resource.data.updatedAt is timestamp
-        );
+        ));
       allow delete: if false;
 
       match /members/{memberId} {
@@ -630,6 +648,7 @@ service cloud.firestore {
         allow read: if isActiveCreator()
           && isRoomMember(roomId, request.auth.uid);
         allow create: if isActiveCreator()
+          && roomNotDeleting(roomId)
           && isRoomMember(roomId, request.auth.uid)
           && get(
             /databases/$(database)/documents/chatRooms/$(roomId)
@@ -639,28 +658,10 @@ service cloud.firestore {
           && request.resource.data.roomId == roomId
           && validString(request.resource.data.text, 1, 2000)
           && validString(request.resource.data.senderName, 1, 80)
-          && (
-            (
-              request.resource.data.type == 'text'
-              && request.resource.data.keys().hasOnly([
-                'roomId', 'senderId', 'senderName', 'type', 'text', 'createdAt'
-              ])
-            )
-            || (
-              request.resource.data.type in ['image', 'file']
-              && request.resource.data.keys().hasOnly([
-                'roomId', 'senderId', 'senderName', 'type', 'text',
-                'attachmentUrl', 'attachmentName', 'attachmentType',
-                'attachmentSize', 'createdAt'
-              ])
-              && validString(request.resource.data.attachmentUrl, 1, 1000)
-              && validString(request.resource.data.attachmentName, 1, 200)
-              && validString(request.resource.data.attachmentType, 1, 100)
-              && request.resource.data.attachmentSize is number
-              && request.resource.data.attachmentSize >= 0
-              && request.resource.data.attachmentSize < 10 * 1024 * 1024
-            )
-          )
+          && request.resource.data.type == 'text'
+          && request.resource.data.keys().hasOnly([
+            'roomId', 'senderId', 'senderName', 'type', 'text', 'createdAt'
+          ])
           && validServerTimestamp(request.resource.data.createdAt);
         allow update: if false;
         allow delete: if false;
@@ -670,6 +671,7 @@ service cloud.firestore {
         allow read: if isActiveCreator()
           && isRoomMember(roomId, request.auth.uid);
         allow create, update: if isActiveCreator()
+          && roomNotDeleting(roomId)
           && request.auth.uid == userId
           && isRoomMember(roomId, request.auth.uid)
           && request.resource.data.keys().hasOnly(['userId', 'readAt'])
@@ -775,18 +777,19 @@ service cloud.firestore {
     }
 
     match /savedEvents/{savedEventId} {
+      function validSavedEvent(data) {
+        return data.keys().hasOnly(['userId', 'eventId', 'createdAt'])
+          && data.userId == request.auth.uid
+          && validString(data.eventId, 1, 200)
+          && savedEventId == request.auth.uid + '_' + data.eventId
+          && (!data.keys().hasAny(['createdAt'])
+            || data.createdAt is timestamp);
+      }
       allow read: if isActiveStudent()
         && resource.data.userId == request.auth.uid;
       allow create: if isActiveStudent()
-        && request.resource.data.keys().hasOnly([
-          'userId', 'eventId', 'createdAt'
-        ])
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.eventId is string
-        && request.resource.data.eventId.size() >= 1
-        && request.resource.data.eventId.size() <= 200
-        && (!request.resource.data.keys().hasAny(['createdAt'])
-          || request.resource.data.createdAt is timestamp);
+        && validSavedEvent(request.resource.data)
+        && eventNotDeleting(request.resource.data.eventId);
       allow delete: if isActiveStudent()
         && resource.data.userId == request.auth.uid;
       allow update: if false;
@@ -824,6 +827,7 @@ service cloud.firestore {
       allow read: if isActiveCreator()
         && resource.data.userId == request.auth.uid;
       allow create, update: if isActiveCreator()
+        && roomNotDeleting(request.resource.data.roomId)
         && preferenceId == request.resource.data.roomId + '_' + request.auth.uid
         && request.resource.data.keys().hasOnly([
           'userId', 'roomId', 'muted', 'updatedAt'
@@ -846,6 +850,7 @@ service cloud.firestore {
       allow read: if isActiveStudent()
         && resource.data.userId == request.auth.uid;
       allow create: if isActiveStudent()
+        && userNotDeleting(request.resource.data.organizationId)
         && savedOrganizerId == request.auth.uid + '_' + request.resource.data.organizationId
         && request.resource.data.keys().hasOnly([
           'userId', 'organizationId', 'organizationName', 'createdAt'
@@ -863,6 +868,7 @@ service cloud.firestore {
       allow read: if isActiveCreator()
         && resource.data.blockerId == request.auth.uid;
       allow create: if isActiveCreator()
+        && userNotDeleting(request.resource.data.blockedId)
         && blockId == request.auth.uid + '_' + request.resource.data.blockedId
         && request.resource.data.keys().hasOnly([
           'blockerId', 'blockedId', 'reason', 'createdAt'
@@ -884,6 +890,7 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/events/$(eventId)).data.createdBy
             == request.auth.uid);
       allow create, update: if isActiveStudent()
+        && eventNotDeleting(eventId)
         && request.auth.uid == userId
         && exists(
           /databases/$(database)/documents/eventApplications/$(eventId + '_' + userId)
@@ -908,39 +915,44 @@ service cloud.firestore {
     }
 
     match /eventReports/{eventId} {
-      allow read: if isAdmin()
-        || (signedIn()
-          && resource != null
-          && resource.data.status == 'published')
-        || (isActiveOrganization()
-          && resource != null
-          && resource.data.organizationId == request.auth.uid);
-      allow create, update: if isActiveOrganization()
-        && get(/databases/$(database)/documents/events/$(eventId)).data.createdBy
-          == request.auth.uid
-        && request.resource.data.keys().hasOnly([
+      function validEventReport(data) {
+        return data.keys().hasOnly([
           'eventId', 'organizationId', 'title', 'summary', 'imageUrls',
           'participantCount', 'status', 'rightsConfirmed', 'createdAt',
           'updatedAt', 'publishedAt'
         ])
-        && request.resource.data.eventId == eventId
-        && request.resource.data.organizationId == request.auth.uid
-        && validString(request.resource.data.title, 1, 160)
-        && validString(request.resource.data.summary, 1, 2000)
-        && request.resource.data.imageUrls is list
-        && request.resource.data.imageUrls.size() <= 4
-        && validListItem(request.resource.data.imageUrls, 0, 1000)
-        && validListItem(request.resource.data.imageUrls, 1, 1000)
-        && validListItem(request.resource.data.imageUrls, 2, 1000)
-        && validListItem(request.resource.data.imageUrls, 3, 1000)
-        && request.resource.data.participantCount is int
-        && request.resource.data.participantCount >= 0
-        && request.resource.data.status in ['draft', 'published']
-        && request.resource.data.rightsConfirmed == true
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.updatedAt is timestamp
-        && (!request.resource.data.keys().hasAny(['publishedAt'])
-          || request.resource.data.publishedAt is timestamp);
+        && data.eventId == eventId
+        && data.organizationId == request.auth.uid
+        && validString(data.title, 1, 160)
+        && validString(data.summary, 1, 2000)
+        && data.imageUrls is list
+        && data.imageUrls.size() <= 4
+        && validListItem(data.imageUrls, 0, 1000)
+        && validListItem(data.imageUrls, 1, 1000)
+        && validListItem(data.imageUrls, 2, 1000)
+        && validListItem(data.imageUrls, 3, 1000)
+        && data.participantCount is int
+        && data.participantCount >= 0
+        && data.status in ['draft', 'published']
+        && data.rightsConfirmed == true
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!data.keys().hasAny(['publishedAt'])
+          || data.publishedAt is timestamp);
+      }
+
+      allow read: if isAdmin()
+        || (signedIn()
+          && resource != null
+          && resource.data.status == 'published')
+        || (isActiveCreator()
+          && resource != null
+          && resource.data.organizationId == request.auth.uid);
+      allow create, update: if isActiveCreator()
+        && eventNotDeleting(eventId)
+        && get(/databases/$(database)/documents/events/$(eventId)).data.createdBy
+          == request.auth.uid
+        && validEventReport(request.resource.data);
       allow delete: if false;
     }
 

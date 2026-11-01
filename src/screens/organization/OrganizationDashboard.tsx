@@ -198,6 +198,7 @@ export function OrganizationDashboard({
   const selectedEvent = events.find((event) => event.id === selectedEventId);
   const attendanceWindowOpen = Boolean(
     selectedEvent &&
+    selectedEvent.status === "published" &&
     isAttendanceWindowOpen(timestampMillis(selectedEvent.startAt), Date.now()),
   );
   const visibleEvents = useMemo(
@@ -674,6 +675,8 @@ export function OrganizationDashboard({
       setEventReportFiles([]);
       setEventReportRightsConfirmed(false);
       setNotice("活動報告を公開しました。", "success");
+    } catch (error) {
+      setNotice(getFirebaseErrorMessage(error), "error");
     } finally {
       setIsSavingEventReport(false);
     }
@@ -1158,7 +1161,7 @@ export function OrganizationDashboard({
               className="attendance-availability-note"
               id="attendance-availability-note"
             >
-              出席・欠席の確定は、イベント開催3時間前から操作できます。
+              出席・欠席の確定は、公開中のイベントで開催3時間前から操作できます。
             </p>
           )}
           {visibleApplications.length === 0 ? (

@@ -1,0 +1,18 @@
+{
+  "score": 2,
+  "summary": "保存機能のIDと所有者の対応、および学生主催者の活動報告に限った追加監査。別人の保存先パスの先取りと、画面が提供する学生所有イベントの報告保存の拒否をローカルで再現した。既報の問題を含むアプリ全体の安全性の採点ではない。",
+  "findings": [
+    {
+      "check": "Field-Level vs. Identity-Level Security",
+      "severity": "moderate",
+      "issue": "savedEventsの作成ルールはuserIdと認証UIDを照合するが、savedEventIdとUID・eventIdの対応を照合しない。有効な学生が別人の画面用保存パスを自分の所有データとして先取りでき、対象者の保存・読み取り・削除は拒否される。既存の他人の保存データの上書きや読み取りは確認していない。",
+      "recommendation": "作成時にsavedEventIdがrequest.auth.uidとeventIdから作られた正規IDと一致することを確認する。既存のID・所有者不一致データの有無は別途確認し、存在すれば整理する。"
+    },
+    {
+      "check": "Business Logic vs. Rules",
+      "severity": "major",
+      "issue": "学生は自分のイベントを作成でき、企画ダッシュボードに活動報告の公開操作が表示されるが、eventReportsとevent-reports画像の書き込みは団体ロールに限定される。学生自身の開催終了済みイベントでも報告と画像の保存が拒否され、団体自身の同じ操作は許可される。",
+      "recommendation": "学生主催者にも提供するなら所有者確認を維持してFirestoreとStorageを対応させる。団体限定なら学生には入力・公開画面を表示しない。公開処理には利用者へエラーを通知する処理も加える。"
+    }
+  ]
+}

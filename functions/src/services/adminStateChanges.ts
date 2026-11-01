@@ -55,7 +55,7 @@ const assertReviewedVersion = (expected: unknown, actual: unknown) => {
       "確認したイベントの版が必要です。画面を更新してください。",
     );
   }
-  const version = expected as {seconds: number; nanoseconds: number};
+  const version = expected as { seconds: number; nanoseconds: number };
   if (
     !(actual instanceof Timestamp) ||
     actual.seconds !== version.seconds ||
@@ -98,6 +98,12 @@ export const applyAdminStateChange = async ({
       throw new HttpsError("not-found", "対象データが見つかりません。");
     }
     const data = snapshot.data() ?? {};
+    if (data.status === "deleting") {
+      throw new HttpsError(
+        "failed-precondition",
+        "削除処理中です。削除を再試行してください。",
+      );
+    }
     const title = String(
       data.title || data.targetTitle || data.displayName || "対象データ",
     );
@@ -268,7 +274,9 @@ export const applyAdminStateChange = async ({
     if (notification) {
       const prefix = ["approve_user", "reject_user"].includes(action) ?
         "account_review" :
-        action === "request_event_revision" ? "event_review" : "admin";
+        action === "request_event_revision" ?
+          "event_review" :
+          "admin";
       transaction.set(db.doc(`notifications/${prefix}_${operationRef.id}`), {
         ...notification,
         isRead: false,

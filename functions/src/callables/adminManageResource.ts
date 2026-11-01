@@ -1,10 +1,7 @@
 import {FieldPath, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {logger} from "firebase-functions";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
-import {
-  isMissingStorageBucketError,
-  shouldDecrementApplicantCount,
-} from "../applicationLogic";
+import {isMissingStorageBucketError} from "../applicationLogic";
 import {createNotificationOnce} from "../services/notifications";
 import {adminAuth, adminStorage, db} from "../lib/firebaseAdmin";
 import {requiredDocumentId} from "../lib/callableValidation";
@@ -14,7 +11,10 @@ import {
   applyAdminStateChange,
   finishAdminOperation,
 } from "../services/adminStateChanges";
-import {releaseApplicationCapacity} from "../services/applicationCapacity";
+import {
+  releaseDeletedApplicationCapacity,
+} from "../services/applicationCapacity";
+import {runResourceDeletion} from "../services/resourceLifecycle";
 
 const isFunctionsEmulator = process.env.FUNCTIONS_EMULATOR === "true";
 const enforceCallableAppCheck =
@@ -90,7 +90,9 @@ const deleteStoragePrefixes = async (prefixes: string[]) => {
   const bucket = adminStorage.bucket();
   try {
     await Promise.all(
-      uniquePrefixes.map((prefix) => bucket.deleteFiles({prefix, force: true})),
+      uniquePrefixes.map((prefix) =>
+        bucket.deleteFiles({prefix, force: true}),
+      ),
     );
   } catch (error) {
     if (!isMissingStorageBucketError(error)) throw error;
@@ -129,6 +131,8 @@ const anonymizeEventRoomMessages = async (
             attachmentName: FieldValue.delete(),
             attachmentType: FieldValue.delete(),
             attachmentSize: FieldValue.delete(),
+            attachmentPath: FieldValue.delete(),
+            uploadFingerprint: FieldValue.delete(),
           } :
           {}),
         anonymizedAt: FieldValue.serverTimestamp(),
@@ -194,14 +198,12 @@ const notifyEventDeletion = async (
     }
     const applications = await applicationsQuery.get();
     if (applications.empty) break;
-    const batch = db.batch();
-    applications.docs.forEach((application) => {
-      const data = application.data();
-      if (typeof data.studentId === "string") {
-        batch.set(
-          db.doc(
-            `notifications/event_deleted_${operationId}_${application.id}`,
-          ),
+    await Promise.all(
+      applications.docs.map(async (application) => {
+        const data = application.data();
+        if (typeof data.studentId !== "string") return;
+        await createNotificationOnce(
+          `notifications/event_deleted_${operationId}_${application.id}`,
           {
             recipientId: data.studentId,
             type: "event_deleted",
@@ -212,11 +214,9 @@ const notifyEventDeletion = async (
             isRead: false,
             createdAt: FieldValue.serverTimestamp(),
           },
-          {merge: true},
         );
-      }
-    });
-    await batch.commit();
+      }),
+    );
     lastApplicationId = applications.docs[applications.docs.length - 1]?.id;
     hasApplications = applications.size === 100;
   }
@@ -241,43 +241,50 @@ const deleteEventData = async (
   eventId: string,
   resolution: string,
   operationId: string,
-) => {
-  const eventSnapshot = await db.doc(`events/${eventId}`).get();
-  const eventData = eventSnapshot.data();
-  if (eventSnapshot.exists) {
-    await notifyEventDeletion(
-      eventId,
-      String(eventData?.title || "イベント"),
-      String(eventData?.createdBy || ""),
-      resolution,
-      operationId,
-    );
-  }
-  await resolveReportsForTarget("event", eventId, resolution);
-  const storagePrefixes = [
-    typeof eventData?.createdBy === "string" ?
-      `event-images/${eventData.createdBy}/${eventId}/` :
-      "",
-    typeof eventData?.createdBy === "string" ?
-      `event-reports/${eventData.createdBy}/${eventId}/` :
-      "",
-  ];
-  await Promise.all([
-    deleteMatchingDocuments("eventApplications", "eventId", eventId),
-    deleteMatchingDocuments("chatRooms", "eventId", eventId, async (roomId) => {
-      storagePrefixes.push(`chat-attachments/${roomId}/`);
-    }),
-    deleteMatchingDocuments("savedEvents", "eventId", eventId),
-    deleteMatchingDocuments("checkInAttempts", "eventId", eventId),
-    deleteMatchingDocuments("notifications", "targetId", eventId),
-    deleteMatchingDocuments("adminAssignments", "targetId", eventId),
-    db.recursiveDelete(db.doc(`eventCheckIns/${eventId}`)),
-    db.recursiveDelete(db.doc(`eventReports/${eventId}`)),
-    db.recursiveDelete(db.doc(`eventSurveys/${eventId}`)),
-  ]);
-  await deleteStoragePrefixes(storagePrefixes);
-  await db.recursiveDelete(db.doc(`events/${eventId}`));
-};
+) =>
+  runResourceDeletion("event", eventId, operationId, async () => {
+    const eventSnapshot = await db.doc(`events/${eventId}`).get();
+    const eventData = eventSnapshot.data();
+    if (eventSnapshot.exists) {
+      await notifyEventDeletion(
+        eventId,
+        String(eventData?.title || "イベント"),
+        String(eventData?.createdBy || ""),
+        resolution,
+        operationId,
+      );
+    }
+    await resolveReportsForTarget("event", eventId, resolution);
+    const storagePrefixes = [
+      typeof eventData?.createdBy === "string" ?
+        `event-images/${eventData.createdBy}/${eventId}/` :
+        "",
+      typeof eventData?.createdBy === "string" ?
+        `event-reports/${eventData.createdBy}/${eventId}/` :
+        "",
+    ];
+    await Promise.all([
+      deleteMatchingDocuments("eventApplications", "eventId", eventId),
+      deleteMatchingDocuments(
+        "chatRooms",
+        "eventId",
+        eventId,
+        async (roomId) => {
+          storagePrefixes.push(`chat-attachments/${roomId}/`);
+          await deleteMatchingDocuments("chatPreferences", "roomId", roomId);
+        },
+      ),
+      deleteMatchingDocuments("savedEvents", "eventId", eventId),
+      deleteMatchingDocuments("checkInAttempts", "eventId", eventId),
+      deleteMatchingDocuments("notifications", "targetId", eventId),
+      deleteMatchingDocuments("adminAssignments", "targetId", eventId),
+      db.recursiveDelete(db.doc(`eventCheckIns/${eventId}`)),
+      db.recursiveDelete(db.doc(`eventReports/${eventId}`)),
+      db.recursiveDelete(db.doc(`eventSurveys/${eventId}`)),
+    ]);
+    await deleteStoragePrefixes(storagePrefixes);
+    await db.recursiveDelete(db.doc(`events/${eventId}`));
+  });
 
 const anonymizeReportsByReporter = async (userId: string) => {
   let hasReports = true;
@@ -304,135 +311,135 @@ const deleteUserData = async (
   userId: string,
   resolution: string,
   operationId: string,
-) => {
-  let hasOwnedEvents = true;
-  while (hasOwnedEvents) {
-    const ownedEvents = await db
-      .collection("events")
-      .where("createdBy", "==", userId)
-      .limit(100)
-      .get();
-    hasOwnedEvents = !ownedEvents.empty;
-    for (const eventDocument of ownedEvents.docs) {
-      await deleteEventData(
-        eventDocument.id,
-        resolution,
-        `${operationId}_${eventDocument.id}`,
-      );
+) =>
+  runResourceDeletion("user", userId, operationId, async () => {
+    let hasOwnedEvents = true;
+    while (hasOwnedEvents) {
+      const ownedEvents = await db
+        .collection("events")
+        .where("createdBy", "==", userId)
+        .limit(100)
+        .get();
+      hasOwnedEvents = !ownedEvents.empty;
+      for (const eventDocument of ownedEvents.docs) {
+        await deleteEventData(
+          eventDocument.id,
+          resolution,
+          `${operationId}_${eventDocument.id}`,
+        );
+      }
     }
-  }
 
-  let hasApplications = true;
-  while (hasApplications) {
-    const applications = await db
-      .collection("eventApplications")
-      .where("studentId", "==", userId)
-      .limit(100)
-      .get();
-    hasApplications = !applications.empty;
-    for (const application of applications.docs) {
-      await db.runTransaction(async (transaction) => {
-        const current = await transaction.get(application.ref);
-        const data = current.data();
-        if (!current.exists || data?.capacityReleased === true) return;
-        if (
-          typeof data?.eventId === "string" &&
-          shouldDecrementApplicantCount(data.status, "cancelled")
-        ) {
-          await releaseApplicationCapacity(
-            transaction,
-            db.doc(`events/${data.eventId}`),
-          );
+    let hasApplications = true;
+    while (hasApplications) {
+      const applications = await db
+        .collection("eventApplications")
+        .where("studentId", "==", userId)
+        .limit(100)
+        .get();
+      hasApplications = !applications.empty;
+      for (const application of applications.docs) {
+        await db.runTransaction(async (transaction) => {
+          const current = await transaction.get(application.ref);
+          await releaseDeletedApplicationCapacity(transaction, current);
+        });
+        await db.recursiveDelete(application.ref);
+      }
+    }
+
+    const storagePrefixes = [`profile-images/${userId}/`];
+    let hasRooms = true;
+    while (hasRooms) {
+      const rooms = await db
+        .collection("chatRooms")
+        .where("participantIds", "array-contains", userId)
+        .limit(100)
+        .get();
+      hasRooms = !rooms.empty;
+      for (const room of rooms.docs) {
+        storagePrefixes.push(`chat-attachments/${room.id}/${userId}/`);
+        if (room.data().roomType === "event") {
+          await anonymizeEventRoomMessages(room.ref, userId);
+          await room.ref.update({
+            participantIds: FieldValue.arrayRemove(userId),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        } else {
+          await db.recursiveDelete(room.ref);
         }
-        transaction.update(application.ref, {capacityReleased: true});
-      });
-      await db.recursiveDelete(application.ref);
-    }
-  }
-
-  const storagePrefixes = [`profile-images/${userId}/`];
-  let hasRooms = true;
-  while (hasRooms) {
-    const rooms = await db
-      .collection("chatRooms")
-      .where("participantIds", "array-contains", userId)
-      .limit(100)
-      .get();
-    hasRooms = !rooms.empty;
-    for (const room of rooms.docs) {
-      storagePrefixes.push(`chat-attachments/${room.id}/${userId}/`);
-      if (room.data().roomType === "event") {
-        await anonymizeEventRoomMessages(room.ref, userId);
-        await room.ref.update({
-          participantIds: FieldValue.arrayRemove(userId),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      } else {
-        await db.recursiveDelete(room.ref);
       }
     }
-  }
 
-  let hasMemberships = true;
-  while (hasMemberships) {
-    const memberships = await db
-      .collectionGroup("members")
-      .where("userId", "==", userId)
-      .limit(100)
-      .get();
-    hasMemberships = !memberships.empty;
-    for (const membership of memberships.docs) {
-      const roomRef = membership.ref.parent.parent;
-      if (!roomRef) {
-        await membership.ref.delete();
-        continue;
-      }
-      const room = await roomRef.get();
-      storagePrefixes.push(`chat-attachments/${room.id}/${userId}/`);
-      if (room.data()?.roomType === "event") {
-        await anonymizeEventRoomMessages(roomRef, userId);
-        await membership.ref.delete();
-        await roomRef.update({
-          memberCount: FieldValue.increment(-1),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      } else {
-        await db.recursiveDelete(roomRef);
+    let hasMemberships = true;
+    while (hasMemberships) {
+      const memberships = await db
+        .collectionGroup("members")
+        .where("userId", "==", userId)
+        .limit(100)
+        .get();
+      hasMemberships = !memberships.empty;
+      for (const membership of memberships.docs) {
+        const roomRef = membership.ref.parent.parent;
+        if (!roomRef) {
+          await membership.ref.delete();
+          continue;
+        }
+        const room = await roomRef.get();
+        storagePrefixes.push(`chat-attachments/${room.id}/${userId}/`);
+        if (room.data()?.roomType === "event") {
+          await anonymizeEventRoomMessages(roomRef, userId);
+          await db.runTransaction(async (transaction) => {
+            const [member, currentRoom] = await transaction.getAll(
+              membership.ref, roomRef,
+            );
+            if (!member.exists) return;
+            transaction.delete(membership.ref);
+            if (currentRoom.exists) {
+              transaction.update(roomRef, {
+                memberCount: Math.max(
+                  0, Number(currentRoom.data()?.memberCount ?? 1) - 1,
+                ),
+                updatedAt: FieldValue.serverTimestamp(),
+              });
+            }
+          });
+        } else {
+          await db.recursiveDelete(roomRef);
+        }
       }
     }
-  }
 
-  await resolveReportsForTarget("user", userId, resolution);
-  await anonymizeReportsByReporter(userId);
-  await Promise.all([
-    deleteMatchingDocuments("activities", "userId", userId),
-    deleteMatchingDocuments("notifications", "recipientId", userId),
-    deleteMatchingDocuments("savedEvents", "userId", userId),
-    deleteMatchingDocuments("savedSearches", "userId", userId),
-    deleteMatchingDocuments("savedOrganizers", "userId", userId),
-    deleteMatchingDocuments("savedOrganizers", "organizationId", userId),
-    deleteMatchingDocuments("userBlocks", "blockerId", userId),
-    deleteMatchingDocuments("userBlocks", "blockedId", userId),
-    deleteMatchingDocuments("chatPreferences", "userId", userId),
-    deleteMatchingDocuments("checkInAttempts", "userId", userId),
-    deleteMatchingDocuments("adminAssignments", "assigneeId", userId),
-    deleteCollectionGroupDocuments("responses", "userId", userId),
-    db.recursiveDelete(db.doc(`notificationPreferences/${userId}`)),
-    db.recursiveDelete(db.doc(`studentProfiles/${userId}`)),
-    db.recursiveDelete(db.doc(`organizations/${userId}`)),
-    db.recursiveDelete(db.doc(`publicOrganizerProfiles/${userId}`)),
-    db.recursiveDelete(db.doc(`accountDeletionRequests/${userId}`)),
-  ]);
-  await deleteStoragePrefixes(storagePrefixes);
-  try {
-    await adminAuth.deleteUser(userId);
-  } catch (error) {
-    if ((error as {code?: string}).code !== "auth/user-not-found") {
-      throw error;
+    await resolveReportsForTarget("user", userId, resolution);
+    await anonymizeReportsByReporter(userId);
+    await Promise.all([
+      deleteMatchingDocuments("activities", "userId", userId),
+      deleteMatchingDocuments("notifications", "recipientId", userId),
+      deleteMatchingDocuments("savedEvents", "userId", userId),
+      deleteMatchingDocuments("savedSearches", "userId", userId),
+      deleteMatchingDocuments("savedOrganizers", "userId", userId),
+      deleteMatchingDocuments("savedOrganizers", "organizationId", userId),
+      deleteMatchingDocuments("userBlocks", "blockerId", userId),
+      deleteMatchingDocuments("userBlocks", "blockedId", userId),
+      deleteMatchingDocuments("chatPreferences", "userId", userId),
+      deleteMatchingDocuments("checkInAttempts", "userId", userId),
+      deleteMatchingDocuments("adminAssignments", "assigneeId", userId),
+      deleteCollectionGroupDocuments("responses", "userId", userId),
+      db.recursiveDelete(db.doc(`notificationPreferences/${userId}`)),
+      db.recursiveDelete(db.doc(`studentProfiles/${userId}`)),
+      db.recursiveDelete(db.doc(`organizations/${userId}`)),
+      db.recursiveDelete(db.doc(`publicOrganizerProfiles/${userId}`)),
+      db.recursiveDelete(db.doc(`accountDeletionRequests/${userId}`)),
+    ]);
+    await deleteStoragePrefixes(storagePrefixes);
+    try {
+      await adminAuth.deleteUser(userId);
+    } catch (error) {
+      if ((error as { code?: string }).code !== "auth/user-not-found") {
+        throw error;
+      }
     }
-  }
-  await db.recursiveDelete(db.doc(`users/${userId}`));
-};
+    await db.recursiveDelete(db.doc(`users/${userId}`));
+  });
 
 export const adminManageResource = onCall(
   {
