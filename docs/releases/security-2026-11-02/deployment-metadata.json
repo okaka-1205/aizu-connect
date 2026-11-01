@@ -1,0 +1,1796 @@
+{
+  "project": "aizu-connect-prod",
+  "sourceCommit": "65628114a50c9cf7daf6e7f8c7b3608625fa2c2c",
+  "previousProductionSourceCommit": "f7e905b5e2152c1061322d398e0ae2218ed4a0f1",
+  "verifiedAt": "2026-11-01T17:17:27.783Z",
+  "hostingBefore": {
+    "name": "sites/aizu-connect-prod/releases/1793457320119000",
+    "type": "DEPLOY",
+    "time": "2026-10-31T14:35:20.119Z",
+    "version": "sites/aizu-connect-prod/versions/911c3a3276a1a6b7",
+    "status": "FINALIZED"
+  },
+  "hostingAfter": {
+    "name": "sites/aizu-connect-prod/releases/1793553377911000",
+    "type": "DEPLOY",
+    "time": "2026-11-01T17:16:17.911Z",
+    "version": "sites/aizu-connect-prod/versions/87de95f6ddf50416",
+    "status": "FINALIZED"
+  },
+  "firestoreRulesBefore": {
+    "rulesetName": "projects/aizu-connect-prod/rulesets/ecf27402-91fa-43e4-896e-b2de387cb89a",
+    "updateTime": "2026-10-31T14:38:21.685488Z",
+    "sourceHash": "6854bf3691cd0b6d12a9d343ef44bcd8b3a3244dc4f1ade4ec938118d9512539",
+    "matchesLocal": false
+  },
+  "firestoreRulesAfter": {
+    "rulesetName": "projects/aizu-connect-prod/rulesets/b412a1e9-41e3-461c-8f68-97f44358f253",
+    "updateTime": "2026-11-01T17:16:50.156749Z",
+    "sourceHash": "10bd161489707f88cd78e59b67fbd84195d4a5c4a95b71cefe183009e1dcc183",
+    "matchesLocal": true
+  },
+  "storageRulesBefore": {
+    "rulesetName": "projects/aizu-connect-prod/rulesets/f5ac7529-7e06-4933-8f64-52837442b052",
+    "updateTime": "2026-10-20T15:54:03.772699Z",
+    "sourceHash": "680bc80b6d9f76a498f0370e2106424c6407dcf05054786ca7b7187125fbad20",
+    "matchesLocal": false
+  },
+  "storageRulesAfter": {
+    "rulesetName": "projects/aizu-connect-prod/rulesets/fbf3a041-ab67-4602-8fc8-7671e2026c3d",
+    "updateTime": "2026-11-01T17:16:49.119869Z",
+    "sourceHash": "670ebf1feaa3ffbc3d5148cdbf35947e326aef971da70238abd53d0c28e7c063",
+    "matchesLocal": true
+  },
+  "functionsBefore": [
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyChatMessageCreated",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:49.491740803Z",
+      "runtime": "nodejs24",
+      "revision": "notifychatmessagecreated-00014-cix",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyChatMessageCreated/function-source.zip",
+          "generation": "1793457402033764"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/adminManageResource",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:41.410848530Z",
+      "runtime": "nodejs24",
+      "revision": "adminmanageresource-00015-boy",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "adminManageResource/function-source.zip",
+          "generation": "1793457351501928"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/checkInToEvent",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:49.066219028Z",
+      "runtime": "nodejs24",
+      "revision": "checkintoevent-00015-ruh",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "checkInToEvent/function-source.zip",
+          "generation": "1793457401794918"
+        }
+      },
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591",
+        "deployment-tool": "cli-firebase"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyEventPublished",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:48.422816466Z",
+      "runtime": "nodejs24",
+      "revision": "notifyeventpublished-00014-sah",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyEventPublished/function-source.zip",
+          "generation": "1793457401196067"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/sendEventReminders",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:48.317838011Z",
+      "runtime": "nodejs24",
+      "revision": "sendeventreminders-00014-ves",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "sendEventReminders/function-source.zip",
+          "generation": "1793457400863397"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-scheduled": "true",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/purgeExpiredLegalRecords",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:38.368566970Z",
+      "runtime": "nodejs24",
+      "revision": "purgeexpiredlegalrecords-00014-cis",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "purgeExpiredLegalRecords/function-source.zip",
+          "generation": "1793457390828952"
+        }
+      },
+      "labels": {
+        "deployment-scheduled": "true",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591",
+        "deployment-tool": "cli-firebase"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyEventUnavailable",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:48.838755463Z",
+      "runtime": "nodejs24",
+      "revision": "notifyeventunavailable-00014-yen",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyEventUnavailable/function-source.zip",
+          "generation": "1793457401088219"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyApplicationCreated",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:50.691095742Z",
+      "runtime": "nodejs24",
+      "revision": "notifyapplicationcreated-00014-log",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyApplicationCreated/function-source.zip",
+          "generation": "1793457402065922"
+        }
+      },
+      "labels": {
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591",
+        "deployment-tool": "cli-firebase"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyApplicationUpdated",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:49.248059211Z",
+      "runtime": "nodejs24",
+      "revision": "notifyapplicationupdated-00014-hed",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyApplicationUpdated/function-source.zip",
+          "generation": "1793457402054713"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/submitApplication",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:49.154887836Z",
+      "runtime": "nodejs24",
+      "revision": "submitapplication-00014-jal",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "submitApplication/function-source.zip",
+          "generation": "1793457401769646"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/saveEventPlan",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:49.146122759Z",
+      "runtime": "nodejs24",
+      "revision": "saveeventplan-00015-moz",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "saveEventPlan/function-source.zip",
+          "generation": "1793457401861608"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/healthCheck",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:35.302213843Z",
+      "runtime": "nodejs24",
+      "revision": "healthcheck-00007-qoh",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "healthCheck/function-source.zip",
+          "generation": "1793457351469428"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/markAllNotificationsRead",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:44.628112390Z",
+      "runtime": "nodejs24",
+      "revision": "markallnotificationsread-00002-fuh",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "markAllNotificationsRead/function-source.zip",
+          "generation": "1793457351570388"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/manageChatMessage",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:48.500325173Z",
+      "runtime": "nodejs24",
+      "revision": "managechatmessage-00011-mug",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "manageChatMessage/function-source.zip",
+          "generation": "1793457401792113"
+        }
+      },
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591",
+        "deployment-tool": "cli-firebase"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/reportClientError",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:39.328517571Z",
+      "runtime": "nodejs24",
+      "revision": "reportclienterror-00007-log",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "reportClientError/function-source.zip",
+          "generation": "1793457390623848"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/getAdminDashboardMetrics",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:38.199778682Z",
+      "runtime": "nodejs24",
+      "revision": "getadmindashboardmetrics-00007-bov",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "getAdminDashboardMetrics/function-source.zip",
+          "generation": "1793457390858353"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/createEventChatRoom",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T14:36:49.113473966Z",
+      "runtime": "nodejs24",
+      "revision": "createeventchatroom-00014-mey",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "createEventChatRoom/function-source.zip",
+          "generation": "1793457402003899"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "afaa75f96917e4e7d55b7ffcb714bfac41017591"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    }
+  ],
+  "functionsAfter": [
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyChatMessageCreated",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:04.624702970Z",
+      "runtime": "nodejs24",
+      "revision": "notifychatmessagecreated-00015-qek",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyChatMessageCreated/function-source.zip",
+          "generation": "1793553297266116"
+        }
+      },
+      "labels": {
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697",
+        "deployment-tool": "cli-firebase"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/adminManageResource",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:04.309675627Z",
+      "runtime": "nodejs24",
+      "revision": "adminmanageresource-00016-pup",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "adminManageResource/function-source.zip",
+          "generation": "1793553297252422"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/checkInToEvent",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:05.731546879Z",
+      "runtime": "nodejs24",
+      "revision": "checkintoevent-00016-hid",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "checkInToEvent/function-source.zip",
+          "generation": "1793553297236838"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/syncEventPublicProfile",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:17.046784582Z",
+      "runtime": "nodejs24",
+      "revision": "synceventpublicprofile-00001-mog",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "syncEventPublicProfile/function-source.zip",
+          "generation": "1793553254616132"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyEventPublished",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:05.240006836Z",
+      "runtime": "nodejs24",
+      "revision": "notifyeventpublished-00015-teq",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyEventPublished/function-source.zip",
+          "generation": "1793553297500414"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/sendEventReminders",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:07.563838211Z",
+      "runtime": "nodejs24",
+      "revision": "sendeventreminders-00015-jeq",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "sendEventReminders/function-source.zip",
+          "generation": "1793553297418569"
+        }
+      },
+      "labels": {
+        "deployment-scheduled": "true",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697",
+        "deployment-tool": "cli-firebase"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/purgeExpiredLegalRecords",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:05.220767499Z",
+      "runtime": "nodejs24",
+      "revision": "purgeexpiredlegalrecords-00015-ker",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "purgeExpiredLegalRecords/function-source.zip",
+          "generation": "1793553297415240"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-scheduled": "true",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyEventUnavailable",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:05.230727794Z",
+      "runtime": "nodejs24",
+      "revision": "notifyeventunavailable-00015-rol",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyEventUnavailable/function-source.zip",
+          "generation": "1793553297550099"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyApplicationCreated",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:06.349037585Z",
+      "runtime": "nodejs24",
+      "revision": "notifyapplicationcreated-00015-ref",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyApplicationCreated/function-source.zip",
+          "generation": "1793553297187044"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/notifyApplicationUpdated",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:06.345991580Z",
+      "runtime": "nodejs24",
+      "revision": "notifyapplicationupdated-00015-dob",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "notifyApplicationUpdated/function-source.zip",
+          "generation": "1793553297382708"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/submitApplication",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:06.044990659Z",
+      "runtime": "nodejs24",
+      "revision": "submitapplication-00015-sed",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "submitApplication/function-source.zip",
+          "generation": "1793553297018402"
+        }
+      },
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697",
+        "deployment-tool": "cli-firebase"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/saveEventPlan",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:05.151847202Z",
+      "runtime": "nodejs24",
+      "revision": "saveeventplan-00016-zab",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "saveEventPlan/function-source.zip",
+          "generation": "1793553297039905"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/healthCheck",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:01.116082234Z",
+      "runtime": "nodejs24",
+      "revision": "healthcheck-00008-sub",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "healthCheck/function-source.zip",
+          "generation": "1793553255702741"
+        }
+      },
+      "labels": {
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697",
+        "deployment-tool": "cli-firebase"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/sendChatAttachment",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:04.208507720Z",
+      "runtime": "nodejs24",
+      "revision": "sendchatattachment-00001-zel",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "sendChatAttachment/function-source.zip",
+          "generation": "1793553254751227"
+        }
+      },
+      "labels": {
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697",
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/markAllNotificationsRead",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:07.245308986Z",
+      "runtime": "nodejs24",
+      "revision": "markallnotificationsread-00003-yem",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "markAllNotificationsRead/function-source.zip",
+          "generation": "1793553297227139"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/manageChatMessage",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:04.809607784Z",
+      "runtime": "nodejs24",
+      "revision": "managechatmessage-00012-rew",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "manageChatMessage/function-source.zip",
+          "generation": "1793553297131285"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/reportClientError",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:05.447084204Z",
+      "runtime": "nodejs24",
+      "revision": "reportclienterror-00008-rut",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "reportClientError/function-source.zip",
+          "generation": "1793553297389707"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/getAdminDashboardMetrics",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:05.141462109Z",
+      "runtime": "nodejs24",
+      "revision": "getadmindashboardmetrics-00008-duh",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "getAdminDashboardMetrics/function-source.zip",
+          "generation": "1793553297473917"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    },
+    {
+      "name": "projects/aizu-connect-prod/locations/asia-northeast1/functions/createEventChatRoom",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T17:15:05.857034615Z",
+      "runtime": "nodejs24",
+      "revision": "createeventchatroom-00015-hib",
+      "image": "projects/aizu-connect-prod/locations/asia-northeast1/repositories/gcf-artifacts",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-822151908702-asia-northeast1",
+          "object": "createEventChatRoom/function-source.zip",
+          "generation": "1793553297312898"
+        }
+      },
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "firebase-functions-hash": "dcaeec18ebed9f35ee9bfa23d24816cad18d3697"
+      },
+      "envKeys": [
+        "ENFORCE_ADMIN_APP_CHECK",
+        "EVENTARC_CLOUD_EVENT_SOURCE",
+        "FIREBASE_CONFIG",
+        "FUNCTION_REGION",
+        "FUNCTION_SIGNATURE_TYPE",
+        "FUNCTION_TARGET",
+        "GCLOUD_PROJECT",
+        "LOG_EXECUTION_ID"
+      ],
+      "callableAppCheck": true
+    }
+  ],
+  "indexes": [
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/savedOrganizers/indexes/CICAgPjChIAK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgNiav4AK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "createdBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/reports/indexes/CICAgJim14AK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgLjy8IAK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "eventId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "waitlistSequence",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgOjXh4EK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgNiroIEK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "studentId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgJj7z4EK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "eventId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/activities/indexes/CICAgLiT6IEK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgNjpgYIK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "createdBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgPj-pYIK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/notifications/indexes/CICAgLjRyYIK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "recipientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/accountDeletionRequests/indexes/CICAgJjF9oIK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "requestedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgLiIkYMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "organizationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "eventId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgJiUpoMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/savedEvents/indexes/CICAgPig2YMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgNi47oMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "applicantCount",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/users/indexes/CICAgOi3kJAK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgNirtJAK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "eventId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/eventApplications/indexes/CICAgJjmiJEK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "organizationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "eventId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "studentNameLower",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/chatPreferences/indexes/CICAgLiIjZIK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "roomId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/savedSearches/indexes/CICAgPigw5IK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/events/indexes/CICAgLjRnZMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "applicantCount",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "name": "projects/aizu-connect-prod/databases/(default)/collectionGroups/chatPreferences/indexes/CICAgJjFqZMK",
+      "state": "READY",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "dataAuditAfter": {
+    "capturedAt": "2026-11-01T17:16:55.043Z",
+    "readOnly": true,
+    "counts": {
+      "savedEvents": 0,
+      "events": 4,
+      "publicOrganizerProfiles": 1,
+      "eventApplications": 7
+    },
+    "scanned": {
+      "savedEvents": 0,
+      "events": 4,
+      "publicOrganizerProfiles": 1,
+      "eventApplications": 7
+    },
+    "skipped": [],
+    "issues": {
+      "savedEventIdMismatches": 0,
+      "missingPublishedProfiles": 0,
+      "stalePublishedProfileCounts": 0,
+      "applicantCountCandidates": 0
+    }
+  },
+  "publicCountRepair": {
+    "project": "aizu-connect-prod",
+    "mode": "apply",
+    "completedAt": "2026-11-01T17:16:06.695Z",
+    "profilesExamined": 1,
+    "results": [
+      {
+        "before": 4,
+        "after": 3,
+        "changed": true,
+        "applied": true
+      }
+    ]
+  },
+  "runtimePermissions": {
+    "capturedAt": "2026-11-01T17:15:06.150Z",
+    "runtimeAccounts": [
+      {
+        "account": "822151908702-compute@developer.gserviceaccount.com",
+        "project": [
+          {
+            "role": "roles/editor",
+            "conditional": false
+          },
+          {
+            "role": "roles/eventarc.eventReceiver",
+            "conditional": false
+          },
+          {
+            "role": "roles/run.invoker",
+            "conditional": false
+          }
+        ],
+        "bucket": []
+      }
+    ]
+  },
+  "postReleaseChecks": {
+    "verifiedAt": "2026-11-01T17:19:09.753Z",
+    "runtimeStoragePermissions": {
+      "storage.objects.create": true,
+      "storage.objects.get": true,
+      "storage.objects.delete": true,
+      "storage.objects.list": true
+    },
+    "objectReadViaDefaultEditorOwnerAcl": true,
+    "errorLogWindowStart": "2026-11-01T17:14:14.557Z",
+    "errorEntries": [],
+    "moreLogPages": false
+  },
+  "productionVerification": {
+    "verifiedAt": "2026-11-01T17:17:27.783Z",
+    "url": "https://aizu-connect-prod.web.app/",
+    "filesVerified": 45,
+    "cacheControl": "no-cache,no-store,must-revalidate",
+    "functionsHealth": "ok",
+    "authGuards": [
+      {
+        "name": "saveEventPlan",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "submitApplication",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "checkInToEvent",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "manageChatMessage",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "adminManageResource",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "getAdminDashboardMetrics",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "markAllNotificationsRead",
+        "status": 401,
+        "rejected": true
+      },
+      {
+        "name": "sendChatAttachment",
+        "status": 401,
+        "rejected": true
+      }
+    ],
+    "browserChecks": [
+      {
+        "browser": "chromium",
+        "viewport": "desktop",
+        "loginScreen": true,
+        "lazyLegalDocument": true,
+        "escapeClose": true,
+        "uncaughtErrors": 0,
+        "failedAssets": 0
+      },
+      {
+        "browser": "chromium",
+        "viewport": "mobile",
+        "loginScreen": true,
+        "lazyLegalDocument": true,
+        "escapeClose": true,
+        "uncaughtErrors": 0,
+        "failedAssets": 0
+      },
+      {
+        "browser": "chromium",
+        "viewport": "tablet",
+        "loginScreen": true,
+        "lazyLegalDocument": true,
+        "escapeClose": true,
+        "uncaughtErrors": 0,
+        "failedAssets": 0
+      },
+      {
+        "browser": "firefox",
+        "viewport": "desktop",
+        "loginScreen": true,
+        "lazyLegalDocument": true,
+        "escapeClose": true,
+        "uncaughtErrors": 0,
+        "failedAssets": 0
+      },
+      {
+        "browser": "webkit",
+        "viewport": "mobile",
+        "loginScreen": true,
+        "lazyLegalDocument": true,
+        "escapeClose": true,
+        "uncaughtErrors": 0,
+        "failedAssets": 0
+      }
+    ]
+  },
+  "remainingIssues": [
+    {
+      "issue": "Existing runtime service account has project-wide Editor role",
+      "status": "unchanged",
+      "recommendation": "Inventory runtime/build requirements and replace with scoped permissions; Storage object reads currently also depend on default object owner ACLs."
+    }
+  ],
+  "fingerprints": {
+    "source": "b9a5dcdb999f3091fcf3c6a9cddb45943051b258433402c56f177236f8bf7678",
+    "build": "febb05ae34024978bb65b9150ecfc173d6d0daef8ed4b8b51181b1104067de9a",
+    "functions": "091799b0f25c8e50fbab335bdb9c321e971005f923d52b981adbcecfcdc3842f"
+  },
+  "limits": [
+    "No authenticated production file upload or user-changing workflow was executed.",
+    "Application validation relied on the prior emulator release check and the matching source snapshot; current build, delivery, metadata, public UI and unauthenticated guards were checked."
+  ]
+}

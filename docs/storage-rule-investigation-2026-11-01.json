@@ -319,8 +319,9 @@
   "recommendation": "Preserve active-account, membership and writable-room checks and move chat-attachment authorization to the server, or redesign authoritative permission data within two document accesses.",
   "followUp": {
     "localFixImplemented": true,
-    "productionDeployed": false,
+    "productionDeployed": true,
     "report": "docs/chat-attachment-fixes-2026-11-01.md",
-    "originalRecordScope": "Investigation before local attachment fix"
+    "originalRecordScope": "Investigation before local attachment fix",
+    "deploymentReport": "docs/deployment-security-2026-11-02.md"
   }
 }

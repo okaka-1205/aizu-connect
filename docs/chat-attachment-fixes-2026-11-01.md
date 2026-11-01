@@ -44,7 +44,7 @@
 
 ## 本番反映時
 
-本修正はローカルのみで、本番未反映。Functions、Hosting、Firestore Rules、Storage Rulesを合わせて反映する。新しい`sendChatAttachment`と既存の清掃関数の更新が必要。試行記録の期限検索は単一フィールドで、新しい複合インデックスは不要。
+本修正は2026年11月2日に本番反映済み。[反映記録](./deployment-security-2026-11-02.md)を参照。Functions、Hosting、Firestore Rules、Storage Rulesを合わせて反映する。新しい`sendChatAttachment`と既存の清掃関数の更新が必要。試行記録の期限検索は単一フィールドで、新しい複合インデックスは不要。
 
 移行時はFunctionsを先に反映し、新しいフロントを公開してから直接添付経路を閉じる。古い画面を開いたままの利用者は再読み込みが必要になる。旧フロントだけに戻しても添付送信は復旧しないため、ロールバックは関係するルールとセットで判断する。既存の7件の未反映修正もあるため、[修正記録](./code-review-fixes-2026-11-01.md)と合わせて扱う。
 
