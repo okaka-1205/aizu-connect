@@ -1,12 +1,5 @@
 import type { User } from "firebase/auth";
-import {
-  CheckCircle2,
-  Flag,
-  Loader2,
-  LogOut,
-  RefreshCw,
-  ShieldCheck,
-} from "lucide-react";
+import { Flag, Loader2, LogOut } from "lucide-react";
 import { useState } from "react";
 import { BrandMark, NoticeBanner } from "../../components/ui/AppPrimitives";
 import { useNoticeState } from "../../hooks/useNoticeState";
@@ -33,10 +26,7 @@ export function VerifyEmailScreen({
     setNotice("");
     try {
       await resendVerificationEmail(firebaseUser);
-      setNotice(
-        "確認メールを再送しました。メール内のリンクを開いてください。",
-        "success",
-      );
+      setNotice("確認メールを再送しました。", "success");
     } catch (error) {
       setNotice(getFirebaseErrorMessage(error), "error");
     } finally {
@@ -50,12 +40,11 @@ export function VerifyEmailScreen({
     try {
       await onVerified();
       const isVerified = Boolean(auth.currentUser?.emailVerified);
-      setNotice(
-        isVerified
-          ? "メール認証が完了しました。"
-          : "まだ認証を確認できません。メールのリンクを開いてから再確認してください。",
-        isVerified ? "success" : "info",
-      );
+      if (!isVerified)
+        setNotice(
+          "まだ認証を確認できません。メールのリンクを開いてから再確認してください。",
+          "info",
+        );
     } catch (error) {
       setNotice(getFirebaseErrorMessage(error), "error");
     } finally {
@@ -100,10 +89,8 @@ export function VerifyEmailScreen({
 }
 
 export function AdminApprovalPendingScreen({
-  appUser,
   onLogout,
 }: {
-  appUser: AppUser;
   onLogout: () => void;
 }) {
   return (
@@ -111,45 +98,7 @@ export function AdminApprovalPendingScreen({
       <div className="pending-card approval-pending-card">
         <BrandMark />
         <h1>運営が登録内容を確認しています</h1>
-        <p>
-          {appUser.displayName}
-          さんのメール認証は完了しています。利用開始に必要なのは管理者の承認のみです。
-          {appUser.role === "organization"
-            ? "確認が完了したら、活動を掲載できます。"
-            : "確認が完了したら、イベントへの参加を始められます。"}
-        </p>
-        <ol
-          className="approval-progress"
-          aria-label="アカウント利用開始までの状況"
-        >
-          <li className="is-complete">
-            <CheckCircle2 size={19} />
-            <span>
-              <strong>アカウント登録</strong>
-              <small>完了</small>
-            </span>
-          </li>
-          <li className="is-complete">
-            <CheckCircle2 size={19} />
-            <span>
-              <strong>メール認証</strong>
-              <small>完了</small>
-            </span>
-          </li>
-          <li className="is-current">
-            <ShieldCheck size={19} />
-            <span>
-              <strong>管理者確認</strong>
-              <small>確認中</small>
-            </span>
-          </li>
-        </ol>
-        <div className="pending-help">
-          <RefreshCw size={17} />
-          <span>
-            承認されると自動的に利用画面へ切り替わります。再読み込みや再ログインは必要ありません。
-          </span>
-        </div>
+        <p>承認後、自動的に画面が切り替わります。</p>
         <button className="secondary-action" type="button" onClick={onLogout}>
           <LogOut size={17} /> ログアウト
         </button>

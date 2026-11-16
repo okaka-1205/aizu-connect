@@ -1,0 +1,569 @@
+/* Surface and type hierarchy for the student and organization experience.
+   Keep the existing palette, responsive geometry, and interaction states. */
+:where(.app-shell, .organization-shell, .auth-shell) {
+  --panel-radius: 6px;
+
+  .primary-action,
+  .secondary-action,
+  .profile-edit-button,
+  .search-filter-toggle,
+  .chat-action-button,
+  .event-report-field textarea,
+  .field input,
+  .field select,
+  .field textarea,
+  .role-form input,
+  .role-form select,
+  .role-form textarea,
+  .search-field,
+  .search-launch,
+  .conversation-search,
+  .chat-composer {
+    border-radius: 5px;
+  }
+
+  .primary-action,
+  .secondary-action,
+  .text-button,
+  .profile-edit-button,
+  .field > span,
+  .field > label,
+  .role-form label,
+  .category-pill,
+  .filter-chip,
+  .tab-button,
+  .section-heading > button {
+    font-weight: 600;
+  }
+
+  .primary-action,
+  .secondary-action,
+  .event-card,
+  .featured-event,
+  .management-nav button {
+    box-shadow: none;
+    transform: none;
+  }
+
+  .primary-action:hover,
+  .secondary-action:hover,
+  .event-card:hover,
+  .featured-event:hover,
+  .management-nav button:hover {
+    box-shadow: none;
+    transform: none;
+  }
+
+  .page-title h1,
+  .organization-home-card h1,
+  .organization-page-heading h1 {
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  .section-heading h2,
+  .role-card-head h2,
+  .activity-card-head h2 {
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  .eyebrow,
+  .result-count,
+  .search-options summary,
+  .search-control-grid label > span {
+    font-weight: 500;
+  }
+
+  .category-pill,
+  .filter-chip {
+    border-radius: 4px;
+  }
+
+  .category-pill:not(.active),
+  .filter-chip:not(.active) {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .category-pill:not(.active):hover,
+  .filter-chip:not(.active):hover {
+    background: var(--brand-soft);
+    color: var(--brand-strong);
+  }
+
+  .event-card,
+  .featured-event,
+  .role-card,
+  .activity-card,
+  .chat-panel,
+  .conversation-list,
+  .search-filter-panel,
+  .search-options {
+    border-radius: var(--panel-radius);
+    box-shadow: none;
+  }
+
+  .event-card-body h3,
+  .application-copy strong,
+  .saved-event-item strong,
+  .conversation-item strong,
+  .chat-panel-title strong,
+  .managed-event-row strong {
+    font-weight: 600;
+  }
+
+  .event-card .organizer,
+  .event-category,
+  .event-card .capacity-label,
+  .event-card .applied-label,
+  .event-card .event-meta,
+  .application-copy span,
+  .application-copy small {
+    font-weight: 500;
+  }
+
+  .event-image-wrap,
+  .saved-event-item img {
+    border-radius: 4px;
+  }
+
+  .tag-row {
+    gap: 0;
+  }
+
+  .tag-row > span {
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+    font-weight: 400;
+    line-height: 1.8;
+  }
+
+  .tag-row > span + span::before {
+    content: "·";
+    margin-inline: 7px;
+  }
+
+  .featured-label {
+    border-radius: 2px;
+    padding: 4px 7px;
+    font-weight: 500;
+  }
+
+  .featured-content h3 {
+    max-width: 650px;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+
+  .featured-content p,
+  .featured-detail-link {
+    font-weight: 500;
+  }
+
+  .featured-detail-link {
+    border-radius: 4px;
+  }
+
+  .upcoming-banner {
+    border-width: 0 0 0 3px;
+    border-color: var(--brand);
+    border-radius: 0;
+  }
+
+  .upcoming-banner-icon,
+  .settings-icon {
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .upcoming-banner strong {
+    font-weight: 600;
+  }
+
+  .profile-overview {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .profile-overview .profile-hero {
+    padding: 0 0 var(--space-5);
+  }
+
+  .profile-copy h1 {
+    font-size: 26px;
+    font-weight: 600;
+  }
+
+  .profile-copy > p:not(.eyebrow),
+  .profile-intentions strong,
+  .profile-intentions span {
+    font-weight: 400;
+  }
+
+  .profile-copy .interest-list > span {
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+    font-weight: 500;
+  }
+
+  .profile-overview .profile-stats {
+    border-block: 1px solid var(--line);
+  }
+
+  .profile-stats strong {
+    font-size: 24px;
+    font-weight: 500;
+  }
+
+  .profile-stats small {
+    font-weight: 400;
+  }
+
+  .profile-activity-section,
+  .settings-list {
+    border-inline: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .profile-activity-section > summary,
+  .settings-list strong,
+  .saved-events-toggle {
+    font-weight: 500;
+  }
+
+  .profile-activity-section > summary,
+  .settings-list > .settings-row {
+    padding-inline: 0;
+  }
+
+  .settings-list > .notification-settings-panel {
+    padding-left: calc(32px + var(--space-3));
+  }
+
+  .account-deletion-panel {
+    border-width: 1px 0 0;
+    border-radius: 0;
+    padding-inline: 0;
+    background: transparent;
+  }
+
+  .application-list {
+    gap: 0;
+  }
+
+  .application-list .application-item {
+    border-inline: 0;
+    border-bottom: 0;
+    border-radius: 0;
+    padding-block: var(--space-4);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .application-list .application-item:last-child {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .date-block {
+    border-radius: 3px;
+  }
+
+  .date-block strong,
+  .activity-total strong,
+  .status-chip {
+    font-weight: 600;
+  }
+
+  .activity-view-tabs,
+  .conversation-filters {
+    gap: 0;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+  }
+
+  .activity-view-tabs button,
+  .conversation-filters button {
+    border: 0;
+    border-radius: 0;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+  }
+
+  .activity-view-tabs button.active,
+  .conversation-filters button.active {
+    border-bottom-color: var(--brand);
+    background: transparent;
+    color: var(--brand-strong);
+    box-shadow: none;
+  }
+
+  .bottom-nav {
+    box-shadow: none;
+  }
+
+  .tab-button {
+    border-radius: 4px;
+  }
+
+  .organization-home-card {
+    gap: var(--space-5);
+    margin-bottom: var(--space-6);
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+  }
+
+  .organization-home-card h1 {
+    margin: 0;
+  }
+
+  .organization-home-summary,
+  .applicant-metrics {
+    border-inline: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .organization-home-summary strong,
+  .applicant-metrics strong {
+    font-weight: 500;
+  }
+
+  .organization-home-summary small,
+  .applicant-metrics small {
+    font-weight: 500;
+  }
+
+  .management-nav {
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--panel-radius);
+    background: var(--surface);
+    box-shadow: none;
+  }
+
+  .management-nav button,
+  .management-nav button:last-child {
+    gap: var(--space-3);
+    min-height: 76px;
+    border: 0;
+    border-radius: 0;
+    padding: var(--space-4);
+    background: transparent;
+  }
+
+  .management-nav button + button {
+    border-left: 1px solid var(--line);
+  }
+
+  .management-nav button strong {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .management-nav button small {
+    font-weight: 400;
+  }
+
+  .empty-role-state {
+    flex-direction: row;
+    gap: var(--space-2);
+    min-height: 96px;
+    border: 0;
+    border-radius: 0;
+    padding: var(--space-5) 0;
+    background: transparent;
+  }
+
+  .event-survey-results {
+    border-inline: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .event-survey-results > summary {
+    padding-inline: 0;
+    font-weight: 500;
+  }
+
+  .management-nav .management-nav-chevron {
+    width: 16px;
+    height: 16px;
+    margin-left: auto;
+  }
+
+  .auth-form-card h2 {
+    font-size: 28px;
+    font-weight: 600;
+  }
+
+  .auth-visual h1 {
+    font-weight: 600;
+    line-height: 1.45;
+  }
+
+  .auth-switch button,
+  .account-type-switch button {
+    font-weight: 500;
+  }
+
+  .account-type-switch,
+  .account-type-switch button,
+  .auth-legal-consent {
+    border-radius: 4px;
+  }
+
+  @media (min-width: 960px) {
+    .home-page .event-card-main {
+      display: grid;
+      grid-template-columns: 128px minmax(0, 1fr);
+      align-items: start;
+      gap: var(--space-4);
+      padding: var(--space-4);
+    }
+
+    .home-page .event-image-wrap {
+      height: 160px;
+    }
+
+    .home-page .event-card-body {
+      padding: 0;
+    }
+
+    .home-page .event-card-body h3 {
+      min-height: 0;
+      font-size: 17px;
+      line-height: 1.5;
+    }
+
+    .home-page .event-card-body > p {
+      min-height: 0;
+      margin-block: var(--space-2);
+      font-size: 13px;
+    }
+
+    .home-page .event-meta {
+      gap: var(--space-1);
+      margin-top: var(--space-2);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .home-page .event-card-foot {
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      padding-right: 44px;
+    }
+
+    .home-page .event-card > .save-button {
+      top: auto;
+      bottom: var(--space-3);
+    }
+  }
+
+  @media (max-width: 720px) {
+    .page-title h1,
+    .organization-home-card h1,
+    .organization-page-heading h1 {
+      font-size: 24px;
+    }
+
+    .event-grid,
+    .event-grid.search-grid {
+      border-inline: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .event-card-main {
+      padding-inline: 0;
+    }
+
+    .event-card > .save-button {
+      right: 0;
+    }
+
+    .featured-content h3 {
+      font-size: 22px;
+    }
+
+    .profile-activity-content {
+      padding-inline: 0;
+    }
+
+    .management-nav {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .management-nav button,
+    .management-nav button:last-child {
+      grid-column: 1;
+      flex-direction: row;
+      min-height: 60px;
+      border-left: 0;
+    }
+
+    .management-nav button:nth-child(n + 2) {
+      border-top: 1px solid var(--line);
+    }
+
+    .management-nav button > span {
+      flex: 1;
+    }
+
+    .bottom-nav {
+      border-radius: 0;
+    }
+  }
+}
+
+/* The student detail drawer is rendered outside the app shell. */
+.student-event-detail {
+  border-radius: 8px;
+
+  h2,
+  .detail-section h3,
+  .organizer-card strong {
+    font-weight: 600;
+  }
+
+  .detail-facts,
+  .event-guidance-list,
+  .organizer-card,
+  .detail-secondary-actions > *,
+  .primary-action {
+    border-radius: 5px;
+    box-shadow: none;
+  }
+
+  .detail-facts {
+    border-inline: 0;
+    border-radius: 0;
+    padding-inline: 0;
+    background: transparent;
+  }
+
+  .detail-secondary-actions > *,
+  .primary-action {
+    font-weight: 600;
+  }
+
+  @media (max-width: 720px) {
+    border-radius: 0;
+  }
+}

@@ -64,8 +64,6 @@ export const ConversationList = memo(function ConversationList({
           timestampMillis(left.lastMessageAt),
       );
   }, [rooms, roomSearch, unreadOnly, unreadCounts]);
-  const getRoomSubtitle = (room: ChatRoom) =>
-    room.eventTitle + " · 全体チャット";
   return (
     <div className="conversation-list">
       <div className="conversation-tools">
@@ -73,7 +71,7 @@ export const ConversationList = memo(function ConversationList({
           <Search size={14} />
           <input
             aria-label="チャットを検索"
-            placeholder="イベント名で検索"
+            placeholder="イベント名・主催者名で検索"
             value={roomSearch}
             onChange={(event) => onRoomSearchChange(event.target.value)}
           />
@@ -100,7 +98,21 @@ export const ConversationList = memo(function ConversationList({
       {visibleRooms.length === 0 ? (
         <div className="conversation-no-results">
           <Search size={18} />
-          条件に合うチャットはありません
+          <span>
+            {unreadOnly && !roomSearch.trim()
+              ? "未読のチャットはありません"
+              : "条件に合うチャットはありません"}
+          </span>
+          <button
+            className="secondary-action"
+            type="button"
+            onClick={() => {
+              onRoomSearchChange("");
+              onUnreadOnlyChange(false);
+            }}
+          >
+            すべてのチャットを表示
+          </button>
         </div>
       ) : (
         visibleRooms.map((room) => (
@@ -115,8 +127,8 @@ export const ConversationList = memo(function ConversationList({
               <UsersRound size={19} />
             </div>
             <div>
-              <strong>{getRoomAudience(room)}</strong>
-              <span>{getRoomSubtitle(room)}</span>
+              <strong>{room.eventTitle}</strong>
+              <span>{getRoomAudience(room)}</span>
               <small>{room.lastMessageText}</small>
               <time>{formatChatTime(room.lastMessageAt)}</time>
             </div>

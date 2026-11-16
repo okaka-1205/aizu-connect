@@ -27,39 +27,14 @@ function LoadingBrand() {
 
 function InitialAppShell() {
   return (
-    <main className="auth-shell initial-app-shell" aria-busy="true">
-      <div className="auth-visual">
-        <LoadingBrand />
-        <div>
-          <h1>
-            会津のイベント
-            <br />
-            <em>を探す。</em>
-          </h1>
-          <p>
-            学生・地域・団体が主催するイベントを、
-            <br />
-            探して、申し込んで、参加できます。
-          </p>
-        </div>
-        <div className="auth-visual-note">参加した活動は記録として残ります</div>
-      </div>
-      <div className="auth-form-wrap">
-        <div className="auth-form-card">
-          <div className="auth-mobile-brand">
-            <LoadingBrand />
-          </div>
-          <h2>アカウントを作成</h2>
-          <p className="auth-lede" role="status">
-            利用に必要な情報を準備しています。
-          </p>
-          <div className="initial-loading-lines" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
-        </div>
-      </div>
+    <main
+      className="loading-screen initial-app-shell"
+      role="status"
+      aria-label="読み込み中"
+      aria-busy="true"
+    >
+      <LoadingBrand />
+      <span className="initial-spinner" aria-hidden="true" />
     </main>
   );
 }

@@ -5,7 +5,6 @@ import {
   EyeOff,
   Loader2,
   ShieldCheck,
-  UsersRound,
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Field } from "../../components/Field";
@@ -199,14 +198,6 @@ export function AuthScreen(props: {
             <br />
             <em>を探す。</em>
           </h1>
-          <p>
-            学生・地域・団体が主催するイベントを、
-            <br />
-            探して、申し込んで、参加できます。
-          </p>
-        </div>
-        <div className="auth-visual-note">
-          <UsersRound size={17} /> 参加した活動は記録として残ります
         </div>
       </div>
       <div className="auth-form-wrap">
@@ -218,11 +209,6 @@ export function AuthScreen(props: {
           <h2>
             {props.authMode === "register" ? "アカウントを作成" : "ログイン"}
           </h2>
-          <p className="auth-lede">
-            {props.authMode === "register"
-              ? "利用に必要な情報を入力してください。"
-              : "メールアドレスとパスワードを入力してください。"}
-          </p>
           <div className="auth-switch" role="group" aria-label="認証方法">
             <button
               className={props.authMode === "register" ? "active" : ""}
@@ -444,7 +430,6 @@ export function AuthScreen(props: {
                   </span>
                 </label>
                 <p>
-                  内容を読む：
                   <button
                     type="button"
                     onClick={() => setLegalDocument("terms")}
@@ -481,7 +466,6 @@ export function AuthScreen(props: {
               className="password-reset-panel"
               onSubmit={(event) => void submitPasswordReset(event)}
             >
-              <p className="eyebrow">ログインできない場合</p>
               <h3>パスワードを再設定</h3>
               <p>登録済みのメールアドレスへ再設定リンクを送ります。</p>
               <input
@@ -506,19 +490,21 @@ export function AuthScreen(props: {
           {props.message && (
             <NoticeBanner message={props.message} tone={props.messageTone} />
           )}
-          <p className="form-footnote">
-            個人はメール認証後に利用できます。団体・自治体は管理者が登録内容を確認します。
-          </p>
+          {props.authMode === "register" &&
+            props.accountType === "organization" && (
+              <p className="form-footnote">
+                団体は登録内容の確認後に利用できます。
+              </p>
+            )}
           {props.authMode === "login" && (
             <p className="legal-links">
               <button type="button" onClick={() => setLegalDocument("terms")}>
                 利用規約
               </button>
-              と
+              <span aria-hidden="true"> / </span>
               <button type="button" onClick={() => setLegalDocument("privacy")}>
                 プライバシーポリシー
               </button>
-              を確認できます。
             </p>
           )}
         </div>

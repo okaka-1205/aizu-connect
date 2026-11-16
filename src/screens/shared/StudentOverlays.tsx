@@ -3,6 +3,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Field } from "../../components/Field";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
+import { getFirebaseErrorMessage } from "../../lib/appLogic";
 import { EmptyRoleState } from "../shared/RoleScreenPrimitives";
 import type { NotificationItem, ReportTarget } from "../../types/domain";
 import {
@@ -23,21 +24,67 @@ export function NotificationPanel({
   unreadTotal?: number;
   hasMore?: boolean;
   onLoadMore?: () => void;
-  onClose: () => void;
+  onClose: (restoreFocus?: boolean) => void;
   onRead: (notification: NotificationItem) => Promise<void>;
   onReadAll: () => Promise<void>;
 }) {
   const panelRef = useRef<HTMLElement>(null);
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [isReadingAll, setIsReadingAll] = useState(false);
+  const [readingId, setReadingId] = useState<string | null>(null);
+  const [readError, setReadError] = useState("");
 
   useEffect(() => {
     panelRef.current?.focus();
   }, []);
+  useEffect(() => {
+    const dismissOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        !(target instanceof Element) ||
+        panelRef.current?.contains(target) ||
+        target.closest('[aria-controls="notification-panel"]')
+      )
+        return;
+      onClose(false);
+    };
+    document.addEventListener("pointerdown", dismissOutside, true);
+    return () =>
+      document.removeEventListener("pointerdown", dismissOutside, true);
+  }, [onClose]);
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const loadedUnreadCount = notifications.filter(
     (notification) => !notification.isRead,
   ).length;
   const unreadCount = unreadTotal ?? loadedUnreadCount;
+  const visibleNotifications = unreadOnly
+    ? notifications.filter((notification) => !notification.isRead)
+    : notifications;
+  const readAll = async () => {
+    if (isReadingAll) return;
+    setIsReadingAll(true);
+    setReadError("");
+    try {
+      await onReadAll();
+    } catch (error) {
+      setReadError(getFirebaseErrorMessage(error));
+    } finally {
+      setIsReadingAll(false);
+    }
+  };
+  const read = async (notification: NotificationItem) => {
+    if (readingId) return;
+    setReadingId(notification.id);
+    setReadError("");
+    try {
+      await onRead(notification);
+    } catch (error) {
+      setReadError(getFirebaseErrorMessage(error));
+    } finally {
+      setReadingId(null);
+    }
+  };
 
   return (
     <aside
@@ -56,17 +103,17 @@ export function NotificationPanel({
       <div className="notification-panel-head">
         <div>
           <h2>通知</h2>
-          <small>
-            {unreadCount > 0 ? `未読${unreadCount}件` : "すべて確認済み"}
-          </small>
+          {unreadCount > 0 && <small>未読{unreadCount}件</small>}
         </div>
         {unreadCount > 0 && (
           <button
             className="notification-read-all"
             type="button"
-            onClick={() => void onReadAll()}
+            disabled={isReadingAll || Boolean(readingId)}
+            aria-busy={isReadingAll}
+            onClick={() => void readAll()}
           >
-            すべて既読
+            {isReadingAll ? "更新中…" : "すべて既読"}
           </button>
         )}
         <button
@@ -74,19 +121,38 @@ export function NotificationPanel({
           title="通知パネルを閉じる"
           aria-label="通知パネルを閉じる"
           type="button"
-          onClick={onClose}
+          onClick={() => onClose()}
         >
           <X size={17} />
         </button>
       </div>
-      {notifications.length === 0 ? (
-        <EmptyRoleState text="新しい通知はありません。" />
+      <div className="notification-filter-row">
+        <button
+          className={unreadOnly ? "active" : ""}
+          type="button"
+          aria-pressed={unreadOnly}
+          onClick={() => setUnreadOnly((current) => !current)}
+        >
+          未読のみ
+        </button>
+      </div>
+      {readError && (
+        <p className="inline-error" role="alert">
+          {readError}
+        </p>
+      )}
+      {visibleNotifications.length === 0 ? (
+        <EmptyRoleState
+          text={
+            unreadOnly ? "未読の通知はありません。" : "新しい通知はありません。"
+          }
+        />
       ) : (
         <div className="notification-list">
-          {notifications.map((notification, index) => {
+          {visibleNotifications.map((notification, index) => {
             const millis = timestampMillis(notification.createdAt);
             const group = millis >= todayStart.getTime() ? "今日" : "過去";
-            const previous = notifications[index - 1];
+            const previous = visibleNotifications[index - 1];
             const previousGroup = previous
               ? timestampMillis(previous.createdAt) >= todayStart.getTime()
                 ? "今日"
@@ -100,10 +166,16 @@ export function NotificationPanel({
                 <button
                   className={`notification-item ${notification.isRead ? "" : "unread"}`}
                   type="button"
-                  onClick={() => void onRead(notification)}
+                  disabled={Boolean(readingId) || isReadingAll}
+                  aria-busy={readingId === notification.id}
+                  onClick={() => void read(notification)}
                 >
                   <span className="notification-icon">
-                    <Bell size={15} />
+                    {readingId === notification.id ? (
+                      <Loader2 size={16} className="spin" />
+                    ) : (
+                      <Bell size={15} />
+                    )}
                   </span>
                   <span>
                     <strong>{notification.title}</strong>
@@ -118,12 +190,16 @@ export function NotificationPanel({
               </Fragment>
             );
           })}
-          {hasMore && onLoadMore && (
-            <button type="button" onClick={onLoadMore}>
-              過去の通知をさらに30件読み込む
-            </button>
-          )}
         </div>
+      )}
+      {hasMore && onLoadMore && (
+        <button
+          className="notification-load-more secondary-action"
+          type="button"
+          onClick={onLoadMore}
+        >
+          過去の通知をさらに30件読み込む
+        </button>
       )}
     </aside>
   );

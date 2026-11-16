@@ -359,7 +359,7 @@ describe("firebase error messages", () => {
           code: "functions/permission-denied",
         }),
       ),
-    ).toBe("メール認証は完了しています。現在は管理者の承認待ちです。");
+    ).toBe("現在は管理者の承認待ちです。");
   });
 
   it("keeps email verification errors distinct from event state errors", () => {

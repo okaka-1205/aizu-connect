@@ -123,6 +123,15 @@ test.describe("accessibility", () => {
     await page.keyboard.press("Enter");
     await expect(page.getByText("通知設定")).toBeVisible();
     await expectNoSeriousAccessibilityViolations(page);
+    await page.getByRole("button", { name: "編集", exact: true }).click();
+    const editor = page.getByRole("dialog", { name: "プロフィール編集" });
+    await expect(editor).toBeVisible();
+    await expectNoSeriousAccessibilityViolations(page);
+    await editor.getByRole("textbox", { name: "やってみたいこと（任意）" }).focus();
+    await pressForwardTab(page, testInfo.project.name);
+    await expect(editor.getByRole("button", { name: "キャンセル" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(editor).toHaveCount(0);
   });
 
   test("student application questions keep focus and work from the keyboard", async ({
@@ -249,6 +258,8 @@ test.describe("accessibility", () => {
       checkInItem.getByRole("button", { name: "受付する" }),
     ).toBeFocused();
 
+    await page.getByRole("navigation", { name: "参加履歴の表示切り替え" })
+      .getByRole("button", { name: "参加履歴", exact: true }).click();
     const surveyItem = page
       .locator(".application-item")
       .filter({ hasText: surveyTitle });
@@ -293,7 +304,10 @@ test.describe("accessibility", () => {
     await expect(ownMessage).toContainText(
       "E2E 学生からの編集・削除確認用メッセージ",
     );
-    const editButton = ownMessage.getByRole("button", {
+    const ownActions = ownMessage.getByRole("button", { name: "自分のメッセージ操作" });
+    await ownActions.focus();
+    await page.keyboard.press("ArrowDown");
+    const editButton = page.getByRole("menuitem", {
       name: "メッセージを編集",
     });
     await editButton.focus();
@@ -303,9 +317,10 @@ test.describe("accessibility", () => {
     ).toBeFocused();
     await expectNoSeriousAccessibilityViolations(page);
     await page.keyboard.press("Escape");
-    await expect(editButton).toBeFocused();
+    await expect(ownActions).toBeFocused();
 
-    const deleteButton = ownMessage.getByRole("button", {
+    await page.keyboard.press("ArrowUp");
+    const deleteButton = page.getByRole("menuitem", {
       name: "メッセージを削除",
     });
     await deleteButton.focus();
@@ -319,11 +334,14 @@ test.describe("accessibility", () => {
     ).toBeFocused();
     await expectNoSeriousAccessibilityViolations(page);
     await page.keyboard.press("Escape");
-    await expect(deleteButton).toBeFocused();
+    await expect(ownActions).toBeFocused();
 
     const otherMessage = page.locator('[data-message-id="seed-message"]');
     await expect(otherMessage).toContainText("E2E 初期メッセージ");
-    const reportButton = otherMessage.getByRole("button", {
+    const otherActions = otherMessage.getByRole("button", { name: /さんのメッセージ操作/ });
+    await otherActions.focus();
+    await page.keyboard.press("Enter");
+    const reportButton = page.getByRole("menuitem", {
       name: /さんのメッセージを通報/,
     });
     await reportButton.focus();
@@ -333,7 +351,7 @@ test.describe("accessibility", () => {
     await expect(reportDialog.getByTitle("閉じる")).toBeFocused();
     await expectNoSeriousAccessibilityViolations(page);
     await page.keyboard.press("Escape");
-    await expect(reportButton).toBeFocused();
+    await expect(otherActions).toBeFocused();
 
     const [composerHeight, composerInputHeight] = await Promise.all([
       page
@@ -366,6 +384,7 @@ test.describe("accessibility", () => {
     const eventTitle = `E2E 参加者管理 ${variant}`;
     await login(page, `org-e2e-${suffix}@example.com`);
     await page.getByRole("button", { name: /^イベント/ }).click();
+    await page.getByRole("textbox", { name: "企画したイベントを検索" }).fill(eventTitle);
 
     const managedEvent = page
       .locator(".managed-event-row")
@@ -405,7 +424,7 @@ test.describe("accessibility", () => {
     await page.getByRole("button", { name: /団体ホーム/ }).click();
     await page.getByRole("button", { name: /^全体チャット/ }).click();
     await expect(
-      page.getByPlaceholder("全体チャットにメッセージを送る"),
+      page.getByRole("textbox", { name: "全体チャットにメッセージを送る" }),
     ).toBeVisible();
     await expectNoSeriousAccessibilityViolations(page);
   });

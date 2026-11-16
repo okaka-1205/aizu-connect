@@ -24,6 +24,12 @@ export function EventCard({
 }) {
   return (
     <article className={`event-card ${selected ? "selected" : ""}`}>
+      <button
+        className="event-card-open"
+        type="button"
+        aria-label={`${event.title}の詳細を見る`}
+        onClick={onOpen}
+      />
       <div className="event-card-main">
         <div className="event-image-wrap">
           <div className="event-image-button">
@@ -34,16 +40,6 @@ export function EventCard({
             />
             <span className="event-category">{event.category}</span>
           </div>
-          <button
-            className={`save-button ${saved ? "saved" : ""}`}
-            title={saved ? "保存を解除" : "保存"}
-            aria-label={`${event.title}を${saved ? "保存から削除" : "保存"}`}
-            aria-pressed={saved}
-            type="button"
-            onClick={onSave}
-          >
-            <Heart size={17} fill={saved ? "currentColor" : "none"} />
-          </button>
         </div>
         <div className="event-card-body">
           <h3>{event.title}</h3>
@@ -89,16 +85,21 @@ export function EventCard({
                 : `残り ${Math.max(Number(event.capacity ?? 0) - Number(event.applicantCount ?? 0), 0)}名`}
             </span>
           </div>
-          <button
-            className="event-detail-link"
-            type="button"
-            aria-label={`${event.title}の詳細を見る`}
-            onClick={onOpen}
-          >
+          <span className="event-detail-link" aria-hidden="true">
             詳細を見る <ChevronRight size={14} />
-          </button>
+          </span>
         </div>
       </div>
+      <button
+        className={`save-button ${saved ? "saved" : ""}`}
+        title={saved ? "保存を解除" : "保存"}
+        aria-label={`${event.title}を${saved ? "保存から削除" : "保存"}`}
+        aria-pressed={saved}
+        type="button"
+        onClick={onSave}
+      >
+        <Heart size={18} fill={saved ? "currentColor" : "none"} />
+      </button>
     </article>
   );
 }
@@ -118,6 +119,12 @@ export function FeaturedEvent({
 }) {
   return (
     <article className="featured-event">
+      <button
+        className="event-card-open"
+        type="button"
+        aria-label={`${event.title}の詳細を見る`}
+        onClick={onOpen}
+      />
       <div>
         <img src={event.imageUrl} alt={`${event.title}の画像`} />
         <div className="featured-overlay" />
@@ -128,13 +135,9 @@ export function FeaturedEvent({
             <MapPin size={14} /> {event.location} · {event.startAtLabel}
           </p>
           <div className="featured-action">
-            <button
-              className="featured-detail-link"
-              type="button"
-              onClick={onOpen}
-            >
+            <span className="featured-detail-link" aria-hidden="true">
               詳細を見る <ChevronRight size={15} />
-            </button>
+            </span>
             <button
               className={`save-button ${saved ? "saved" : ""}`}
               title={saved ? "保存を解除" : "保存"}

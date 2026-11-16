@@ -6,7 +6,9 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { memo } from "react";
+import { memo, useState } from "react";
+import { ActionMenu } from "../../../components/ActionMenu";
+import { getFirebaseErrorMessage } from "../../../lib/appLogic";
 import {
   formatChatDay,
   formatChatTime,
@@ -48,6 +50,10 @@ export const MessageHistory = memo(function MessageHistory({
   onDeleteRequest,
   canDeleteMessage,
 }: MessageHistoryProps) {
+  const [editError, setEditError] = useState<{
+    id: string;
+    message: string;
+  } | null>(null);
   const newestMessage = messages[messages.length - 1];
   const otherReadAt = Math.max(
     0,
@@ -72,7 +78,12 @@ export const MessageHistory = memo(function MessageHistory({
           ? `最新のメッセージ。${newestMessage.senderName}さん、${newestMessage.text || newestMessage.attachmentName || "添付ファイル"}`
           : ""}
       </div>
-      <div className="chat-messages" role="region" aria-label="メッセージ履歴">
+      <div
+        className="chat-messages"
+        data-menu-boundary
+        role="region"
+        aria-label="メッセージ履歴"
+      >
         {hasOlderMessages && onLoadOlder && (
           <button
             className="chat-load-older"
@@ -93,6 +104,52 @@ export const MessageHistory = memo(function MessageHistory({
             const previousDay =
               index > 0 ? formatChatDay(messages[index - 1]?.createdAt) : "";
             const isOwn = chatMessage.senderId === currentUserId;
+            const restoreActionsFocus = () =>
+              window.requestAnimationFrame(() => {
+                document
+                  .querySelector<HTMLElement>(
+                    `[data-message-id="${CSS.escape(chatMessage.id)}"] .chat-message-actions-trigger`,
+                  )
+                  ?.focus();
+              });
+            const actions =
+              isOwn && chatMessage.type === "text" && !chatMessage.deletedAt
+                ? [
+                    ...(onEditMessage
+                      ? [
+                          {
+                            label: "編集",
+                            accessibleLabel: "メッセージを編集",
+                            icon: <Pencil size={16} />,
+                            onSelect: () => {
+                              onEditingMessageIdChange(chatMessage.id);
+                              onEditingMessageTextChange(chatMessage.text);
+                            },
+                          },
+                        ]
+                      : []),
+                    ...(canDeleteMessage
+                      ? [
+                          {
+                            label: "削除",
+                            accessibleLabel: "メッセージを削除",
+                            icon: <Trash2 size={16} />,
+                            danger: true,
+                            onSelect: () => onDeleteRequest(chatMessage),
+                          },
+                        ]
+                      : []),
+                  ]
+                : !isOwn && chatMessage.type !== "system" && onReportMessage
+                  ? [
+                      {
+                        label: "通報",
+                        accessibleLabel: `${chatMessage.senderName}さんのメッセージを通報`,
+                        icon: <Flag size={16} />,
+                        onSelect: () => onReportMessage(chatMessage),
+                      },
+                    ]
+                  : [];
             const isRead =
               isOwn &&
               index === lastOwnMessageIndex &&
@@ -146,10 +203,18 @@ export const MessageHistory = memo(function MessageHistory({
                         event.preventDefault();
                         if (!onEditMessage || !editingMessageText.trim())
                           return;
-                        void onEditMessage(
-                          chatMessage,
-                          editingMessageText,
-                        ).then(() => onEditingMessageIdChange(null));
+                        setEditError(null);
+                        void onEditMessage(chatMessage, editingMessageText)
+                          .then(() => {
+                            onEditingMessageIdChange(null);
+                            restoreActionsFocus();
+                          })
+                          .catch((error) =>
+                            setEditError({
+                              id: chatMessage.id,
+                              message: getFirebaseErrorMessage(error),
+                            }),
+                          );
                       }}
                     >
                       <input
@@ -161,83 +226,49 @@ export const MessageHistory = memo(function MessageHistory({
                           if (event.key !== "Escape") return;
                           event.preventDefault();
                           onEditingMessageIdChange(null);
-                          window.requestAnimationFrame(() => {
-                            const messageBlock =
-                              document.querySelector<HTMLElement>(
-                                `[data-message-id="${CSS.escape(chatMessage.id)}"]`,
-                              );
-                            messageBlock
-                              ?.querySelector<HTMLElement>(
-                                '[aria-label="メッセージを編集"]',
-                              )
-                              ?.focus();
-                          });
+                          restoreActionsFocus();
                         }}
                         onChange={(event) =>
                           onEditingMessageTextChange(event.target.value)
                         }
                       />
                       <button type="submit">保存</button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onEditingMessageIdChange(null);
+                          restoreActionsFocus();
+                        }}
+                      >
+                        キャンセル
+                      </button>
+                      {editError?.id === chatMessage.id && (
+                        <small className="inline-error" role="alert">
+                          {editError.message}
+                        </small>
+                      )}
                     </form>
                   ) : chatMessage.type !== "file" ? (
                     <p>{chatMessage.text}</p>
                   ) : null}
-                  <small className="chat-message-time">
-                    {formatChatTime(chatMessage.createdAt)}
-                    {chatMessage.editedAt ? " · 編集済み" : ""}
-                    {isRead ? " · 既読" : ""}
-                  </small>
-                  {isOwn &&
-                    chatMessage.type === "text" &&
-                    !chatMessage.deletedAt && (
-                      <div
-                        className="message-owner-actions"
-                        aria-label="送信したメッセージの操作"
-                      >
-                        {onEditMessage && (
-                          <button
-                            type="button"
-                            aria-label="メッセージを編集"
-                            onClick={() => {
-                              onEditingMessageIdChange(chatMessage.id);
-                              onEditingMessageTextChange(chatMessage.text);
-                            }}
-                          >
-                            <Pencil size={12} />
-                            編集
-                          </button>
-                        )}
-                        {canDeleteMessage && (
-                          <button
-                            type="button"
-                            aria-label="メッセージを削除"
-                            onClick={() => onDeleteRequest(chatMessage)}
-                          >
-                            <Trash2 size={12} />
-                            削除
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  {chatMessage.senderId !== currentUserId &&
-                    chatMessage.type !== "system" &&
-                    onReportMessage && (
-                      <div
-                        className="message-moderation-actions"
-                        aria-label={`${chatMessage.senderName}さんのメッセージ操作`}
-                      >
-                        {onReportMessage && (
-                          <button
-                            type="button"
-                            aria-label={`${chatMessage.senderName}さんのメッセージを通報`}
-                            onClick={() => onReportMessage(chatMessage)}
-                          >
-                            <Flag size={13} aria-hidden="true" />
-                            通報
-                          </button>
-                        )}
-                      </div>
-                    )}
+                  <div className="chat-message-meta">
+                    <small className="chat-message-time">
+                      {formatChatTime(chatMessage.createdAt)}
+                      {chatMessage.editedAt ? " · 編集済み" : ""}
+                      {isRead ? " · 既読" : ""}
+                    </small>
+                    {actions.length > 0 &&
+                      editingMessageId !== chatMessage.id && (
+                        <ActionMenu
+                          label={
+                            isOwn
+                              ? "自分のメッセージ操作"
+                              : `${chatMessage.senderName}さんのメッセージ操作`
+                          }
+                          actions={actions}
+                        />
+                      )}
+                  </div>
                 </div>
               </div>
             );

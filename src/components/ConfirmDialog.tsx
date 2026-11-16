@@ -34,7 +34,6 @@ export function ConfirmDialog({
       >
         <div className="report-dialog-head">
           <div>
-            <p className="eyebrow">CONFIRM</p>
             <h2 id="confirm-dialog-title">{title}</h2>
           </div>
           <button

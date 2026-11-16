@@ -118,6 +118,7 @@ export function useStudentNavigation(events: AizuEvent[]) {
     const openSearch = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
+        if (document.querySelector('[aria-modal="true"]')) return;
         if (activeTab === "search") {
           document.getElementById("event-search-input")?.focus();
           return;

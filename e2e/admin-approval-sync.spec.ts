@@ -137,7 +137,7 @@ test("admin approval synchronizes the user and student profile", async ({
     studentPage.getByText(
       "管理者の承認が完了しました。Aizu Connectのすべての機能を利用できます。",
     ),
-  ).toBeVisible();
+  ).toBeHidden();
   await expect(
     studentPage.getByRole("heading", {
       name: "運営が登録内容を確認しています",

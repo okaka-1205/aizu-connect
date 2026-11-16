@@ -1,5 +1,6 @@
 import {
   CalendarDays,
+  ChevronRight,
   MessageCircle,
   Plus,
   Settings,
@@ -85,6 +86,7 @@ function NavigationButton({
         <strong>{title}</strong>
         <small>{detail}</small>
       </span>
+      <ChevronRight className="management-nav-chevron" aria-hidden="true" />
     </button>
   );
 }

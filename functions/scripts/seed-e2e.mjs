@@ -2,6 +2,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { readFile } from "node:fs/promises";
 
 if (
   !process.env.FIREBASE_AUTH_EMULATOR_HOST ||
@@ -25,6 +26,18 @@ const bucket = getStorage().bucket();
 
 const now = new Date();
 const timestamp = Timestamp.fromDate(now);
+const legalMetadata = await readFile(
+  new URL("../../src/content/legalMetadata.ts", import.meta.url), "utf8",
+);
+const termsVersion = legalMetadata.match(
+  /export const TERMS_VERSION = "([^"]+)"/,
+)?.[1];
+const privacyVersion = legalMetadata.match(
+  /export const PRIVACY_VERSION = "([^"]+)"/,
+)?.[1];
+if (!termsVersion || !privacyVersion) {
+  throw new Error("Legal fixture versions unavailable.");
+}
 const eventStartDate = new Date(now);
 eventStartDate.setDate(eventStartDate.getDate() + 14);
 eventStartDate.setHours(18, 0, 0, 0);
@@ -326,18 +339,33 @@ batch.set(db.doc("studentProfiles/student-e2e"), {
 });
 batch.set(
   db.doc("users/org-e2e"),
-  userDoc({
-    uid: "org-e2e",
-    role: "organization",
-    email: "org-e2e@example.com",
-    displayName: "E2E主催団体",
-    university: "主催者・団体",
-    department: "",
-    grade: 0,
-    organizationId: "org-e2e",
-    organizationName: "E2E主催団体",
-  }),
+  {
+    ...userDoc({
+      uid: "org-e2e",
+      role: "organization",
+      email: "org-e2e@example.com",
+      displayName: "E2E主催団体",
+      university: "主催者・団体",
+      department: "",
+      grade: 0,
+      organizationId: "org-e2e",
+      organizationName: "E2E主催団体",
+    }),
+    termsVersion,
+    privacyVersion,
+    legalAcceptedAt: timestamp,
+    eligibilityConfirmedAt: timestamp,
+  },
 );
+// This read-only account is shared by cross-browser pagination checks.
+batch.set(db.doc(`legalConsents/org-e2e_${termsVersion}_${privacyVersion}`), {
+  userId: "org-e2e",
+  termsVersion,
+  privacyVersion,
+  acceptedAt: timestamp,
+  eligibilityConfirmedAt: timestamp,
+  source: "reconsent",
+});
 batch.set(db.doc("organizations/org-e2e"), {
   id: "org-e2e",
   displayName: "E2E主催団体",

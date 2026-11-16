@@ -109,11 +109,10 @@ export function MessagesTab({
   }, [activeRoom?.id, activeRoom?.organizerNotice, activeRoom?.pinnedMessage]);
   return (
     <>
-      <section className="tab-page">
+      <section className="tab-page messages-page">
         <div className="page-title">
           <div>
             <h1>メッセージ</h1>
-            <p>イベント参加者全員への連絡を確認できます。</p>
           </div>
           <div className="message-count">
             <MessageCircle size={20} />
@@ -215,7 +214,16 @@ export function MessagesTab({
                   </div>
                 </div>
                 {(activeRoom.pinnedMessage || activeRoom.organizerNotice) && (
-                  <div className="chat-info-stack">
+                  <div
+                    className="chat-info-stack"
+                    role={currentUserRole === "student" ? "region" : undefined}
+                    aria-label={
+                      currentUserRole === "student"
+                        ? "固定メッセージ・主催者のお知らせ"
+                        : undefined
+                    }
+                    tabIndex={currentUserRole === "student" ? 0 : undefined}
+                  >
                     {activeRoom.pinnedMessage && (
                       <div className="chat-info-card">
                         <Pin size={15} />
@@ -371,14 +379,18 @@ export function MessagesTab({
                     disabled={activeRoom.status !== "active"}
                     placeholder={
                       activeRoom.status === "active"
-                        ? messagePlaceholder
+                        ? "メッセージを入力"
                         : "このチャットは終了しています"
                     }
                     onKeyDown={(event) => {
                       if (
                         event.key !== "Enter" ||
                         event.shiftKey ||
-                        event.nativeEvent.isComposing
+                        event.nativeEvent.isComposing ||
+                        (currentUserRole === "student" &&
+                          window.matchMedia("(pointer: coarse)").matches &&
+                          !event.ctrlKey &&
+                          !event.metaKey)
                       )
                         return;
                       event.preventDefault();

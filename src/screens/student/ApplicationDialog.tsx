@@ -146,9 +146,6 @@ export function ApplicationDialog({
         >
           <div className="report-dialog-head application-dialog-head">
             <div>
-              <p className="eyebrow">
-                {isWaitlist ? "キャンセル待ち" : "参加申請"}
-              </p>
               <h2 id="application-dialog-title">
                 {isWaitlist ? "キャンセル待ちに登録" : "参加申請"}
               </h2>

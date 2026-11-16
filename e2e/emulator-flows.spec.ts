@@ -66,7 +66,7 @@ async function verifyChatDraftRecovery(
   label: string,
   leaveAndReturn: () => Promise<void>,
 ) {
-  const input = page.getByPlaceholder("全体チャットにメッセージを送る");
+  const input = page.getByRole("textbox", { name: "全体チャットにメッセージを送る" });
   const send = page.getByRole("button", { name: "メッセージを送信" });
   const draft = `${label}の未送信の下書き`;
   await input.fill(draft);
@@ -416,7 +416,6 @@ test.describe("emulator-backed role flows", () => {
         name: `${new Date().getFullYear()}年`,
       }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "参加履歴", exact: true }).click();
     await expect(page.locator(".certificate-id")).toContainText(
       `活動証明AC-app-e2e-${suffix}`,
     );
@@ -461,14 +460,14 @@ test.describe("emulator-backed role flows", () => {
     });
     const studentMessage = `学生からの送信 ${suffix}`;
     await page
-      .getByPlaceholder("全体チャットにメッセージを送る")
+      .getByRole("textbox", { name: "全体チャットにメッセージを送る" })
       .fill(studentMessage);
     await page.getByRole("button", { name: "メッセージを送信" }).click();
     await expect(
       page.locator(".chat-message p", { hasText: studentMessage }),
     ).toBeVisible();
     await expect(
-      page.getByPlaceholder("全体チャットにメッセージを送る"),
+      page.getByRole("textbox", { name: "全体チャットにメッセージを送る" }),
     ).toHaveValue("");
     const attachmentName = `e2e-note-${projectSuffix(test.info().project.name)}.txt`;
     await page.locator(".chat-composer input[type=file]").setInputFiles({
@@ -503,7 +502,7 @@ test.describe("emulator-backed role flows", () => {
     await expect(page.getByText("通知設定")).toBeVisible();
     await page
       .getByRole("button", {
-        name: "ログアウト この端末からログアウト",
+        name: "ログアウト", exact: true,
       })
       .click();
     await expect(page.getByRole("heading", { name: "ログイン" })).toBeVisible();
@@ -545,10 +544,12 @@ test.describe("emulator-backed role flows", () => {
     await expect.poll(() => pagingEvents.count()).toBeGreaterThan(0);
     const initialEventCount = await pagingEvents.count();
     expect(initialEventCount).toBeLessThan(30);
-    await page.getByRole("button", { name: "次の24件を見る" }).click();
-    await expect
-      .poll(() => pagingEvents.count())
-      .toBeGreaterThan(initialEventCount);
+    await page.getByRole("button", { name: "さらに24件を読み込む" }).click();
+    await expect(page.locator(".result-count > span")).toHaveText("48件");
+    await expect(pagingEvents).toHaveCount(initialEventCount);
+    for (let nextPage = 2; nextPage <= 5; nextPage += 1) {
+      await page.getByRole("button", { name: "次のページ", exact: true }).click();
+    }
     await expect(
       page.getByRole("button", {
         name: "E2E ページングイベント 30の詳細を見る",
@@ -591,8 +592,8 @@ test.describe("emulator-backed role flows", () => {
       .fill("E2E ページングイベント 30");
     await expect(laterEvent).toBeVisible();
     await expect(
-      page.getByText("公開中のイベントをすべて確認しました"),
-    ).toBeVisible();
+      page.locator(".event-pagination"),
+    ).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
   });
 
@@ -622,10 +623,10 @@ test.describe("emulator-backed role flows", () => {
       page.getByText("参加申請を送信しました。全体チャットを確認できます。"),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "メッセージ", exact: true }),
+      page.locator(".chat-panel"),
     ).toBeVisible();
     await expect(
-      page.getByRole("strong").filter({ hasText: eventTitle }),
+      page.locator(".chat-panel-title strong").filter({ hasText: eventTitle }),
     ).toBeVisible();
     await expect(
       page.getByRole("region", { name: "メッセージ履歴" }),
@@ -977,7 +978,7 @@ test.describe("emulator-backed role flows", () => {
     await confirmApplication(page);
 
     await expect(
-      page.getByRole("heading", { name: "メッセージ", exact: true }),
+      page.locator(".chat-panel"),
     ).toBeVisible();
     const activeConversation = page.getByRole("button", {
       name: "チャット一覧へ戻る",
@@ -1083,7 +1084,7 @@ test.describe("emulator-backed role flows", () => {
     await nav.getByRole("button", { name: "プロフィール" }).click();
     await page
       .getByRole("button", {
-        name: "ログアウト この端末からログアウト",
+        name: "ログアウト", exact: true,
       })
       .click();
     await expect(page.getByRole("heading", { name: "ログイン" })).toBeVisible();
@@ -1116,16 +1117,16 @@ test.describe("emulator-backed role flows", () => {
     const checkIn = page.getByLabel(`${checkInTitle}の受付コード`);
     const comment = page.getByLabel(`${surveyTitle}の感想`);
     const rating = page.getByLabel(`${surveyTitle}の満足度`);
+    const views = page.getByRole("navigation", { name: "参加履歴の表示切り替え" });
     await checkIn.fill("246810");
+    await views.getByRole("button", { name: "参加履歴", exact: true }).click();
     await comment.fill("活動画面を切り替えても感想の下書きを保持します。");
     await rating.selectOption("4");
-    const views = page.getByRole("navigation", {
-      name: "参加履歴の表示切り替え",
-    });
-    await views.getByRole("button", { name: "参加履歴", exact: true }).click();
+
     await views.getByRole("button", { name: "活動証明", exact: true }).click();
     await views.getByRole("button", { name: "参加予定", exact: true }).click();
     await expect(checkIn).toHaveValue("246810");
+    await views.getByRole("button", { name: "参加履歴", exact: true }).click();
     await expect(comment).toHaveValue(
       "活動画面を切り替えても感想の下書きを保持します。",
     );
@@ -1145,6 +1146,8 @@ test.describe("emulator-backed role flows", () => {
     await login(page, studentEmail(testInfo.project.name));
     const nav = page.getByRole("navigation", { name: "メインナビゲーション" });
     await nav.getByRole("button", { name: /^活動/ }).click();
+    await page.getByRole("navigation", { name: "参加履歴の表示切り替え" })
+      .getByRole("button", { name: "参加履歴", exact: true }).click();
     const item = page.locator(".application-item").filter({ hasText: title });
     const comment = `送信失敗から復元した感想 ${suffix}`;
     await item.getByLabel(`${title}の満足度`).selectOption("4");
@@ -1184,7 +1187,7 @@ test.describe("emulator-backed role flows", () => {
     expect(saved.fields?.userId?.stringValue).toBe(`student-e2e-${suffix}`);
     await nav.getByRole("button", { name: "プロフィール" }).click();
     await page
-      .getByRole("button", { name: "ログアウト この端末からログアウト" })
+      .getByRole("button", { name: "ログアウト", exact: true })
       .click();
     await login(page, organizationEmail(testInfo.project.name));
     await page.getByRole("button", { name: /^イベント/ }).click();
@@ -1354,7 +1357,7 @@ test.describe("emulator-backed role flows", () => {
     await notificationPanel
       .getByRole("button", { name: "すべて既読" })
       .click();
-    await expect(notificationPanel.getByText("すべて確認済み")).toBeVisible();
+    await expect(notificationPanel.locator(".notification-item.unread")).toHaveCount(0);
     await notificationPanel
       .getByRole("button", { name: /E2E 通知 E2E通知本文/ })
       .click();
@@ -1412,7 +1415,7 @@ test.describe("emulator-backed role flows", () => {
     await expect(page.getByText("E2Eプロフィール更新済み")).toBeVisible();
 
     await page
-      .getByRole("button", { name: /利用規約 サービスの利用条件を確認する/ })
+      .getByRole("button", { name: "利用規約", exact: true })
       .click();
     await expect(page.getByRole("dialog", { name: "利用規約" })).toBeVisible();
     await page.keyboard.press("Escape");
@@ -1455,7 +1458,6 @@ test.describe("emulator-backed role flows", () => {
       .click();
     await page.getByRole("button", { name: "活動証明" }).click();
     await expect(page.getByText("証明済み活動")).toBeVisible();
-    await page.getByRole("button", { name: "参加履歴", exact: true }).click();
     await page.getByRole("button", { name: "証明書を表示・共有" }).click();
     const certificate = page.getByRole("dialog", { name: "活動証明書" });
     await expect(certificate).toBeVisible();
@@ -1540,16 +1542,12 @@ test.describe("emulator-backed role flows", () => {
       name: "チャット一覧へ戻る",
     });
     if (await mobileChatBack.isVisible()) await mobileChatBack.click();
-    await page
-      .getByRole("button", {
-        name: new RegExp(`参加者全員 ${eventChatTitle}`),
-      })
-      .click();
+    await page.locator(".conversation-item").filter({ hasText: eventChatTitle }).click();
     await expect(
       page.locator(".chat-panel-title").getByText(eventChatTitle),
     ).toBeVisible();
     await expect(
-      page.getByPlaceholder("全体チャットにメッセージを送る"),
+      page.getByRole("textbox", { name: "全体チャットにメッセージを送る" }),
     ).toBeVisible();
     await verifyChatDraftRecovery(
       page,
@@ -1561,7 +1559,7 @@ test.describe("emulator-backed role flows", () => {
     );
     const organizationMessage = `主催者からの送信 ${projectSuffix(testInfo.project.name)}`;
     await page
-      .getByPlaceholder("全体チャットにメッセージを送る")
+      .getByRole("textbox", { name: "全体チャットにメッセージを送る" })
       .fill(organizationMessage);
     await page.getByRole("button", { name: "メッセージを送信" }).click();
     await expect(
@@ -1664,7 +1662,7 @@ test.describe("emulator-backed role flows", () => {
     const sentMessage = page.locator("p", { hasText: message });
     if ((await sentMessage.count()) === 0) {
       await page
-        .getByPlaceholder("全体チャットにメッセージを送る")
+        .getByRole("textbox", { name: "全体チャットにメッセージを送る" })
         .fill(message);
       await page.getByTitle("送信").click();
     }

@@ -2,6 +2,7 @@ import {
   Bell,
   CalendarClock,
   CalendarDays,
+  ChevronLeft,
   ChevronRight,
   Filter as FilterIcon,
   List,
@@ -9,7 +10,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import {
   EmptyEvents,
@@ -34,6 +35,8 @@ import type {
 } from "../../types/domain";
 import { EventDrawer } from "../shared/EventDrawer";
 import { EventCard, FeaturedEvent } from "./EventCards";
+
+const SEARCH_RESULTS_PER_PAGE = 6;
 
 export function HomeTab(props: {
   events: AizuEvent[];
@@ -68,7 +71,7 @@ export function HomeTab(props: {
     setFilter,
   } = props;
   return (
-    <section className="tab-page">
+    <section className="tab-page home-page">
       <button
         className="search-launch"
         type="button"
@@ -230,6 +233,46 @@ export function SearchTab(props: {
   const [savedSearchFilter, setSavedSearchFilter] = useState("");
   const [savedSearchToDelete, setSavedSearchToDelete] =
     useState<SavedSearch | null>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const [resultPage, setResultPage] = useState({ key: "", page: 1 });
+  const resultKey = JSON.stringify([
+    props.searchText,
+    props.filter,
+    props.searchDateFilter,
+    props.searchDayFilter,
+    props.searchTimeFilter,
+    props.searchFeeFilter,
+    props.searchFormatFilter,
+    props.searchSort,
+    props.onlyAvailableEvents,
+    props.onlyBeginnerEvents,
+    props.searchView,
+  ]);
+  useEffect(() => {
+    setResultPage({ key: resultKey, page: 1 });
+  }, [resultKey]);
+  const pageCount = Math.max(
+    1,
+    Math.ceil(props.filteredEvents.length / SEARCH_RESULTS_PER_PAGE),
+  );
+  const currentPage = Math.min(
+    resultPage.key === resultKey ? resultPage.page : 1,
+    pageCount,
+  );
+  const resultStart = (currentPage - 1) * SEARCH_RESULTS_PER_PAGE;
+  const visibleEvents = useMemo(
+    () =>
+      props.filteredEvents.slice(
+        resultStart,
+        resultStart + SEARCH_RESULTS_PER_PAGE,
+      ),
+    [props.filteredEvents, resultStart],
+  );
+  const changeResultPage = (page: number) => {
+    setResultPage({ key: resultKey, page });
+    resultsRef.current?.focus({ preventScroll: true });
+    resultsRef.current?.scrollIntoView({ block: "start" });
+  };
   const visibleSavedSearches = (props.savedSearches ?? []).filter((search) =>
     [search.name, search.searchText, search.category]
       .filter(Boolean)
@@ -250,32 +293,25 @@ export function SearchTab(props: {
   const calendarGroups = useMemo(() => {
     const groups: Record<string, AizuEvent[]> = {};
     if (props.searchView === "calendar") {
-      for (const event of props.filteredEvents) {
+      for (const event of visibleEvents) {
         const key = event.startAt ? formatEventDay(event.startAt) : "日時未定";
         (groups[key] ??= []).push(event);
       }
     }
     return groups;
-  }, [props.filteredEvents, props.searchView]);
+  }, [visibleEvents, props.searchView]);
   return (
     <section className="tab-page search-page">
       <div className="page-title">
         <div>
           <h1>イベントを探す</h1>
-          <p>キーワードや条件から絞り込めます。</p>
         </div>
         <div className="result-count" role="status" aria-atomic="true">
           <span>
             {props.filteredEvents.length}
             <small>件</small>
           </span>
-          <em>
-            {props.isLoadingMoreEvents
-              ? "検索対象を読み込み中"
-              : props.hasMoreEvents
-                ? `${props.loadedEventCount}件を読み込み済み`
-                : "公開中の全件を読み込み済み"}
-          </em>
+          {props.isLoadingMoreEvents && <em>検索中</em>}
         </div>
       </div>
       <div className="search-field large">
@@ -337,7 +373,6 @@ export function SearchTab(props: {
       >
         <div className="search-filter-panel-head">
           <strong>詳細な絞り込み</strong>
-          <small>必要な条件だけ選べます</small>
         </div>
         <div className="advanced-filter-row" aria-label="追加の絞り込み">
           <div className="advanced-filter-group">
@@ -454,172 +489,225 @@ export function SearchTab(props: {
           </label>
         </div>
       </div>
-      <details className="search-display-options">
-        <summary>表示方法</summary>
-        <div className="search-toolbar">
-        <div className="view-switch" role="group" aria-label="表示形式">
-          <button
-            className={props.searchView === "list" ? "active" : ""}
-            type="button"
-            title="一覧表示"
-            aria-label="一覧表示"
-            aria-pressed={props.searchView === "list"}
-            onClick={() => props.setSearchView("list")}
-          >
-            <List size={16} />
-            <span>一覧</span>
-          </button>
-          <button
-            className={props.searchView === "calendar" ? "active" : ""}
-            type="button"
-            title="日付別表示"
-            aria-label="日付別表示"
-            aria-pressed={props.searchView === "calendar"}
-            onClick={() => props.setSearchView("calendar")}
-          >
-            <CalendarDays size={16} />
-            <span>日付別</span>
-          </button>
-        </div>
-        </div>
-      </details>
-      <details className="search-display-options search-saved-options">
-        <summary>検索条件を保存</summary>
-        <div className="saved-search-actions">
-          {(props.savedSearches?.length ?? 0) > 0 ? (
-            <div className="saved-search-manager">
-              <div className="saved-search-manager-head">
-                <strong>保存した条件</strong>
-                <span>{props.savedSearches?.length ?? 0}件</span>
-              </div>
-              {(props.savedSearches?.length ?? 0) > 5 && (
-                <label className="saved-search-filter">
-                  <Search size={14} />
-                  <input
-                    aria-label="保存した検索条件を検索"
-                    value={savedSearchFilter}
-                    onChange={(event) => setSavedSearchFilter(event.target.value)}
-                    placeholder="名前・キーワードで絞り込み"
-                  />
-                </label>
-              )}
-              <div className="saved-search-list" role="list">
-                {visibleSavedSearches.map((search) => {
-                  const label =
-                    search.name || search.searchText || "保存した条件";
-                  const details = [
-                    search.category !== "すべて" ? search.category : "",
-                    search.dateFilter !== "すべて" ? search.dateFilter : "",
-                    search.feeFilter !== "すべて" ? search.feeFilter : "",
-                  ].filter(Boolean);
-                  return (
-                    <div className="saved-search-row" role="listitem" key={search.id}>
-                      <button
-                        className={selectedSavedSearchId === search.id ? "active" : ""}
-                        type="button"
-                        aria-pressed={selectedSavedSearchId === search.id}
-                        onClick={() => {
-                          setSelectedSavedSearchId(search.id ?? "");
-                          props.onApplySavedSearch(search);
-                        }}
-                      >
-                        <strong>{label}</strong>
-                        <small>{details.join("・") || "すべてのイベント"}</small>
-                      </button>
-                      <button
-                        className="saved-search-row-delete"
-                        type="button"
-                        aria-label={`「${label}」を削除`}
-                        onClick={() => setSavedSearchToDelete(search)}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  );
-                })}
-                {visibleSavedSearches.length === 0 && (
-                  <p className="saved-search-empty">一致する保存条件はありません。</p>
-                )}
-              </div>
-              {props.hasMoreSavedSearches && props.onLoadMoreSavedSearches && (
-                <button
-                  className="secondary-action"
-                  type="button"
-                  onClick={props.onLoadMoreSavedSearches}
-                >
-                  保存条件をさらに読み込む
-                </button>
-              )}
+      <div className="search-options">
+        <details className="search-display-options">
+          <summary>表示方法</summary>
+          <div className="search-toolbar">
+            <div className="view-switch" role="group" aria-label="表示形式">
+              <button
+                className={props.searchView === "list" ? "active" : ""}
+                type="button"
+                title="一覧表示"
+                aria-label="一覧表示"
+                aria-pressed={props.searchView === "list"}
+                onClick={() => props.setSearchView("list")}
+              >
+                <List size={16} />
+                <span>一覧</span>
+              </button>
+              <button
+                className={props.searchView === "calendar" ? "active" : ""}
+                type="button"
+                title="日付別表示"
+                aria-label="日付別表示"
+                aria-pressed={props.searchView === "calendar"}
+                onClick={() => props.setSearchView("calendar")}
+              >
+                <CalendarDays size={16} />
+                <span>日付別</span>
+              </button>
             </div>
-          ) : props.savedSearch ? (
-            <button
-              type="button"
-              onClick={() => props.onApplySavedSearch(props.savedSearch ?? undefined)}
-            >
-              <RefreshCw size={14} />保存条件を適用
-            </button>
-          ) : null}
-          <button type="button" onClick={props.onSaveSearch}>
-            <Bell size={14} />
-            この条件を保存
-          </button>
-        </div>
-      </details>
-      {props.filteredEvents.length === 0 ? (
-        <EmptySearchResults
-          hasMoreEvents={props.hasMoreEvents}
-          isLoading={props.isLoadingMoreEvents}
-          onReset={props.onResetFilters}
-        />
-      ) : props.searchView === "calendar" ? (
-        <div className="calendar-event-groups">
-          {Object.entries(calendarGroups).map(([date, events]) => (
-            <section key={date}>
-              <h3>{date}</h3>
-              <div className="event-grid search-grid">
-                {events.map((event) => (
-                  <EventCard
-                    key={event.id}
-                    event={event}
-                    saved={props.savedEventIds.includes(event.id)}
-                    selected={props.selectedEventId === event.id}
-                    applied={props.hasApplied(event.id)}
-                    onSave={() => props.toggleSaved(event.id)}
-                    onOpen={() => props.setSelectedEventId(event.id)}
-                  />
-                ))}
+          </div>
+        </details>
+        <details className="search-display-options search-saved-options">
+          <summary>検索条件を保存</summary>
+          <div className="saved-search-actions">
+            {(props.savedSearches?.length ?? 0) > 0 ? (
+              <div className="saved-search-manager">
+                <div className="saved-search-manager-head">
+                  <strong>保存した条件</strong>
+                  <span>{props.savedSearches?.length ?? 0}件</span>
+                </div>
+                {(props.savedSearches?.length ?? 0) > 5 && (
+                  <label className="saved-search-filter">
+                    <Search size={14} />
+                    <input
+                      aria-label="保存した検索条件を検索"
+                      value={savedSearchFilter}
+                      onChange={(event) =>
+                        setSavedSearchFilter(event.target.value)
+                      }
+                      placeholder="名前・キーワードで絞り込み"
+                    />
+                  </label>
+                )}
+                <div className="saved-search-list" role="list">
+                  {visibleSavedSearches.map((search) => {
+                    const label =
+                      search.name || search.searchText || "保存した条件";
+                    const details = [
+                      search.category !== "すべて" ? search.category : "",
+                      search.dateFilter !== "すべて" ? search.dateFilter : "",
+                      search.feeFilter !== "すべて" ? search.feeFilter : "",
+                    ].filter(Boolean);
+                    return (
+                      <div
+                        className="saved-search-row"
+                        role="listitem"
+                        key={search.id}
+                      >
+                        <button
+                          className={
+                            selectedSavedSearchId === search.id ? "active" : ""
+                          }
+                          type="button"
+                          aria-pressed={selectedSavedSearchId === search.id}
+                          onClick={() => {
+                            setSelectedSavedSearchId(search.id ?? "");
+                            props.onApplySavedSearch(search);
+                          }}
+                        >
+                          <strong>{label}</strong>
+                          <small>
+                            {details.join("・") || "すべてのイベント"}
+                          </small>
+                        </button>
+                        <button
+                          className="saved-search-row-delete"
+                          type="button"
+                          aria-label={`「${label}」を削除`}
+                          onClick={() => setSavedSearchToDelete(search)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {visibleSavedSearches.length === 0 && (
+                    <p className="saved-search-empty">
+                      一致する保存条件はありません。
+                    </p>
+                  )}
+                </div>
+                {props.hasMoreSavedSearches &&
+                  props.onLoadMoreSavedSearches && (
+                    <button
+                      className="secondary-action"
+                      type="button"
+                      onClick={props.onLoadMoreSavedSearches}
+                    >
+                      保存条件をさらに読み込む
+                    </button>
+                  )}
               </div>
-            </section>
-          ))}
-        </div>
-      ) : (
-        <div className="event-grid search-grid">
-          {props.filteredEvents.map((event) => (
-            <EventCard
-              key={event.id}
-              event={event}
-              saved={props.savedEventIds.includes(event.id)}
-              selected={props.selectedEventId === event.id}
-              applied={props.hasApplied(event.id)}
-              onSave={() => props.toggleSaved(event.id)}
-              onOpen={() => props.setSelectedEventId(event.id)}
-            />
-          ))}
-        </div>
+            ) : props.savedSearch ? (
+              <button
+                type="button"
+                onClick={() =>
+                  props.onApplySavedSearch(props.savedSearch ?? undefined)
+                }
+              >
+                <RefreshCw size={14} />
+                保存条件を適用
+              </button>
+            ) : null}
+            <button type="button" onClick={props.onSaveSearch}>
+              <Bell size={14} />
+              この条件を保存
+            </button>
+          </div>
+        </details>
+      </div>
+      <div
+        ref={resultsRef}
+        className="search-results"
+        role="region"
+        aria-label="イベントの検索結果"
+        tabIndex={-1}
+      >
+        {props.filteredEvents.length === 0 ? (
+          <EmptySearchResults
+            hasMoreEvents={props.hasMoreEvents}
+            isLoading={props.isLoadingMoreEvents}
+            onReset={props.onResetFilters}
+          />
+        ) : props.searchView === "calendar" ? (
+          <div className="calendar-event-groups">
+            {Object.entries(calendarGroups).map(([date, events]) => (
+              <section key={date}>
+                <h3>{date}</h3>
+                <div className="event-grid search-grid">
+                  {events.map((event) => (
+                    <EventCard
+                      key={event.id}
+                      event={event}
+                      saved={props.savedEventIds.includes(event.id)}
+                      selected={props.selectedEventId === event.id}
+                      applied={props.hasApplied(event.id)}
+                      onSave={() => props.toggleSaved(event.id)}
+                      onOpen={() => props.setSelectedEventId(event.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : (
+          <div className="event-grid search-grid">
+            {visibleEvents.map((event) => (
+              <EventCard
+                key={event.id}
+                event={event}
+                saved={props.savedEventIds.includes(event.id)}
+                selected={props.selectedEventId === event.id}
+                applied={props.hasApplied(event.id)}
+                onSave={() => props.toggleSaved(event.id)}
+                onOpen={() => props.setSelectedEventId(event.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      {pageCount > 1 && (
+        <nav
+          className="search-results-pagination"
+          aria-label="検索結果のページ切り替え"
+        >
+          <button
+            type="button"
+            aria-label="前のページ"
+            disabled={currentPage === 1}
+            onClick={() => changeResultPage(currentPage - 1)}
+          >
+            <ChevronLeft size={18} />
+            前へ
+          </button>
+          <span role="status" aria-live="polite" aria-atomic="true">
+            <strong>
+              {currentPage} / {pageCount}
+            </strong>
+            <small>
+              {resultStart + 1}–
+              {Math.min(
+                resultStart + SEARCH_RESULTS_PER_PAGE,
+                props.filteredEvents.length,
+              )}
+              件 / {props.filteredEvents.length}件
+            </small>
+          </span>
+          <button
+            type="button"
+            aria-label="次のページ"
+            disabled={currentPage === pageCount}
+            onClick={() => changeResultPage(currentPage + 1)}
+          >
+            次へ
+            <ChevronRight size={18} />
+          </button>
+        </nav>
       )}
-      <div className="event-pagination">
-        <div>
-          <strong>
-            {props.hasMoreEvents
-              ? "まだ表示できるイベントがあります"
-              : "公開中のイベントをすべて確認しました"}
-          </strong>
-          <small>
-            現在{props.loadedEventCount}件を読み込み、条件に合う
-            {props.filteredEvents.length}件を表示しています。
-          </small>
-        </div>
-        {props.hasMoreEvents && (
+      {props.hasMoreEvents && (
+        <div className="event-pagination">
           <button
             type="button"
             onClick={props.onLoadMoreEvents}
@@ -631,10 +719,10 @@ export function SearchTab(props: {
             />
             {props.isLoadingMoreEvents
               ? "イベントを読み込み中"
-              : `次の${EVENT_PAGE_SIZE}件を見る`}
+              : `さらに${EVENT_PAGE_SIZE}件を読み込む`}
           </button>
-        )}
-      </div>
+        </div>
+      )}
       {props.selectedEvent && (
         <EventDrawer
           event={props.selectedEvent}

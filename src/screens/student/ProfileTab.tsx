@@ -1,6 +1,7 @@
 import {
   Bell,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleUserRound,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { Field } from "../../components/Field";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { ImageCropDialog } from "../../components/ImageCropDialog";
 import { LegalDialog } from "../../components/LegalDialog";
 import {
@@ -35,6 +37,7 @@ import type {
   NotificationPreferences,
 } from "../../types/domain";
 import { AccountDeletionPanel } from "../shared/AccountDeletionPanel";
+import { ProfileEditor } from "./ProfileEditor";
 
 export function ProfileTab({
   appUser,
@@ -89,6 +92,8 @@ export function ProfileTab({
   onLogout: () => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isDiscardConfirmationOpen, setIsDiscardConfirmationOpen] =
+    useState(false);
   const [displayName, setDisplayName] = useState(appUser.displayName);
   const [department, setDepartment] = useState(appUser.department);
   const [grade, setGrade] = useState(appUser.grade);
@@ -121,6 +126,8 @@ export function ProfileTab({
     null,
   );
   const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] =
+    useState(false);
+  const [areAllSavedEventsVisible, setAreAllSavedEventsVisible] =
     useState(false);
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
   const totalActivities = activityByMonth.reduce(
@@ -166,11 +173,47 @@ export function ProfileTab({
     setProfileImageSourceFile(null);
     setProfileImageSourcePreview(null);
     setIsProfileImageReviewOpen(false);
+    setIsDiscardConfirmationOpen(false);
     setIsEditing(false);
+  };
+
+  const cancelImageReview = () => {
+    setIsProfileImageReviewOpen(false);
+    if (!profileImageFile) {
+      revokeObjectUrl(profileImageSourcePreview);
+      setProfileImageSourceFile(null);
+      setProfileImageSourcePreview(null);
+      setProfileImagePreview(appUser.profileImageUrl ?? null);
+      setProfileImageInputKey((current) => current + 1);
+    }
+  };
+  const hasUnsavedChanges =
+    profileImageFile !== null ||
+    displayName.trim() !== appUser.displayName.trim() ||
+    department.trim() !== appUser.department.trim() ||
+    grade !== appUser.grade ||
+    JSON.stringify(
+      interestText
+        .split(",")
+        .map((interest) => interest.trim())
+        .filter(Boolean)
+        .slice(0, 5),
+    ) !== JSON.stringify(appUser.interests) ||
+    currentActivities.trim() !== (appUser.currentActivities ?? "").trim() ||
+    wantToTry.trim() !== (appUser.wantToTry ?? "").trim();
+  const requestCloseEditor = () => {
+    if (isSaving) return;
+    if (isProfileImageReviewOpen) {
+      cancelImageReview();
+      return;
+    }
+    if (hasUnsavedChanges) setIsDiscardConfirmationOpen(true);
+    else cancelEditing();
   };
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSaving) return;
     const interests = interestText
       .split(",")
       .map((interest) => interest.trim())
@@ -218,68 +261,85 @@ export function ProfileTab({
   );
 
   return (
-    <section className="tab-page">
-      <div className="profile-hero">
-        <div className="profile-avatar">
-          {appUser.profileImageUrl ? (
-            <img src={appUser.profileImageUrl} alt="プロフィール画像" />
-          ) : (
-            <CircleUserRound size={35} />
-          )}
-        </div>
-        <div className="profile-copy">
-          <h1>{appUser.displayName}</h1>
-          <p>{profileMeta || "プロフィール未設定"}</p>
-          <div className="interest-list">
-            {appUser.interests.map((interest) => (
-              <span key={interest}>{interest}</span>
-            ))}
+    <section className="tab-page profile-page">
+      <div className="profile-overview">
+        <div className="profile-hero">
+          <div className="profile-avatar">
+            {appUser.profileImageUrl ? (
+              <img src={appUser.profileImageUrl} alt="プロフィール画像" />
+            ) : (
+              <CircleUserRound size={35} />
+            )}
           </div>
-          <div className="profile-intentions">
-            <div>
-              <span>今やっていること</span>
-              <strong>{appUser.currentActivities || "これから見つける"}</strong>
+          <div className="profile-copy">
+            <h1>{appUser.displayName}</h1>
+            {profileMeta && <p>{profileMeta}</p>}
+            <div className="interest-list">
+              {appUser.interests.map((interest) => (
+                <span key={interest}>{interest}</span>
+              ))}
             </div>
-            <div>
-              <span>やってみたいこと</span>
-              <strong>{appUser.wantToTry || "気になる活動を探してみる"}</strong>
-            </div>
+            {(appUser.currentActivities || appUser.wantToTry) && (
+              <div className="profile-intentions">
+                {appUser.currentActivities && (
+                  <div>
+                    <span>今やっていること</span>
+                    <strong>{appUser.currentActivities}</strong>
+                  </div>
+                )}
+                {appUser.wantToTry && (
+                  <div>
+                    <span>やってみたいこと</span>
+                    <strong>{appUser.wantToTry}</strong>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+          <button
+            className="profile-edit-button"
+            title="プロフィールを編集"
+            type="button"
+            onClick={startEditing}
+          >
+            <Settings size={16} />
+            編集
+          </button>
         </div>
-        <button
-          className="profile-edit-button"
-          title="プロフィールを編集"
-          type="button"
-          onClick={startEditing}
-        >
-          <Settings size={16} />
-          編集
-        </button>
+        <div className="profile-stats" aria-label="活動の概要">
+          <span>
+            <strong>{totalActivities}</strong>
+            <small>参加回数</small>
+          </span>
+          <span>
+            <strong>{applications.length}</strong>
+            <small>申請数</small>
+          </span>
+          <span>
+            <strong>{earnedBadges.length}</strong>
+            <small>バッジ</small>
+          </span>
+        </div>
       </div>
       {profileMessage && (
         <NoticeBanner message={profileMessage} tone={profileMessageTone} />
       )}
       {isEditing && (
-        <form
-          className="profile-edit-panel"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="profile-edit-title"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") cancelEditing();
-          }}
+        <ProfileEditor
+          dirty={hasUnsavedChanges}
+          onClose={requestCloseEditor}
           onSubmit={(event) => void saveProfile(event)}
         >
           <div className="profile-edit-head">
             <div>
-              <p className="eyebrow">編集</p>
               <h3 id="profile-edit-title">プロフィール編集</h3>
             </div>
             <div className="profile-edit-actions">
               <button
                 className="secondary-action"
                 type="button"
-                onClick={cancelEditing}
+                disabled={isSaving}
+                onClick={requestCloseEditor}
               >
                 <ChevronLeft size={16} />
                 キャンセル
@@ -411,86 +471,81 @@ export function ProfileTab({
               onChange={(event) => setWantToTry(event.target.value)}
             />
           </Field>
-        </form>
+        </ProfileEditor>
+      )}
+      {isDiscardConfirmationOpen && (
+        <ConfirmDialog
+          title="変更を破棄しますか？"
+          description="保存していないプロフィールの変更があります。"
+          confirmLabel="変更を破棄する"
+          danger
+          onClose={() => setIsDiscardConfirmationOpen(false)}
+          onConfirm={cancelEditing}
+        />
       )}
       {isProfileImageReviewOpen &&
         profileImageSourcePreview &&
         profileImageSourceFile && (
-        <ImageCropDialog
-          title="プロフィール画像の範囲を調整"
-          imageUrl={profileImageSourcePreview}
-          imageFile={profileImageSourceFile}
-          alt="プロフィール画像の確認用プレビュー"
-          aspect={1}
-          circular
-          maxOutputWidth={1024}
-          onCancel={() => {
-            setIsProfileImageReviewOpen(false);
-            if (!profileImageFile) {
-              revokeObjectUrl(profileImageSourcePreview);
-              setProfileImageSourceFile(null);
-              setProfileImageSourcePreview(null);
-              setProfileImagePreview(appUser.profileImageUrl ?? null);
-              setProfileImageInputKey((current) => current + 1);
-            }
-          }}
-          onConfirm={(file, previewUrl) => {
-            if (profileImagePreview !== profileImageSourcePreview) {
-              revokeObjectUrl(profileImagePreview);
-            }
-            setProfileImageFile(file);
-            setProfileImagePreview(previewUrl);
-            setIsProfileImageReviewOpen(false);
-          }}
-        />
-      )}
-      <div className="profile-stats">
-        <span>
-          <strong>{totalActivities}</strong>
-          <small>参加回数</small>
-        </span>
-        <span>
-          <strong>{applications.length}</strong>
-          <small>申請数</small>
-        </span>
-        <span>
-          <strong>{earnedBadges.length}</strong>
-          <small>バッジ</small>
-        </span>
-      </div>
-      <div className="profile-section">
-        <SectionHeading
-          eyebrow="参加履歴"
-          title="活動実績"
-          action="詳しく見る"
-          onClick={onOpenActivity}
-        />
-        <div className="mini-month-grid">
-          {activityByMonth.map((item) => (
-            <div
-              className={`mini-month level-${Math.min(item.count, 3)}`}
-              key={item.month}
-            >
-              <span>{item.month}月</span>
-              <strong>{item.count}</strong>
-            </div>
-          ))}
+          <ImageCropDialog
+            title="プロフィール画像の範囲を調整"
+            imageUrl={profileImageSourcePreview}
+            imageFile={profileImageSourceFile}
+            alt="プロフィール画像の確認用プレビュー"
+            aspect={1}
+            circular
+            maxOutputWidth={1024}
+            onCancel={cancelImageReview}
+            onConfirm={(file, previewUrl) => {
+              if (profileImagePreview !== profileImageSourcePreview) {
+                revokeObjectUrl(profileImagePreview);
+              }
+              setProfileImageFile(file);
+              setProfileImagePreview(previewUrl);
+              setIsProfileImageReviewOpen(false);
+            }}
+          />
+        )}
+      <details className="profile-section profile-activity-section">
+        <summary>
+          <span>月別の活動実績</span>
+          <ChevronDown size={18} />
+        </summary>
+        <div className="profile-activity-content">
+          <SectionHeading
+            title="活動実績"
+            action="詳しく見る"
+            onClick={onOpenActivity}
+          />
+          <div className="mini-month-grid">
+            {activityByMonth.map((item) => (
+              <div
+                className={`mini-month level-${Math.min(item.count, 3)}`}
+                key={item.month}
+              >
+                <span>{item.month}月</span>
+                <strong>{item.count}</strong>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </details>
       <div className="profile-section saved-events-section">
-        <SectionHeading eyebrow="保存済み" title="保存したイベント" />
+        <SectionHeading title="保存したイベント" />
         {visibleSavedEvents.length === 0 ? (
           <div className="empty-inline">
             <Heart size={22} />
             <p>
               {savedEventIds.length === 0
-                ? "気になるイベントを保存すると、ここからすぐ開けます。"
+                ? "保存したイベントはありません。"
                 : "保存したイベントは現在公開されていません。"}
             </p>
           </div>
         ) : (
           <div className="saved-event-list">
-            {visibleSavedEvents.map((event) => (
+            {(areAllSavedEventsVisible
+              ? visibleSavedEvents
+              : visibleSavedEvents.slice(0, 3)
+            ).map((event) => (
               <button
                 className="saved-event-item"
                 key={event.id}
@@ -511,29 +566,35 @@ export function ProfileTab({
                 <ChevronRight size={17} />
               </button>
             ))}
-            {hasMoreSavedEvents && (
+            {visibleSavedEvents.length > 3 && (
               <button
-                className="secondary-action"
+                className="saved-events-toggle"
                 type="button"
-                onClick={onLoadMoreSavedEvents}
+                aria-expanded={areAllSavedEventsVisible}
+                onClick={() =>
+                  setAreAllSavedEventsVisible((current) => !current)
+                }
               >
-                保存したイベントをさらに読み込む
+                {areAllSavedEventsVisible
+                  ? "表示を少なくする"
+                  : `保存した${visibleSavedEvents.length}件をすべて見る`}
+                <ChevronDown size={16} />
               </button>
             )}
+            {hasMoreSavedEvents &&
+              (areAllSavedEventsVisible || visibleSavedEvents.length <= 3) && (
+                <button
+                  className="secondary-action"
+                  type="button"
+                  onClick={onLoadMoreSavedEvents}
+                >
+                  保存したイベントをさらに読み込む
+                </button>
+              )}
           </div>
         )}
       </div>
       <div className="settings-list">
-        <div>
-          <div className="settings-icon">
-            <ShieldCheck size={18} />
-          </div>
-          <span>
-            <strong>学生確認済み</strong>
-            <small>会津大学メールで確認しています</small>
-          </span>
-          <Check size={17} />
-        </div>
         <button
           className="settings-row"
           type="button"
@@ -544,7 +605,6 @@ export function ProfileTab({
           </div>
           <span>
             <strong>通知設定</strong>
-            <small>新着イベントを受け取る</small>
           </span>
           <ChevronRight
             size={17}
@@ -553,10 +613,6 @@ export function ProfileTab({
         </button>
         {isNotificationSettingsOpen && (
           <div className="notification-settings-panel">
-            <div>
-              <strong>通知を受け取る</strong>
-              <small>新着・申請・メッセージの通知を管理します。</small>
-            </div>
             {(
               [
                 ["newEvents", "新着イベント"],
@@ -601,7 +657,6 @@ export function ProfileTab({
           </div>
           <span>
             <strong>イベントを企画する</strong>
-            <small>企画申請と参加者管理を開く</small>
           </span>
           <ChevronRight size={17} />
         </button>
@@ -615,7 +670,6 @@ export function ProfileTab({
           </div>
           <span>
             <strong>利用規約</strong>
-            <small>サービスの利用条件を確認する</small>
           </span>
           <ChevronRight size={17} />
         </button>
@@ -629,20 +683,18 @@ export function ProfileTab({
           </div>
           <span>
             <strong>プライバシーポリシー</strong>
-            <small>個人情報の取り扱いを確認する</small>
           </span>
           <ChevronRight size={17} />
         </button>
-        <div>
+        <button className="settings-row" type="button" onClick={onLogout}>
           <div className="settings-icon">
             <LogOut size={18} />
           </div>
-          <button type="button" onClick={onLogout}>
+          <span>
             <strong>ログアウト</strong>
-            <small>この端末からログアウト</small>
-          </button>
+          </span>
           <ChevronRight size={17} />
-        </div>
+        </button>
       </div>
       <AccountDeletionPanel
         request={accountDeletionRequest}

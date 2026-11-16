@@ -9,7 +9,6 @@ import {
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { EVENT_PAGE_SIZE } from "../../config/events";
 import type { NoticeTone } from "../../types/domain";
 
 export function SectionHeading({
@@ -46,7 +45,6 @@ export function EmptyEvents() {
     <div className="empty-state">
       <Compass size={30} />
       <h3>公開中のイベントはありません</h3>
-      <p>新しいイベントが公開されると、ここから参加できます。</p>
     </div>
   );
 }
@@ -70,13 +68,6 @@ export function EmptySearchResults({
             ? "読み込み済みの範囲に一致するイベントはありません"
             : "条件に合うイベントが見つかりません"}
       </h3>
-      <p>
-        {isLoading
-          ? "結果がそろうまで少しお待ちください。"
-          : hasMoreEvents
-            ? `下の「次の${EVENT_PAGE_SIZE}件を見る」で検索対象を広げるか、条件を変えてください。`
-            : "検索語や絞り込み条件を変えると、別のイベントが見つかるかもしれません。"}
-      </p>
       <button className="secondary-action" type="button" onClick={onReset}>
         条件をリセット
       </button>
@@ -173,10 +164,10 @@ export function LoadingScreen() {
       role="status"
       aria-live="polite"
       aria-busy="true"
+      aria-label="読み込み中"
     >
       <BrandMark large />
       <Loader2 size={20} className="spin" />
-      <span>Aizu Connectを準備しています</span>
     </main>
   );
 }

@@ -56,7 +56,6 @@ import { useNoticeState } from "./hooks/useNoticeState";
 import { useRoomConversation } from "./hooks/useRoomConversation";
 import { useStudentNavigation } from "./hooks/useStudentNavigation";
 import {
-  didCompleteManualApproval,
   getApplicationSubmissionError,
   getFirebaseErrorMessage,
   resolveAccountAccessGate,
@@ -118,7 +117,6 @@ import {
 } from "./services/authService";
 import { hasTotpEnrollment } from "./services/mfaService";
 import type {
-  AccountStatus,
   ActivityRecord,
   AizuEvent,
   ApplicationDetails,
@@ -306,10 +304,6 @@ function App() {
     setNotice: setMessage,
   });
   const authenticatedUidRef = useRef<string | null>(null);
-  const accountStatusRef = useRef<{
-    uid: string;
-    status: AccountStatus;
-  } | null>(null);
   const verificationRefreshUidRef = useRef<string | null>(null);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const previousSearchSortRef = useRef<SearchSort>("開催が近い順");
@@ -473,7 +467,6 @@ function App() {
           unsubscribeProfile = null;
           if (authenticatedUidRef.current !== (user?.uid ?? null)) {
             authenticatedUidRef.current = user?.uid ?? null;
-            accountStatusRef.current = null;
             verificationRefreshUidRef.current = null;
             setIsAutoActivatingStudent(false);
             setActiveTab("home");
@@ -521,25 +514,6 @@ function App() {
                   if (snapshot.exists()) {
                     clearMissingProfileTimer();
                     const nextUser = snapshot.data() as AppUser;
-                    const previousAccount = accountStatusRef.current;
-                    if (
-                      previousAccount?.uid === user.uid &&
-                      didCompleteManualApproval({
-                        previousStatus: previousAccount.status,
-                        nextStatus: nextUser.status,
-                        role: nextUser.role,
-                        email: nextUser.email ?? "",
-                      })
-                    ) {
-                      setMessage(
-                        "管理者の承認が完了しました。Aizu Connectのすべての機能を利用できます。",
-                        "success",
-                      );
-                    }
-                    accountStatusRef.current = {
-                      uid: user.uid,
-                      status: nextUser.status,
-                    };
                     setAppUser(nextUser);
                   } else {
                     // Registration creates the Auth user before its profile
@@ -672,10 +646,7 @@ function App() {
         }
         await batch.commit();
         if (!disposed) {
-          setMessage(
-            "メール認証が完了しました。アカウントを有効化しました。",
-            "success",
-          );
+          setMessage("");
         }
       } catch (error) {
         if (!disposed) {
@@ -1341,12 +1312,7 @@ function App() {
       />
     );
   if (accountAccessGate === "admin_approval")
-    return (
-      <AdminApprovalPendingScreen
-        appUser={appUser}
-        onLogout={() => void handleLogout()}
-      />
-    );
+    return <AdminApprovalPendingScreen onLogout={() => void handleLogout()} />;
   if (accountAccessGate === "account_setup")
     return (
       <AccountSetupScreen
@@ -1591,11 +1557,12 @@ function App() {
                 );
               }
             }}
-            onClose={() => {
+            onClose={(restoreFocus = true) => {
               setIsNotificationOpen(false);
-              window.requestAnimationFrame(() =>
-                notificationButtonRef.current?.focus(),
-              );
+              if (restoreFocus)
+                window.requestAnimationFrame(() =>
+                  notificationButtonRef.current?.focus(),
+                );
             }}
             onRead={async (notification) => {
               try {
@@ -1638,34 +1605,6 @@ function App() {
               }
             }}
           />
-        )}
-        {activeTab === "home" && (
-          <div className="welcome-row">
-            <div>
-              <h1>
-                こんにちは、
-                <wbr />
-                <span className="welcome-name">{appUser.displayName}さん</span>
-              </h1>
-              <p>参加予定や新しいイベントを確認できます。</p>
-            </div>
-            <div className="welcome-stats">
-              <span>
-                <strong>
-                  {applications.length}
-                  {hasMoreApplications ? "+" : ""}
-                </strong>
-                申請
-              </span>
-              <span>
-                <strong>
-                  {savedEventIds.length}
-                  {hasMoreSavedEvents ? "+" : ""}
-                </strong>
-                保存
-              </span>
-            </div>
-          </div>
         )}
         {message && (
           <NoticeBanner

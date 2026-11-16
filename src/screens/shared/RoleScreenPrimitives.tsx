@@ -6,6 +6,7 @@ import { BrandMark } from "../../components/ui/AppPrimitives";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
 
 export function RoleShell({
+  className = "",
   title,
   subtitle,
   icon,
@@ -14,6 +15,7 @@ export function RoleShell({
   onLogout,
   children,
 }: {
+  className?: string;
   title: string;
   subtitle: string;
   icon: ReactNode;
@@ -23,7 +25,7 @@ export function RoleShell({
   children: ReactNode;
 }) {
   return (
-    <div className="role-shell">
+    <div className={`role-shell ${className}`.trim()}>
       <a className="skip-link" href="#role-main">
         管理内容へ移動
       </a>

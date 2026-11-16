@@ -30,44 +30,6 @@ import type {
 } from "../../types/domain";
 import { applicationStatusLabel } from "../shared/applicationStatus";
 
-function ApplicationStatusTimeline({
-  status,
-}: {
-  status: EventApplication["status"];
-}) {
-  const terminal = status === "rejected" || status === "cancelled";
-  const currentStep =
-    status === "pending" || status === "waitlisted"
-      ? 1
-      : status === "confirmed"
-        ? 2
-        : 3;
-  return (
-    <div className={`application-timeline ${terminal ? "terminal" : ""}`}>
-      {[
-        ["申請", 1],
-        ["参加確定", 2],
-        ["活動実績", 3],
-      ].map(([label, step]) => (
-        <span
-          className={Number(step) <= currentStep && !terminal ? "done" : ""}
-          key={label}
-        >
-          <i>
-            {Number(step) < currentStep && !terminal ? (
-              <Check size={11} />
-            ) : (
-              step
-            )}
-          </i>
-          {label}
-        </span>
-      ))}
-      {terminal && <strong>{applicationStatusLabel(status)}</strong>}
-    </div>
-  );
-}
-
 export function ActivityTab(props: {
   applications: EventApplication[];
   activities: ActivityRecord[];
@@ -104,6 +66,16 @@ export function ActivityTab(props: {
   const eventsById = useMemo(
     () => indexEventsById(props.events),
     [props.events],
+  );
+  const visibleApplications = useMemo(
+    () =>
+      props.applications.filter((application) => {
+        const isUpcoming = ["pending", "waitlisted", "confirmed"].includes(
+          application.status,
+        );
+        return activityView === "history" ? !isUpcoming : isUpcoming;
+      }),
+    [props.applications, activityView],
   );
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -173,7 +145,6 @@ export function ActivityTab(props: {
       <div className="page-title">
         <div>
           <h1>参加履歴</h1>
-          <p>申請中・参加予定・参加済みのイベントを確認できます。</p>
         </div>
         <div className="activity-total">
           <strong>{props.applications.length}</strong>
@@ -206,382 +177,417 @@ export function ActivityTab(props: {
           活動証明
         </button>
       </nav>
-      <div hidden={activityView !== "upcoming"}>
-      <SectionHeading
-        className="activity-upcoming-heading"
-        title="これから参加するイベント"
-        action="イベントを探す"
-        onClick={() => props.setActiveTab("search")}
-      />
-      <div className="application-list activity-upcoming-list">
-        {props.applications.length === 0 ? (
-          <div className="empty-inline">
-            <CalendarDays size={26} />
-            <p>まだ参加予定はありません。</p>
-            <button type="button" onClick={() => props.setActiveTab("search")}>
-              イベントを探す
-            </button>
-          </div>
-        ) : (
-          props.applications.map((application) => {
-            const relatedEvent = eventsById.get(application.eventId);
-            const eventDate =
-              relatedEvent?.startAt?.toDate() ??
-              application.eventStartAt?.toDate();
-            const eventEndDate =
-              relatedEvent?.endAt?.toDate() ??
-              application.eventEndAt?.toDate() ??
-              relatedEvent?.startAt?.toDate() ??
-              application.eventStartAt?.toDate();
-            const canSubmitSurvey =
-              eventEndDate !== undefined && eventEndDate.getTime() <= Date.now();
-            return (
-              <div className="application-item" key={application.id}>
-                <div className="date-block">
-                  <strong>{eventDate?.getDate() ?? "--"}</strong>
-                  <span>
-                    {eventDate ? `${eventDate.getMonth() + 1}月` : "予定"}
-                  </span>
-                </div>
-                <div className="application-copy">
-                  <strong>{application.eventTitle}</strong>
-                  <span>{application.organizationName}</span>
-                  <small>
-                    {application.status === "confirmed"
-                      ? "参加確定。開催前にメッセージで詳細を確認しましょう。"
-                      : application.status === "waitlisted"
-                        ? `キャンセル待ち${application.waitlistPosition ? ` ${application.waitlistPosition}番目` : ""}です。空きが出たら通知します。`
-                        : application.status === "attended"
-                          ? "出席が確認され、活動実績に反映されています。"
-                          : application.status === "rejected"
-                            ? "今回は参加できませんでした。別の活動を探してみましょう。"
-                            : "申請後の連絡はメッセージから確認できます。"}
-                  </small>
-                  <ApplicationStatusTimeline status={application.status} />
-                  <div className="application-quick-actions">
-                    {relatedEvent && (
+      <div hidden={activityView === "records"}>
+        <SectionHeading
+          className="activity-upcoming-heading"
+          title={
+            activityView === "history"
+              ? "これまでの申請・参加"
+              : "申請中・参加予定のイベント"
+          }
+          action="イベントを探す"
+          onClick={() => props.setActiveTab("search")}
+        />
+        <div className="application-list activity-upcoming-list">
+          {visibleApplications.length === 0 ? (
+            <div className="empty-inline">
+              <CalendarDays size={26} />
+              <p>
+                {activityView === "history"
+                  ? "これまでの申請・参加はありません。"
+                  : "まだ参加予定はありません。"}
+              </p>
+              <button
+                type="button"
+                onClick={() => props.setActiveTab("search")}
+              >
+                イベントを探す
+              </button>
+            </div>
+          ) : (
+            visibleApplications.map((application) => {
+              const relatedEvent = eventsById.get(application.eventId);
+              const eventDate =
+                relatedEvent?.startAt?.toDate() ??
+                application.eventStartAt?.toDate();
+              const eventEndDate =
+                relatedEvent?.endAt?.toDate() ??
+                application.eventEndAt?.toDate() ??
+                relatedEvent?.startAt?.toDate() ??
+                application.eventStartAt?.toDate();
+              const canSubmitSurvey =
+                eventEndDate !== undefined &&
+                eventEndDate.getTime() <= Date.now();
+              return (
+                <div className="application-item" key={application.id}>
+                  <div className="date-block">
+                    <strong>{eventDate?.getDate() ?? "--"}</strong>
+                    <span>
+                      {eventDate ? `${eventDate.getMonth() + 1}月` : "予定"}
+                    </span>
+                  </div>
+                  <div className="application-copy">
+                    <strong>{application.eventTitle}</strong>
+                    <span>{application.organizationName}</span>
+                    {application.status === "waitlisted" &&
+                      application.waitlistPosition && (
+                        <small>
+                          キャンセル待ち {application.waitlistPosition}番目
+                        </small>
+                      )}
+                    {application.status === "cancelled" &&
+                      application.cancellationReason && (
+                        <small>{application.cancellationReason}</small>
+                      )}
+                    <div className="application-quick-actions">
+                      {relatedEvent && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            props.setSelectedEventId(relatedEvent.id);
+                            props.setActiveTab("search");
+                          }}
+                        >
+                          <Eye size={13} />
+                          詳細を見る
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => {
-                          props.setSelectedEventId(relatedEvent.id);
-                          props.setActiveTab("search");
+                        onClick={() =>
+                          props.onOpenMessages(application.eventId)
+                        }
+                      >
+                        <MessageCircle size={13} />
+                        連絡を見る
+                      </button>
+                    </div>
+                    {application.status === "confirmed" && (
+                      <form
+                        className="student-check-in"
+                        onSubmit={(submitEvent) => {
+                          submitEvent.preventDefault();
+                          const code = checkInCodes[application.id] ?? "";
+                          if (!/^\d{6}$/.test(code)) {
+                            setCheckInError(
+                              "6桁の受付コードを入力してください。",
+                            );
+                            setCheckInErrorId(application.id);
+                            return;
+                          }
+                          setCheckingInId(application.id);
+                          setCheckInError("");
+                          setCheckInErrorId(null);
+                          void props
+                            .onCheckIn(application, code)
+                            .then(() => setActivityView("history"))
+                            .catch((error) => {
+                              setCheckInError(getFirebaseErrorMessage(error));
+                              setCheckInErrorId(application.id);
+                            })
+                            .finally(() => setCheckingInId(null));
                         }}
                       >
-                        <Eye size={13} />
-                        詳細を見る
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => props.onOpenMessages(application.eventId)}
-                    >
-                      <MessageCircle size={13} />
-                      連絡を見る
-                    </button>
-                  </div>
-                  {application.status === "confirmed" && (
-                    <form
-                      className="student-check-in"
-                      onSubmit={(submitEvent) => {
-                        submitEvent.preventDefault();
-                        const code = checkInCodes[application.id] ?? "";
-                        if (!/^\d{6}$/.test(code)) {
-                          setCheckInError(
-                            "6桁の受付コードを入力してください。",
-                          );
-                          setCheckInErrorId(application.id);
-                          return;
-                        }
-                        setCheckingInId(application.id);
-                        setCheckInError("");
-                        setCheckInErrorId(null);
-                        void props
-                          .onCheckIn(application, code)
-                          .catch((error) => {
-                            setCheckInError(getFirebaseErrorMessage(error));
-                            setCheckInErrorId(application.id);
-                          })
-                          .finally(() => setCheckingInId(null));
-                      }}
-                    >
-                      <input
-                        aria-label={`${application.eventTitle}の受付コード`}
-                        inputMode="numeric"
-                        pattern="[0-9]{6}"
-                        maxLength={6}
-                        placeholder="当日の6桁受付コード"
-                        value={checkInCodes[application.id] ?? ""}
-                        onChange={(changeEvent) =>
-                          setCheckInCodes((current) => ({
-                            ...current,
-                            [application.id]: changeEvent.target.value.replace(
-                              /\D/g,
-                              "",
-                            ),
-                          }))
-                        }
-                      />
-                      <button
-                        type="submit"
-                        disabled={checkingInId === application.id}
-                      >
-                        {checkingInId === application.id ? (
-                          <Loader2 size={13} className="spin" />
-                        ) : (
-                          <Check size={13} />
-                        )}
-                        受付する
-                      </button>
-                    </form>
-                  )}
-                  {checkInError && checkInErrorId === application.id && (
-                    <small className="inline-error">{checkInError}</small>
-                  )}
-                  {application.status === "attended" && canSubmitSurvey && (
-                    <div className="event-survey-form">
-                      <strong>開催後アンケート</strong>
-                      <select
-                        aria-label={`${application.eventTitle}の満足度`}
-                        disabled={savingSurveyIds.includes(application.id)}
-                        value={surveyDrafts[application.id]?.rating ?? 5}
-                        onChange={(event) =>
-                          setSurveyDrafts((current) => ({
-                            ...current,
-                            [application.id]: {
-                              rating: Number(event.target.value),
-                              comment: current[application.id]?.comment ?? "",
-                              recommend: current[application.id]?.recommend ?? true,
-                            },
-                          }))
-                        }
-                      >
-                        {[5, 4, 3, 2, 1].map((rating) => (
-                          <option key={rating} value={rating}>
-                            満足度 {rating}
-                          </option>
-                        ))}
-                      </select>
-                      <textarea
-                        aria-label={`${application.eventTitle}の感想`}
-                        disabled={savingSurveyIds.includes(application.id)}
-                        maxLength={1000}
-                        placeholder="感想や改善してほしい点"
-                        value={surveyDrafts[application.id]?.comment ?? ""}
-                        onChange={(event) =>
-                          setSurveyDrafts((current) => ({
-                            ...current,
-                            [application.id]: {
-                              rating: current[application.id]?.rating ?? 5,
-                              comment: event.target.value,
-                              recommend: current[application.id]?.recommend ?? true,
-                            },
-                          }))
-                        }
-                      />
-                      <label>
                         <input
-                          type="checkbox"
+                          aria-label={`${application.eventTitle}の受付コード`}
+                          aria-invalid={
+                            checkInErrorId === application.id &&
+                            Boolean(checkInError)
+                          }
+                          aria-describedby={
+                            checkInErrorId === application.id && checkInError
+                              ? `check-in-error-${application.id}`
+                              : undefined
+                          }
+                          inputMode="numeric"
+                          pattern="[0-9]{6}"
+                          maxLength={6}
+                          placeholder="当日の6桁受付コード"
+                          value={checkInCodes[application.id] ?? ""}
+                          onChange={(changeEvent) =>
+                            setCheckInCodes((current) => ({
+                              ...current,
+                              [application.id]:
+                                changeEvent.target.value.replace(/\D/g, ""),
+                            }))
+                          }
+                        />
+                        <button
+                          type="submit"
+                          disabled={checkingInId === application.id}
+                        >
+                          {checkingInId === application.id ? (
+                            <Loader2 size={13} className="spin" />
+                          ) : (
+                            <Check size={13} />
+                          )}
+                          受付する
+                        </button>
+                      </form>
+                    )}
+                    {checkInError && checkInErrorId === application.id && (
+                      <small
+                        className="inline-error"
+                        role="alert"
+                        id={`check-in-error-${application.id}`}
+                      >
+                        {checkInError}
+                      </small>
+                    )}
+                    {application.status === "attended" && canSubmitSurvey && (
+                      <div className="event-survey-form">
+                        <strong>開催後アンケート</strong>
+                        <select
+                          aria-label={`${application.eventTitle}の満足度`}
                           disabled={savingSurveyIds.includes(application.id)}
-                          checked={surveyDrafts[application.id]?.recommend ?? true}
+                          value={surveyDrafts[application.id]?.rating ?? 5}
+                          onChange={(event) =>
+                            setSurveyDrafts((current) => ({
+                              ...current,
+                              [application.id]: {
+                                rating: Number(event.target.value),
+                                comment: current[application.id]?.comment ?? "",
+                                recommend:
+                                  current[application.id]?.recommend ?? true,
+                              },
+                            }))
+                          }
+                        >
+                          {[5, 4, 3, 2, 1].map((rating) => (
+                            <option key={rating} value={rating}>
+                              満足度 {rating}
+                            </option>
+                          ))}
+                        </select>
+                        <textarea
+                          aria-label={`${application.eventTitle}の感想`}
+                          disabled={savingSurveyIds.includes(application.id)}
+                          maxLength={1000}
+                          placeholder="感想や改善してほしい点"
+                          value={surveyDrafts[application.id]?.comment ?? ""}
                           onChange={(event) =>
                             setSurveyDrafts((current) => ({
                               ...current,
                               [application.id]: {
                                 rating: current[application.id]?.rating ?? 5,
-                                comment: current[application.id]?.comment ?? "",
-                                recommend: event.target.checked,
+                                comment: event.target.value,
+                                recommend:
+                                  current[application.id]?.recommend ?? true,
                               },
                             }))
                           }
                         />
-                        友人にもおすすめしたい
-                      </label>
-                      <button
-                        type="button"
-                        disabled={
-                          savedSurveyIds.includes(application.id) ||
-                          savingSurveyIds.includes(application.id)
-                        }
-                        onClick={() => void submitSurvey(application)}
-                      >
-                        {savingSurveyIds.includes(application.id)
-                          ? "送信中…"
-                          : savedSurveyIds.includes(application.id)
-                            ? "回答済み"
-                            : "アンケートを送信"}
-                      </button>
-                      {surveyErrors[application.id] && (
-                        <small className="inline-error" role="alert">
-                          {surveyErrors[application.id]}
-                        </small>
-                      )}
-                      {savedSurveyIds.includes(application.id) && (
-                        <small role="status">アンケートを送信しました。</small>
-                      )}
+                        <label>
+                          <input
+                            type="checkbox"
+                            disabled={savingSurveyIds.includes(application.id)}
+                            checked={
+                              surveyDrafts[application.id]?.recommend ?? true
+                            }
+                            onChange={(event) =>
+                              setSurveyDrafts((current) => ({
+                                ...current,
+                                [application.id]: {
+                                  rating: current[application.id]?.rating ?? 5,
+                                  comment:
+                                    current[application.id]?.comment ?? "",
+                                  recommend: event.target.checked,
+                                },
+                              }))
+                            }
+                          />
+                          友人にもおすすめしたい
+                        </label>
+                        <button
+                          type="button"
+                          disabled={
+                            savedSurveyIds.includes(application.id) ||
+                            savingSurveyIds.includes(application.id)
+                          }
+                          onClick={() => void submitSurvey(application)}
+                        >
+                          {savingSurveyIds.includes(application.id)
+                            ? "送信中…"
+                            : savedSurveyIds.includes(application.id)
+                              ? "回答済み"
+                              : "アンケートを送信"}
+                        </button>
+                        {surveyErrors[application.id] && (
+                          <small className="inline-error" role="alert">
+                            {surveyErrors[application.id]}
+                          </small>
+                        )}
+                        {savedSurveyIds.includes(application.id) && (
+                          <small role="status">
+                            アンケートを送信しました。
+                          </small>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <span className="status-chip">
+                    {applicationStatusLabel(application.status)}
+                  </span>
+                  {["pending", "waitlisted", "confirmed"].includes(
+                    application.status,
+                  ) && (
+                    <button
+                      className="text-button application-cancel"
+                      type="button"
+                      onClick={() => props.onCancelApplication(application)}
+                    >
+                      キャンセル
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+        {props.hasMoreApplications && (
+          <button
+            className="secondary-action"
+            type="button"
+            onClick={props.onLoadMoreApplications}
+          >
+            <History size={15} />
+            過去の申請をさらに50件読み込む
+          </button>
+        )}
+      </div>
+      <div hidden={activityView !== "records"}>
+        <div className="activity-card activity-overview">
+          <div className="activity-card-head">
+            <div>
+              <p className="eyebrow">年間記録</p>
+              <h3>{props.activityYear}年</h3>
+            </div>
+            <CalendarDays size={20} />
+          </div>
+          <div className="portfolio-summary">
+            <span>
+              <strong>{verifiedActivities.length}</strong>
+              <small>証明済み活動</small>
+            </span>
+            <span>
+              <strong>{uniqueOrganizations}</strong>
+              <small>つながった主催</small>
+            </span>
+            <span>
+              <strong>{portfolioTakeaways.length}</strong>
+              <small>経験タグ</small>
+            </span>
+          </div>
+          {portfolioTakeaways.length > 0 && (
+            <div className="portfolio-tags">
+              {portfolioTakeaways.map((takeaway) => (
+                <span key={takeaway}>{takeaway}</span>
+              ))}
+            </div>
+          )}
+          <div className="month-grid">
+            {props.activityByMonth.map((item) => (
+              <div
+                className={`month-cell level-${Math.min(item.count, 3)}`}
+                key={item.month}
+              >
+                <span>{item.month}月</span>
+                <strong>{item.count}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="legend">
+            <span>
+              <i className="level-0" /> 参加なし
+            </span>
+            <span>
+              <i className="level-1" /> 1件
+            </span>
+            <span>
+              <i className="level-2" /> 2件
+            </span>
+            <span>
+              <i className="level-3" /> 3件以上
+            </span>
+          </div>
+        </div>
+        <button
+          className="secondary-action"
+          type="button"
+          disabled={verifiedActivities.length === 0}
+          onClick={() =>
+            void downloadActivityPortfolioPdf(
+              props.userName,
+              verifiedActivities,
+            )
+          }
+        >
+          <FileText size={15} />
+          活動実績をPDFで保存
+        </button>
+        {props.hasMoreActivities && (
+          <button
+            className="secondary-action"
+            type="button"
+            onClick={props.onLoadMoreActivities}
+          >
+            <History size={15} />
+            過去の活動実績をさらに50件読み込む
+          </button>
+        )}
+        <SectionHeading
+          className="activity-completed-heading"
+          title="イベントごとの活動証明"
+        />
+        <div className="activity-history activity-completed-list">
+          {props.activities.length === 0 ? (
+            <div className="empty-inline">
+              <History size={24} />
+              <p>出席確認された活動がここに表示されます。</p>
+            </div>
+          ) : (
+            props.activities.map((activity) => (
+              <article className="activity-history-item" key={activity.id}>
+                <div className="activity-history-icon">
+                  <CheckCircle2 size={18} />
+                </div>
+                <div>
+                  <strong>{activity.title}</strong>
+                  <span>{activity.organizationName}</span>
+                  <small>
+                    {activity.activityYear}年{activity.activityMonth}月 ·{" "}
+                    {activity.verificationStatus === "verified"
+                      ? "主催者確認済み"
+                      : "無効"}
+                  </small>
+                  <div className="certificate-card">
+                    <span className="certificate-id">
+                      <ShieldCheck size={14} />
+                      <b>活動証明</b>
+                      <code>{activity.certificateId ?? activity.id}</code>
+                    </span>
+                    <small>{activity.participantRole ?? "参加者"}</small>
+                  </div>
+                  <button
+                    className="certificate-open-button"
+                    type="button"
+                    onClick={() => setSelectedCertificate(activity)}
+                  >
+                    <FileText size={14} />
+                    証明書を表示・共有
+                  </button>
+                  {activity.takeaways && activity.takeaways.length > 0 && (
+                    <div className="activity-takeaways">
+                      {activity.takeaways.slice(0, 3).map((takeaway) => (
+                        <span key={takeaway}>{takeaway}</span>
+                      ))}
                     </div>
                   )}
                 </div>
-                <span className="status-chip">
-                  {applicationStatusLabel(application.status)}
-                </span>
-                {["pending", "waitlisted", "confirmed"].includes(
-                  application.status,
-                ) && (
-                  <button
-                    className="text-button application-cancel"
-                    type="button"
-                    onClick={() => props.onCancelApplication(application)}
-                  >
-                    キャンセル
-                  </button>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
-      {props.hasMoreApplications && (
-        <button
-          className="secondary-action"
-          type="button"
-          onClick={props.onLoadMoreApplications}
-        >
-          <History size={15} />
-          過去の申請をさらに50件読み込む
-        </button>
-      )}
-      </div>
-      <div hidden={activityView !== "records"}>
-      <div className="activity-card activity-overview">
-        <div className="activity-card-head">
-          <div>
-            <p className="eyebrow">年間記録</p>
-            <h3>{props.activityYear}年</h3>
-          </div>
-          <CalendarDays size={20} />
+              </article>
+            ))
+          )}
         </div>
-        <div className="portfolio-summary">
-          <span>
-            <strong>{verifiedActivities.length}</strong>
-            <small>証明済み活動</small>
-          </span>
-          <span>
-            <strong>{uniqueOrganizations}</strong>
-            <small>つながった主催</small>
-          </span>
-          <span>
-            <strong>{portfolioTakeaways.length}</strong>
-            <small>経験タグ</small>
-          </span>
-        </div>
-        {portfolioTakeaways.length > 0 && (
-          <div className="portfolio-tags">
-            {portfolioTakeaways.map((takeaway) => (
-              <span key={takeaway}>{takeaway}</span>
-            ))}
-          </div>
-        )}
-        <div className="month-grid">
-          {props.activityByMonth.map((item) => (
-            <div
-              className={`month-cell level-${Math.min(item.count, 3)}`}
-              key={item.month}
-            >
-              <span>{item.month}月</span>
-              <strong>{item.count}</strong>
-            </div>
-          ))}
-        </div>
-        <div className="legend">
-          <span>
-            <i className="level-0" /> 参加なし
-          </span>
-          <span>
-            <i className="level-1" /> 1件
-          </span>
-          <span>
-            <i className="level-2" /> 2件
-          </span>
-          <span>
-            <i className="level-3" /> 3件以上
-          </span>
-        </div>
-      </div>
-      <button
-        className="secondary-action"
-        type="button"
-        disabled={verifiedActivities.length === 0}
-        onClick={() =>
-          void downloadActivityPortfolioPdf(props.userName, verifiedActivities)
-        }
-      >
-        <FileText size={15} />
-        活動実績をPDFで保存
-      </button>
-      </div>
-      <div hidden={activityView !== "history"}>
-      {props.hasMoreActivities && (
-        <button
-          className="secondary-action"
-          type="button"
-          onClick={props.onLoadMoreActivities}
-        >
-          <History size={15} />過去の活動実績をさらに50件読み込む
-        </button>
-      )}
-      <SectionHeading
-        className="activity-completed-heading"
-        title="参加したイベント"
-      />
-      <div className="activity-history activity-completed-list">
-        {props.activities.length === 0 ? (
-          <div className="empty-inline">
-            <History size={24} />
-            <p>出席確認された活動がここに表示されます。</p>
-          </div>
-        ) : (
-          props.activities.map((activity) => (
-            <article className="activity-history-item" key={activity.id}>
-              <div className="activity-history-icon">
-                <CheckCircle2 size={18} />
-              </div>
-              <div>
-                <strong>{activity.title}</strong>
-                <span>{activity.organizationName}</span>
-                <small>
-                  {activity.activityYear}年{activity.activityMonth}月 ·{" "}
-                  {activity.verificationStatus === "verified"
-                    ? "主催者確認済み"
-                    : "無効"}
-                </small>
-                <div className="certificate-card">
-                  <span className="certificate-id">
-                    <ShieldCheck size={14} />
-                    <b>活動証明</b>
-                    <code>{activity.certificateId ?? activity.id}</code>
-                  </span>
-                  <small>{activity.participantRole ?? "参加者"}</small>
-                </div>
-                <button
-                  className="certificate-open-button"
-                  type="button"
-                  onClick={() => setSelectedCertificate(activity)}
-                >
-                  <FileText size={14} />
-                  証明書を表示・共有
-                </button>
-                {activity.takeaways && activity.takeaways.length > 0 && (
-                  <div className="activity-takeaways">
-                    {activity.takeaways.slice(0, 3).map((takeaway) => (
-                      <span key={takeaway}>{takeaway}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </article>
-          ))
-        )}
-      </div>
       </div>
       {selectedCertificate && (
         <CertificateDialog

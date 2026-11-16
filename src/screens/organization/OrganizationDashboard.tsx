@@ -31,7 +31,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckInQrCode } from "../../components/CheckInQrCode";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { ImageCropDialog } from "../../components/ImageCropDialog";
@@ -103,6 +103,8 @@ const organizationViews: OrganizationView[] = [
   "settings",
 ];
 
+const MANAGED_EVENTS_PER_PAGE = 10;
+
 export function OrganizationDashboard({
   appUser,
   accountDeletionRequest,
@@ -172,6 +174,11 @@ export function OrganizationDashboard({
     "all" | AizuEvent["status"]
   >("all");
   const [eventSort, setEventSort] = useState<"date" | "newest">("date");
+  const [eventPageState, setEventPageState] = useState({
+    criteria: "",
+    page: 1,
+  });
+  const eventListRef = useRef<HTMLDivElement>(null);
   const [applicantSearch, setApplicantSearch] = useState("");
   const [applicantStatusFilter, setApplicantStatusFilter] = useState<
     "all" | EventApplication["status"]
@@ -211,6 +218,34 @@ export function OrganizationDashboard({
       ),
     [eventSearch, eventSort, eventStatusFilter, events],
   );
+  const eventPageCriteria = JSON.stringify([
+    eventSearch,
+    eventStatusFilter,
+    eventSort,
+  ]);
+  const eventPageCount = Math.max(
+    1,
+    Math.ceil(visibleEvents.length / MANAGED_EVENTS_PER_PAGE),
+  );
+  const eventPage =
+    eventPageState.criteria === eventPageCriteria
+      ? Math.min(eventPageState.page, eventPageCount)
+      : 1;
+  const eventPageStart = (eventPage - 1) * MANAGED_EVENTS_PER_PAGE;
+  const pagedEvents = visibleEvents.slice(
+    eventPageStart,
+    eventPageStart + MANAGED_EVENTS_PER_PAGE,
+  );
+  const changeEventPage = (page: number) => {
+    setEventPageState({ criteria: eventPageCriteria, page });
+    window.requestAnimationFrame(() => {
+      eventListRef.current?.focus({ preventScroll: true });
+      eventListRef.current?.scrollIntoView({
+        block: "start",
+        behavior: preferredScrollBehavior(),
+      });
+    });
+  };
   const visibleApplications = useMemo(
     () =>
       filterOrganizationApplications(
@@ -710,6 +745,7 @@ export function OrganizationDashboard({
 
   return (
     <RoleShell
+      className="organization-shell"
       title={organizationName}
       subtitle="企画ダッシュボード"
       icon={<UsersRound size={19} />}
@@ -722,11 +758,7 @@ export function OrganizationDashboard({
         <>
           <section className="organization-home-card">
             <div>
-              <p className="eyebrow">団体ホーム</p>
               <h1>イベント運営</h1>
-              <p>
-                企画の作成から参加者への連絡まで、行いたい操作を選んでください。
-              </p>
             </div>
             <div className="organization-home-summary" aria-label="運営状況">
               <span>
@@ -804,17 +836,21 @@ export function OrganizationDashboard({
                     aria-label="企画したイベントを検索"
                     value={eventSearch}
                     placeholder="イベント名・場所を検索"
-                    onChange={(event) => setEventSearch(event.target.value)}
+                    onChange={(event) => {
+                      setEventSearch(event.target.value);
+                      setEventPageState({ criteria: "", page: 1 });
+                    }}
                   />
                 </div>
                 <select
                   aria-label="イベント状態で絞り込む"
                   value={eventStatusFilter}
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setEventStatusFilter(
                       event.target.value as "all" | AizuEvent["status"],
-                    )
-                  }
+                    );
+                    setEventPageState({ criteria: "", page: 1 });
+                  }}
                 >
                   <option value="all">すべての状態</option>
                   <option value="published">公開中</option>
@@ -826,19 +862,32 @@ export function OrganizationDashboard({
                 <select
                   aria-label="イベントを並び替える"
                   value={eventSort}
-                  onChange={(event) =>
-                    setEventSort(event.target.value as "date" | "newest")
-                  }
+                  onChange={(event) => {
+                    setEventSort(event.target.value as "date" | "newest");
+                    setEventPageState({ criteria: "", page: 1 });
+                  }}
                 >
                   <option value="date">開催が近い順</option>
                   <option value="newest">作成が新しい順</option>
                 </select>
               </div>
-              <div className="role-list">
+              <div
+                className="role-list managed-event-list"
+                ref={eventListRef}
+                role="region"
+                aria-label="企画したイベント"
+                tabIndex={-1}
+              >
                 {visibleEvents.length === 0 ? (
-                  <EmptyRoleState text="まだ企画はありません。" />
+                  <EmptyRoleState
+                    text={
+                      eventSearch || eventStatusFilter !== "all"
+                        ? "条件に一致する企画はありません。"
+                        : "まだ企画はありません。"
+                    }
+                  />
                 ) : (
-                  visibleEvents.map((event) => (
+                  pagedEvents.map((event) => (
                     <div className="managed-event-row" key={event.id}>
                       <button
                         className={`role-list-item ${selectedEventId === event.id ? "active" : ""}`}
@@ -908,6 +957,44 @@ export function OrganizationDashboard({
                   ))
                 )}
               </div>
+              {eventPageCount > 1 && (
+                <nav
+                  className="managed-event-pagination"
+                  aria-label="企画したイベントのページ切り替え"
+                >
+                  <button
+                    type="button"
+                    aria-label="前のページ"
+                    disabled={eventPage === 1}
+                    onClick={() => changeEventPage(eventPage - 1)}
+                  >
+                    <ChevronLeft size={18} />
+                    前へ
+                  </button>
+                  <span role="status" aria-live="polite" aria-atomic="true">
+                    <strong>
+                      {eventPage} / {eventPageCount}
+                    </strong>
+                    <small>
+                      {eventPageStart + 1}–
+                      {Math.min(
+                        eventPageStart + MANAGED_EVENTS_PER_PAGE,
+                        visibleEvents.length,
+                      )}
+                      件 / {visibleEvents.length}件
+                    </small>
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="次のページ"
+                    disabled={eventPage === eventPageCount}
+                    onClick={() => changeEventPage(eventPage + 1)}
+                  >
+                    次へ
+                    <ChevronRight size={18} />
+                  </button>
+                </nav>
+              )}
               {hasMoreManagedEvents && (
                 <button
                   className="secondary-action"
@@ -1433,6 +1520,7 @@ export function OrganizationDashboard({
                 </span>
               </label>
               <button
+                className="primary-action"
                 type="button"
                 disabled={
                   isSavingEventReport ||

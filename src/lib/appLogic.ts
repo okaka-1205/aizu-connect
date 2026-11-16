@@ -329,7 +329,7 @@ export const getFirebaseErrorMessage = (error: unknown) => {
       code === "functions/permission-denied" &&
       error.message.includes("承認待ち")
     )
-      return "メール認証は完了しています。現在は管理者の承認待ちです。";
+      return "現在は管理者の承認待ちです。";
     if (
       code === "functions/permission-denied" &&
       error.message.includes("管理者")
