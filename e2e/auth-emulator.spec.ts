@@ -63,9 +63,13 @@ test.describe("lightweight emulator auth flows", () => {
     await expect(
       page.getByRole("heading", { name: "運営が登録内容を確認しています" }),
     ).toBeVisible();
-    await expect(page.locator(".approval-pending-card")).toContainText(
-      `認証テスト学生 ${suffix}`,
+    const pendingCard = page.locator(".approval-pending-card");
+    await expect(pendingCard).toContainText(
+      "承認後、自動的に画面が切り替わります。",
     );
+    await expect(
+      pendingCard.getByRole("button", { name: "ログアウト" }),
+    ).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
   });
@@ -125,9 +129,13 @@ test.describe("lightweight emulator auth flows", () => {
     await expect(
       page.getByRole("heading", { name: "運営が登録内容を確認しています" }),
     ).toBeVisible();
-    await expect(page.locator(".approval-pending-card")).toContainText(
-      organizationName,
+    const pendingCard = page.locator(".approval-pending-card");
+    await expect(pendingCard).toContainText(
+      "承認後、自動的に画面が切り替わります。",
     );
+    await expect(
+      pendingCard.getByRole("button", { name: "ログアウト" }),
+    ).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 });
