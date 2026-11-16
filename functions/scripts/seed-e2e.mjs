@@ -1467,6 +1467,20 @@ for (let index = 0; index < 30; index += 1) {
     }),
   );
 }
+// Keep managed-event pagination independent of the public search fixtures.
+// This shared organization is read-only in the cross-browser layout checks.
+for (let index = 0; index < 55; index += 1) {
+  const eventNumber = String(index + 1).padStart(2, "0");
+  paginationBatch.set(
+    db.doc(`events/event-e2e-managed-pagination-${eventNumber}`),
+    eventDoc({
+      title: `E2E 管理一覧の下書き ${eventNumber}`,
+      status: "draft",
+      applicantCount: 0,
+      createdAt: Timestamp.fromMillis(now.getTime() - (index + 1) * 1000),
+    }),
+  );
+}
 for (let index = 0; index < 55; index += 1) {
   const reportNumber = String(index + 1).padStart(2, "0");
   paginationBatch.set(db.doc(`reports/pagination-report-${reportNumber}`), {

@@ -395,7 +395,11 @@ test.describe("emulator-backed role flows", () => {
     ).toBeVisible();
     await expect(page.getByText("このイベントでできること")).toBeVisible();
     await expect(page.getByText("地域の人とつながる")).toBeVisible();
-    await expect(page.getByText("初参加歓迎").first()).toBeVisible();
+    await expect(
+      page
+        .getByRole("dialog", { name: "E2E 地域交流会" })
+        .getByText("初参加歓迎", { exact: true }),
+    ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(
       page.getByRole("dialog", { name: "E2E 地域交流会" }),
@@ -983,10 +987,10 @@ test.describe("emulator-backed role flows", () => {
     const activeConversation = page.getByRole("button", {
       name: "チャット一覧へ戻る",
     });
+    const eventRoom = page
+      .locator(".conversation-item")
+      .filter({ hasText: eventTitle });
     if (!(await activeConversation.isVisible())) {
-      const eventRoom = page.getByRole("button", {
-        name: new RegExp(`${eventTitle}.*全体`),
-      });
       await expect(eventRoom).toBeVisible();
       await eventRoom.click();
     }
@@ -1005,11 +1009,8 @@ test.describe("emulator-backed role flows", () => {
     if (await activeConversation.isVisible()) {
       await activeConversation.click();
     }
-    await expect(
-      page.getByRole("button", {
-        name: new RegExp(`E2E主催団体 ${eventTitle}`),
-      }),
-    ).toBeVisible();
+    await expect(eventRoom).toBeVisible();
+    await expect(eventRoom).toContainText("E2E主催団体");
     await expect(page.getByText("個別チャット", { exact: true })).toHaveCount(
       0,
     );

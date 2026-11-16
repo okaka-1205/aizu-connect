@@ -246,7 +246,6 @@ export function SearchTab(props: {
     props.searchSort,
     props.onlyAvailableEvents,
     props.onlyBeginnerEvents,
-    props.searchView,
   ]);
   useEffect(() => {
     setResultPage({ key: resultKey, page: 1 });
